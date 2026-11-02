@@ -121,6 +121,7 @@ export default function App() {
           <Route path="/w/history" element={<WHistory />} />
           <Route path="/w/scan" element={<WScan />} />
           <Route path="/w/notifications" element={<Notifications />} />
+          <Route path="/w/account" element={<Account />} />
         </Route>
 
         <Route element={<Guard perms={['store.access']}><StoreLayout /></Guard>}>
