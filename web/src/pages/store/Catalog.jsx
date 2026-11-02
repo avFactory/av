@@ -10,7 +10,7 @@ export default function Catalog() {
   return (
     <div className="page">
       <div className="hero mb">
-        <div><h2>مجوهرات بالجملة من المصنع مباشرة</h2><p>أجور تصنيع واضحة لكل جرام أو قطعة — قيمة الذهب خارج الفاتورة.</p></div>
+        <div className="row gap"><img src="/logo-gold.png" alt="AV" style={{ height: 64, width: 'auto' }} /><div><h2>مصنع AV للمجوهرات — الجملة من المصنع مباشرة</h2><p>أجور تصنيع واضحة لكل جرام أو قطعة — قيمة الذهب خارج الفاتورة.</p></div></div>
         <LinkBtn to="/store/custom" kind="primary" size="lg">اطلب تصميمك الخاص</LinkBtn>
       </div>
       <div className="row gap wrap mb">

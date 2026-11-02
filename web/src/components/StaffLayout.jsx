@@ -52,7 +52,7 @@ export default function StaffLayout() {
     <div className="shell">
       {open && <div className="scrim" onClick={() => setOpen(false)} />}
       <aside className={`side ${open ? 'open' : ''}`}>
-        <a href="/" className="brand"><span className="brand-mark">ذ</span><span>مصنع الذهب</span></a>
+        <a href="/" className="brand"><img src="/logo-gold.png" alt="AV" className="brand-logo" /><span>مصنع AV للمجوهرات</span></a>
         <nav>
           {NAV.map(([grp, items]) => {
             const vis = items.filter(([, , p]) => can(...p));
@@ -78,6 +78,7 @@ export default function StaffLayout() {
             <button className="btn btn-ghost btn-sm" onClick={logout}>خروج</button>
           </div>
         </header>
+        <div className="print-only print-head"><img src="/logo.png" alt="AV" /><b>مصنع AV للمجوهرات</b></div>
         <Outlet />
       </div>
     </div>

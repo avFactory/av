@@ -19,7 +19,7 @@ export default function StoreLayout() {
     <CartCtx.Provider value={{ cart, setCart }}>
       <header className="store-top no-print">
         <div className="in">
-          <Link to="/store" className="brand" style={{ padding: 0 }}><span className="brand-mark">ذ</span><span>متجر الجملة</span></Link>
+          <Link to="/store" className="brand" style={{ padding: 0 }}><img src="/logo-gold.png" alt="AV" className="brand-logo" /><span>مصنع AV للمجوهرات <small style={{ opacity: .7, fontWeight: 500 }}>· متجر الجملة</small></span></Link>
           {approved && (
             <nav>
               <NavLink to="/store" end>المنتجات</NavLink>

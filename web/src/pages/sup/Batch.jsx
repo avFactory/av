@@ -22,7 +22,7 @@ export default function Batch({ print }) {
       <div className="row gap end no-print" style={{ padding: 12 }}><Btn onClick={() => window.print()}>طباعة / حفظ PDF</Btn></div>
       <div className="doc-sheet">
         <div className="doc-head">
-          <div><h2>{issue ? 'كشف تسليم ذهب لعامل' : 'كشف استلام ذهب من عامل'}</h2><div>{lookups?.settings?.company?.name}</div></div>
+          <div><img src="/logo.png" alt="AV" className="doc-logo" /><h2>{issue ? 'كشف تسليم ذهب لعامل' : 'كشف استلام ذهب من عامل'}</h2><div>{lookups?.settings?.company?.name || 'مصنع AV للمجوهرات'}</div></div>
           <div style={{ textAlign: 'left' }}><b>{b.batch_no}</b><div>{fmtDT(b.created_at)}</div></div>
         </div>
         <div className="kv mb">

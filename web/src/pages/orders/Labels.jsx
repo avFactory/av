@@ -20,6 +20,7 @@ export default function Labels() {
           <div key={o.id} className="label">
             <img src={qrUrl(o.qr_token)} alt="QR" />
             <div>
+              <img src="/logo.png" alt="AV" style={{ height: '5mm', width: 'auto', display: 'block' }} />
               <b>{o.order_no}</b>
               <div>{o.title}</div>
               <div>{o.material_name}</div>

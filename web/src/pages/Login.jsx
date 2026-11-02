@@ -21,12 +21,13 @@ export default function Login() {
   return (
     <div className="auth">
       <div className="auth-art">
-        <span className="brand-mark" style={{ width: 54, height: 54, fontSize: '1.6rem' }}>ذ</span>
-        <h2>نظام إدارة مصنع الذهب والمجوهرات</h2>
+        <img src="/logo-gold.png" alt="AV" style={{ height: 84, width: 'auto', alignSelf: 'flex-start' }} />
+        <h2>مصنع AV للمجوهرات</h2>
         <p>العهدة والأوزان، الإنتاج، العجز، المخزون، الفواتير، ومتجر الجملة لمحلات الذهب.</p>
       </div>
       <div className="auth-form">
         <form onSubmit={submit}>
+          <img src="/logo.png" alt="AV" className="login-logo" />
           <h1>تسجيل الدخول</h1>
           {err && <div className="alert alert-bad">{err}</div>}
           <Field label="اسم المستخدم"><Input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoFocus autoComplete="username" dir="ltr" /></Field>

@@ -160,6 +160,13 @@ a.stat:hover { border-color: var(--gold); }
 .side { background: var(--ink); color: #e9e6df; padding: 18px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 :root[data-theme="dark"] .side, .side { --side-bg: #0d0c0b; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 6px 10px 18px; font-weight: 700; color: #fff; text-decoration: none; }
+.brand-logo { height: 30px; width: auto; display: block; }
+.login-logo { height: 56px; width: auto; justify-self: start; }
+.doc-logo { height: 54px; width: auto; display: block; margin-bottom: 6px; }
+.print-head { display: none; }
+@media print { .print-head { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; margin-bottom: 12px; border-bottom: 2px solid #a8844a; } .print-head img { height: 40px; } .doc-sheet .doc-logo { height: 48px; } }
+:root[data-theme="dark"] .login-logo { filter: invert(1); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .login-logo { filter: invert(1); } }
 .brand-mark { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, var(--gold-2), var(--gold)); display: grid; place-items: center; color: #111; font-weight: 800; }
 .side nav a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 9px; color: #cfcac0; text-decoration: none; font-size: .93rem; margin-bottom: 2px; }
 .side nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
@@ -338,3 +345,4 @@ a.stat:hover { border-color: var(--gold); }
   .toasts { top: 12px; bottom: auto; left: 12px; right: 12px; max-width: none; }
   .sticky-foot .btn-lg { width: 100%; }
 }
+@media print { body:has(.doc-sheet) .print-head { display: none !important; } }

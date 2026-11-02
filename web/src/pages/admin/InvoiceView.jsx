@@ -29,6 +29,7 @@ export default function InvoiceView({ store, print }) {
       <div className="doc-sheet">
         <div className="doc-head">
           <div>
+            <img src="/logo.png" alt="AV" className="doc-logo" />
             <h2>{i.invoice_type === 'invoice' ? 'فاتورة ضريبية' : 'إشعار دائن'}</h2>
             <div><b>{company.name}</b></div>
             <div className="small">الرقم الضريبي: {company.vat_number || '—'} · السجل: {company.cr_number || '—'}</div>

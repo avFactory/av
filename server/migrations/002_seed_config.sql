@@ -120,7 +120,7 @@ insert into route_stages(route_id, seq, stage_id)
 insert into departments(name) values ('التصميم'),('الصب'),('التشبيك'),('تركيب الأحجار'),('التلميع'),('الجودة'),('الإدارة'),('المخزون'),('المالية');
 
 insert into settings(key, value) values
- ('company', '{"name":"مصنع الذهب والمجوهرات","vat_number":"","cr_number":"","address":"","phone":""}'),
+ ('company', '{"name":"مصنع AV للمجوهرات","vat_number":"","cr_number":"","address":"","phone":""}'),
  ('vat_rate', '15'),
  ('weight_decimals', '3'),
  ('abnormal_threshold', '0'),

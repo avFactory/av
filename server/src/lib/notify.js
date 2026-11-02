@@ -60,7 +60,7 @@ export async function dispatchOutbound() {
         if (!r.ok) throw new Error(`sms ${r.status}`);
         sent = true;
       } else if (m.channel === 'email' && process.env.EMAIL_WEBHOOK_URL) {
-        const r = await fetch(process.env.EMAIL_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: m.recipient, subject: 'إشعار من المصنع', text: m.body }) });
+        const r = await fetch(process.env.EMAIL_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: m.recipient, subject: 'إشعار من مصنع AV للمجوهرات', text: m.body }) });
         if (!r.ok) throw new Error(`email ${r.status}`);
         sent = true;
       }
