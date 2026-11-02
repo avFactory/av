@@ -20,11 +20,16 @@ fi
 docker compose up -d --build
 # جدار ناري: SSH + HTTP + HTTPS فقط
 if command -v ufw >/dev/null; then
-  ufw allow OpenSSH >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw --force enable >/dev/null
+  { ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable; } >/dev/null 2>&1 \
+    && echo "✓ جدار الحماية مفعّل (22, 80, 443)" || echo "⚠ تعذر ضبط جدار الحماية - تجاوز"
 fi
 # نسخ احتياطي يومي 2:15 صباحاً
 mkdir -p /var/backups/goldfactory
 CRON="15 2 * * * cd $(pwd) && docker compose exec -T db pg_dump -U goldadmin -Fc goldfactory > /var/backups/goldfactory/db-\$(date +\%Y\%m\%d).dump && find /var/backups/goldfactory -mtime +30 -delete"
-( crontab -l 2>/dev/null | grep -v goldfactory; echo "$CRON" ) | crontab -
+if ( crontab -l 2>/dev/null | grep -v goldfactory || true; echo "$CRON" ) | crontab - 2>/dev/null; then
+  echo "✓ النسخ الاحتياطي اليومي مجدول (2:15 صباحاً)"
+else
+  echo "⚠ تعذر جدولة النسخ الاحتياطي - ثبّت cron: apt-get install -y cron"
+fi
 . ./.env
 echo "✅ النظام يعمل على: https://$DOMAIN  (المستخدم: admin)"

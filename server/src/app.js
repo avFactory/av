@@ -61,7 +61,7 @@ export function createApp() {
   const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
   if (fs.existsSync(dist)) {
     app.use(express.static(dist, { index: false, maxAge: '1h' }));
-    app.get('/*splat', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+    app.get('/{*splat}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
   }
 
   // eslint-disable-next-line no-unused-vars
