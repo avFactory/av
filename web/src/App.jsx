@@ -77,7 +77,7 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/" element={<Navigate to={homeFor(me)} replace />} />
         <Route path="/print/batch/:id" element={S(<Batch print />)} />
-        <Route path="/print/labels" element={S(<Labels />, ['orders.view', 'scan.use'])} />
+        <Route path="/print/labels" element={S(<Labels />, ['orders.view'])} />
         <Route path="/print/invoice/:id" element={S(<InvoiceView print />)} />
 
         <Route element={<Guard><StaffLayout /></Guard>}>

@@ -411,3 +411,4 @@ a.stat:hover { border-color: var(--gold); }
 .login-card .btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, #d9bf8a, #b8944f); }
 .login-foot { text-align: center; font-size: .85rem; color: #bfb39a; }
 .login-foot a { color: #e2c88f; }
+.label-qr svg { display: block; width: 100%; height: 100%; shape-rendering: crispEdges; }

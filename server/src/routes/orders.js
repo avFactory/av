@@ -1,5 +1,6 @@
 // إدارة الطلبات وأوامر الإنتاج (الإدارة / مدير الإنتاج / المشرف)
 import { Router } from 'express';
+import QRCode from 'qrcode';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, has } from '../lib/auth.js';
 import { bad, conflict, notFound, int, str, weight as W, money, oneOf } from '../lib/http.js';
@@ -78,6 +79,24 @@ export async function orderDetail(db, id) {
     left join users w on w.id=o.assigned_worker_id left join routes r on r.id=o.route_id left join products p on p.id=o.product_id where o.id=$1`, [id])).rows[0];
   return o;
 }
+
+/** بيانات الملصقات في طلب واحد مع رموز QR جاهزة (طباعة سريعة) */
+r.get('/labels', requirePerm('orders.view'), async (req, res) => {
+  const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 200).map((x) => int(x));
+  if (!ids.length) throw bad('لم يتم تحديد طلبات');
+  const rows = await many(`select o.id, o.order_no, o.qr_token, o.title, o.quantity, o.size, m.name as material_name, c.shop_name
+    from orders o join materials m on m.id=o.material_id left join customers c on c.id=o.customer_id where o.id = any($1::int[])`, [ids]);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out = [];
+  for (const id of ids) {
+    const o = byId.get(id);
+    if (!o) continue;
+    o.qr_svg = await QRCode.toString(o.qr_token, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' });
+    delete o.qr_token;
+    out.push(o);
+  }
+  res.json(out);
+});
 
 r.get('/:id', requirePerm('orders.view'), async (req, res) => {
   const id = int(req.params.id);

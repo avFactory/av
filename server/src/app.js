@@ -66,7 +66,8 @@ export function createApp() {
   // الواجهة الأمامية المبنية
   const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
   if (fs.existsSync(dist)) {
-    app.use(express.static(dist, { index: false, maxAge: '1h' }));
+    app.use('/assets', express.static(path.join(dist, 'assets'), { immutable: true, maxAge: '365d' }));
+    app.use(express.static(dist, { index: false, maxAge: '1d' }));
     app.get('/{*splat}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
   }
 

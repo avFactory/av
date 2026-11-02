@@ -16,7 +16,7 @@ export default function Orders() {
   const [sel, setSel] = useState([]);
   return (
     <Page title="الطلبات وأوامر الإنتاج" actions={<>
-      {sel.length > 0 && <a className="btn btn-ghost" href={`/print/labels?ids=${sel.join(',')}`} target="_blank" rel="noreferrer">طباعة ملصقات ({sel.length})</a>}
+      {sel.length > 0 && <a className="btn btn-ghost" href={`/print/labels?auto=1&ids=${sel.join(',')}`} target="_blank" rel="noreferrer">طباعة ملصقات ({sel.length})</a>}
       {can('orders.manage') && <LinkBtn to="/orders/new" kind="primary">طلب تصنيع جديد</LinkBtn>}
     </>}>
       <div className="row gap wrap mb">
