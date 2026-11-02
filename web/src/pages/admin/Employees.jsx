@@ -30,7 +30,7 @@ export default function Employees() {
       {can('employees.manage') && <Btn onClick={() => setF({ role_code: 'worker', stage_ids: [] })}>إضافة موظف</Btn>}
     </>}>
       <div className="card"><Table rows={rows} columns={[
-        ['الاسم', (u) => <b>{u.full_name}</b>], ['المستخدم', 'username'], ['الرقم', 'employee_no'], ['الدور', 'role_name'], ['القسم', 'department'], ['التخصص', 'specialty'],
+        ['الاسم', (u) => <b>{u.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{u.full_name}</b>], ['المستخدم', 'username'], ['الرقم', 'employee_no'], ['الدور', 'role_name'], ['القسم', 'department'], ['التخصص', 'specialty'],
         ['عهد مفتوحة', 'open_custodies'], ['الحالة', (u) => (u.active ? <Badge tone="ok">نشط</Badge> : <Badge>معطل</Badge>)],
         ['', (u) => <div className="row gap">
           <Btn size="sm" kind="ghost" onClick={() => run(async () => setPerf({ u, p: await api.get(`/admin/employees/${u.id}/performance`) }))}>الأداء</Btn>
@@ -109,15 +109,15 @@ function ImportModal({ imp, setImp, roles, busy, run, onDone }) {
   return (
     <Modal open onClose={() => setImp(null)} title="استيراد الموظفين من Excel" wide>
       {imp.step === 1 && <>
-        <div className="alert alert-info small">ارفع ملف Excel فيه صف عناوين يحتوي: رقم العامل، اسم العامل، اسم المستخدم، كلمة المرور، المهمة (اختياري: الجوال). المهمة تُسجل كتخصص وقسم، ويُربط العامل تلقائياً بالمرحلة المطابقة (مثل تشبيك ← التشبيك، تركيب ← تركيب الأحجار).</div>
+        <div className="alert alert-info small">ارفع ملف Excel فيه صف عناوين يحتوي: رقم العامل، اسم العامل، اسم المستخدم، كلمة المرور، المهمة (اختياري: الجوال). المهمة تُسجل كتخصص وقسم، ويُربط العامل تلقائياً بالمرحلة المطابقة (مثل تشبيك ← التشبيك، تركيب ← تركيب الأحجار). الصفوف التي يبدأ اسمها بـ "مكينة" تُضاف كمكائن: محطات عمل تستلم عهدة ذهب مثل العامل.</div>
         <label className="btn btn-primary btn-lg" style={{ justifySelf: 'start' }}>{busy ? 'جارٍ القراءة…' : 'اختيار الملف'}<input type="file" accept=".xlsx,.csv" hidden onChange={(e) => e.target.files[0] && parse(e.target.files[0])} /></label>
       </>}
       {imp.step === 2 && <>
         <div className="row gap wrap">
-          <Badge tone="info">{fresh.length} جديد</Badge><Badge>{rows.filter((r) => r.status === 'exists').length} موجود مسبقاً</Badge>{errors.length > 0 && <Badge tone="bad">{errors.length} به أخطاء</Badge>}
+          <Badge tone="info">{fresh.length} جديد</Badge>{rows.some((r) => r.kind === 'machine') && <Badge tone="gold">⚙ {rows.filter((r) => r.kind === 'machine').length} مكينة</Badge>}<Badge>{rows.filter((r) => r.status === 'exists').length} موجود مسبقاً</Badge>{errors.length > 0 && <Badge tone="bad">{errors.length} به أخطاء</Badge>}
         </div>
         <Table rows={rows.map((r, i) => ({ ...r, id: i }))} rowClass={(r) => (r.status === 'error' ? 'row-bad' : '')} columns={[
-          ['الرقم', 'employee_no'], ['الاسم', (r) => <b>{r.full_name}</b>], ['اسم المستخدم', (r) => <span dir="ltr">{r.username}</span>], ['المهمة', 'specialty'],
+          ['الرقم', 'employee_no'], ['النوع', (r) => (r.kind === 'machine' ? <span className="machine-tag">⚙ مكينة</span> : 'عامل')], ['الاسم', (r) => <b>{r.full_name}</b>], ['اسم المستخدم', (r) => <span dir="ltr">{r.username}</span>], ['المهمة', 'specialty'],
           ['كلمة المرور', (r) => '•'.repeat(Math.min(10, String(r.password || '').length))], ['الحالة', (r) => <Badge tone={ST[r.status][1]}>{ST[r.status][0]}</Badge>], ['ملاحظة', (r) => <span className="small">{r.errors.join('، ')}</span>],
         ]} />
         <div className="grid g2">
@@ -131,7 +131,7 @@ function ImportModal({ imp, setImp, roles, busy, run, onDone }) {
             const r = await api.post('/admin/employees/import/commit', { rows: rows.filter((x) => x.status !== 'error'), role_code: imp.role_code, must_change_password: imp.must_change_password });
             setImp(null); onDone();
             return r;
-          }, `تمت إضافة ${fresh.length} موظف`)}>{errors.length ? `إضافة الصفوف السليمة (${fresh.length})` : `إضافة ${fresh.length} موظف`}</Btn>
+          }, `تمت إضافة ${fresh.length}`)}>{errors.length ? `إضافة الصفوف السليمة (${fresh.length})` : `إضافة ${fresh.length}`}</Btn>
         </div>
       </>}
     </Modal>

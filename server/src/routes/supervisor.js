@@ -42,7 +42,7 @@ r.get('/awaiting-issue', SUP, async (_req, res) => {
 r.get('/workers', requirePerm('workers.view', 'custody.issue', 'custody.receive'), async (req, res) => {
   const qs = req.query.q ? `%${req.query.q}%` : null;
   res.json(await many(`
-    select u.id, u.full_name, u.employee_no, u.specialty, d.name as department,
+    select u.id, u.full_name, u.employee_no, u.specialty, u.kind, d.name as department,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open')::int as open_count,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.work_state='finished')::int as finished_count,
       (select coalesce(sum(weight_issued),0) from custodies c where c.worker_id=u.id and c.status='open')::text as open_weight,
@@ -50,13 +50,13 @@ r.get('/workers', requirePerm('workers.view', 'custody.issue', 'custody.receive'
     from users u left join departments d on d.id=u.department_id
     where u.role_code='worker' and u.active
       and ($1::text is null or u.full_name ilike $1 or u.employee_no ilike $1 or u.username ilike $1)
-    order by open_count desc, u.full_name`, [qs]));
+    order by open_count desc, u.kind, u.full_name`, [qs]));
 });
 
 /** ملف العامل الكامل */
 r.get('/workers/:id', requirePerm('workers.view', 'custody.issue', 'custody.receive'), async (req, res) => {
   const id = int(req.params.id);
-  const w = await one(`select u.id, u.full_name, u.employee_no, u.specialty, u.phone, d.name as department
+  const w = await one(`select u.id, u.full_name, u.employee_no, u.specialty, u.phone, u.kind, d.name as department
                        from users u left join departments d on d.id=u.department_id where u.id=$1 and u.role_code='worker'`, [id]);
   if (!w) throw notFound('العامل غير موجود');
   const custodies = await many(`

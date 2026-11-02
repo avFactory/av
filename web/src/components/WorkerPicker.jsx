@@ -21,8 +21,8 @@ export default function WorkerPicker({ onPick, mode }) {
       <div className="pick-grid">
         {list.map((w) => (
           <button key={w.id} className="pick" onClick={() => onPick(w)} disabled={mode === 'receive' && !w.open_count}>
-            <b>{w.full_name}</b>
-            <span className="muted">{w.employee_no || '—'} · {w.specialty || w.department || 'عامل'}</span>
+            <b>{w.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{w.full_name}</b>
+            <span className="muted">{w.employee_no || '—'} · {w.kind === 'machine' ? 'محطة عمل' : w.specialty || w.department || 'عامل'}</span>
             <span className="small">
               {w.open_count ? <>لديه <b>{w.open_count}</b> طلب · <span dir="ltr">{fmtW(w.open_weight)}</span> جم</> : <span className="muted">لا توجد عهدة</span>}
               {w.finished_count > 0 && <> · <b style={{ color: 'var(--ok)' }}>{w.finished_count} منتهٍ</b></>}

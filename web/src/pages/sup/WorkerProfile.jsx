@@ -36,7 +36,7 @@ export default function WorkerProfile() {
     ['التسوية', (c) => <StatusBadge map={SETTLEMENT_STATUS} value={c.settlement_status} />], ['الاستلام', (c) => fmtDT(c.received_at)],
   ];
   return (
-    <Page title={w.full_name} subtitle={`${w.employee_no || ''} · ${[w.department, w.specialty].filter(Boolean).join(' · ') || 'عامل'}`} back="/sup/workers"
+    <Page title={w.full_name} subtitle={`${w.kind === 'machine' ? '⚙ مكينة · ' : ''}${w.employee_no || ''} · ${[w.department, w.specialty].filter(Boolean).join(' · ') || 'عامل'}`} back="/sup/workers"
       actions={<>
         {can('custody.issue') && <LinkBtn kind="primary" size="lg" to={`/sup/issue?worker=${w.id}`}>تسليم ذهب</LinkBtn>}
         {can('custody.receive') && open.length > 0 && <LinkBtn kind="dark" size="lg" to={`/sup/receive?worker=${w.id}`}>استلام ذهب ({open.length})</LinkBtn>}

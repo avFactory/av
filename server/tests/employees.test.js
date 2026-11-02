@@ -64,6 +64,22 @@ test('استيراد العمال: معاينة، إنشاء، ربط بالمر
   assert.ok(stages.find((s) => s.name === 'تركيب الأحجار والألماس').worker_ids.includes(emps.find((e) => e.username === 'NAIM').id));
 });
 
+test('المكائن: تُعرف من الاسم، قسم المكائن، وربط البوليش بالتلميع، وتستلم عهدة', async () => {
+  const fd = await sheet([[102, 'صدام', 'SADAAM', '123123123', 'تشبيك'], [200, 'ملكينة البوليش', 'Polishing', '123123123', null], [203, 'مكينة الليزر', 'Laser', '123123123', null]]);
+  const p = await admin('POST', '/admin/employees/import/parse', null, fd);
+  assert.deepEqual(p.data.rows.map((r) => [r.status, r.kind]), [['exists', 'person'], ['new', 'machine'], ['new', 'machine']]);
+  const c = await admin('POST', '/admin/employees/import/commit', { rows: p.data.rows });
+  assert.deepEqual([c.data.created, c.data.skipped], [2, ['SADAAM']]);
+  const emps = (await admin('GET', '/admin/employees')).data;
+  const pol = emps.find((e) => e.username === 'Polishing');
+  assert.equal(pol.kind, 'machine');
+  assert.equal(pol.department, 'المكائن');
+  const stages = (await admin('GET', '/admin/stages')).data;
+  assert.ok(stages.find((s) => s.name === 'التلميع').worker_ids.includes(pol.id));
+  const list = (await admin('GET', '/sup/workers')).data;
+  assert.equal(list.find((w) => w.id === pol.id).kind, 'machine');
+});
+
 test('إلزام تغيير كلمة المرور عند أول دخول', async () => {
   const w = client();
   const login = await w('POST', '/auth/login', { username: 'sadaam', password: '123123123' });

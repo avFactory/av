@@ -48,7 +48,7 @@ r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
 
 // ------------------------------------------------------------------ الموظفون
 r.get('/employees', requirePerm('employees.manage', 'workers.view'), async (req, res) => {
-  res.json(await many(`select u.id, u.username, u.full_name, u.role_code, ro.name as role_name, u.employee_no, u.department_id, d.name as department,
+  res.json(await many(`select u.id, u.username, u.full_name, u.role_code, u.kind, ro.name as role_name, u.employee_no, u.department_id, d.name as department,
       u.specialty, u.phone, u.active, u.extra_perms, u.denied_perms, u.created_at,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open')::int as open_custodies,
       (select array_agg(stage_id) from stage_workers sw where sw.user_id=u.id) as stage_ids
@@ -79,9 +79,13 @@ const empUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 
   fileFilter: (_req, f, cb) => (/\.(xlsx|csv)$/i.test(f.originalname) ? cb(null, true) : cb(bad('ارفع ملف Excel (xlsx) أو CSV'))) });
 const HEADERS = [
   ['employee_no', /رقم|الرقم الوظيفي|no/i], ['full_name', /اسم العامل|اسم الموظف|الاسم الكامل|^الاسم$/], ['username', /اسم المستخدم|username|user/i],
-  ['password', /كلمة المرور|كلمه المرور|password/i], ['specialty', /مهمة|مهمه|المهمة|التخصص|العمل/], ['phone', /جوال|هاتف|phone/i],
+  ['password', /كلمة المرور|كلمه المرور|password/i], ['kind', /النوع|type|kind/i], ['specialty', /مهمة|مهمه|المهمة|التخصص|العمل/], ['phone', /جوال|هاتف|phone/i],
 ];
 const cellText = (v) => { if (v && typeof v === 'object') v = v.result ?? v.text ?? (v.richText ? v.richText.map((t) => t.text).join('') : ''); return v == null ? '' : String(v).trim(); };
+
+/** المكينة تُعرف من اسمها: مكينة / ماكينة / machine */
+const isMachine = (r) => r.kind === 'machine' || /(^|\s)(م|ما|مل)?كين[ةه]|machine/i.test(`${r.full_name || ''} ${r.kind || ''}`);
+const STAGE_HINTS = [[/polish|بوليش/i, 'التلميع'], [/cast|صب/i, 'الصب'], [/setting|تركيب/i, 'تركيب'], [/wash|غسيل/i, 'الغسيل'], [/assembl|تشبيك/i, 'التشبيك']];
 
 async function checkEmployeeRows(db, rows) {
   const names = rows.map((r) => String(r.username || '').toLowerCase());
@@ -122,7 +126,7 @@ r.post('/employees/import/parse', requirePerm('employees.manage'), empUpload.sin
   const rows = table.slice(hIdx + 1).map((c) => ({
     employee_no: c[map.employee_no] || null, full_name: c[map.full_name] || '', username: c[map.username] || '',
     password: c[map.password] || '', specialty: c[map.specialty] || null, phone: c[map.phone] || null,
-  })).filter((r) => r.full_name || r.username);
+  })).filter((r) => r.full_name || r.username).map((r) => ({ ...r, kind: isMachine(r) ? 'machine' : 'person' }));
   if (!rows.length) throw bad('لا توجد بيانات تحت صف العناوين');
   res.json({ columns: map, rows: await checkEmployeeRows(pool, rows) });
 });
@@ -135,7 +139,7 @@ r.post('/employees/import/commit', requirePerm('employees.manage'), async (req, 
   const input = (Array.isArray(req.body.rows) ? req.body.rows : []).map((r) => ({
     employee_no: str(r.employee_no, 'الرقم', { max: 40 }), full_name: str(r.full_name, 'الاسم', { max: 120 }) || '', username: str(r.username, 'اسم المستخدم', { max: 60 }) || '',
     password: String(r.password || ''), specialty: str(r.specialty, 'المهمة', { max: 80 }), phone: str(r.phone, 'الجوال', { max: 30 }),
-  }));
+  })).map((r, i) => ({ ...r, kind: isMachine({ ...r, kind: req.body.rows[i]?.kind }) ? 'machine' : 'person' }));
   if (!input.length) throw bad('لا توجد بيانات');
   res.json(await tx(async (db) => {
     if (!(await db.query('select 1 from roles where code=$1', [role])).rowCount) throw bad('الدور غير موجود');
@@ -148,16 +152,19 @@ r.post('/employees/import/commit', requirePerm('employees.manage'), async (req, 
     for (const r of rows) {
       if (r.status === 'exists') { skipped.push(r.username); continue; }
       let deptId = null;
-      if (r.specialty) {
-        deptId = (await db.query('select id from departments where name=$1', [r.specialty])).rows[0]?.id
-          ?? (await db.query('insert into departments(name) values ($1) on conflict (name) do update set name=excluded.name returning id', [r.specialty])).rows[0].id;
+      const deptName = r.kind === 'machine' ? 'المكائن' : r.specialty;
+      if (deptName) {
+        deptId = (await db.query('select id from departments where name=$1', [deptName])).rows[0]?.id
+          ?? (await db.query('insert into departments(name) values ($1) on conflict (name) do update set name=excluded.name returning id', [deptName])).rows[0].id;
       }
-      const u = (await db.query(`insert into users(username, password_hash, full_name, role_code, employee_no, department_id, specialty, phone, must_change_password)
-        values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`, [r.username, hashPassword(r.password), r.full_name, role, r.employee_no, deptId, r.specialty, r.phone, mustChange])).rows[0];
+      const u = (await db.query(`insert into users(username, password_hash, full_name, role_code, employee_no, department_id, specialty, phone, must_change_password, kind)
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`, [r.username, hashPassword(r.password), r.full_name, role, r.employee_no, deptId, r.specialty, r.phone, mustChange, r.kind])).rows[0];
       // ربط العامل بالمرحلة المطابقة لمهمته (مثل تشبيك ← التشبيك، تركيب ← تركيب الأحجار)
-      if (role === 'worker' && r.specialty) {
-        const sp = r.specialty.replace(/^ال/, '');
-        for (const st of stages.filter((x) => x.name.replace(/^ال/, '').startsWith(sp) || x.name.includes(r.specialty))) {
+      // للمكائن فقط: استنتاج المرحلة من اسمها (Polishing ← التلميع)
+      const hint = r.kind === 'machine' ? STAGE_HINTS.find(([re]) => re.test(`${r.username} ${r.full_name}`))?.[1] : null;
+      const sp = (r.specialty || hint || '').replace(/^ال/, '');
+      if (role === 'worker' && sp) {
+        for (const st of stages.filter((x) => x.name.replace(/^ال/, '').startsWith(sp) || x.name.includes(sp))) {
           await db.query('insert into stage_workers values ($1,$2) on conflict do nothing', [st.id, u.id]);
         }
       }

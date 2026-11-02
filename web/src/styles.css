@@ -385,3 +385,5 @@ a.stat:hover { border-color: var(--gold); }
 .stone-tile.out .qty { color: var(--muted); }
 .stone-tile.low { border-color: var(--warn); }
 @media (max-width: 800px) { .stone-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stone-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); padding: 12px; } }
+
+.machine-tag { display: inline-block; font-size: .72rem; font-weight: 700; background: var(--info-soft); color: var(--info); border-radius: 999px; padding: 0 8px; margin-inline-end: 6px; vertical-align: middle; }

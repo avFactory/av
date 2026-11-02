@@ -21,7 +21,7 @@ r.get('/lookups', requireAuth, async (req, res) => {
     stages: await many('select s.id, s.name, s.kind, s.handles_gold, s.sort_order, s.active, r.rate_percent::text as loss_rate from stages s join stage_current_rates r on r.stage_id=s.id order by s.sort_order'),
     routes: await many('select id, name, product_type, is_default from routes where active order by id'),
     departments: await many('select id, name from departments where active order by name'),
-    workers: has(req, 'worker.self') ? [] : await many("select id, full_name, employee_no from users where role_code='worker' and active order by full_name"),
+    workers: has(req, 'worker.self') ? [] : await many("select id, full_name, employee_no, kind from users where role_code='worker' and active order by kind, full_name"),
     customers: has(req, 'customers.view') || has(req, 'orders.manage') ? await many("select id, shop_name from customers where status='approved' order by shop_name") : [],
     tiers: await many('select id, name from customer_tiers order by name'),
   });

@@ -11,9 +11,9 @@ export default function Workers() {
   if (!data) return <Loader />;
   const total = data.reduce((s, w) => s + Number(w.open_weight), 0);
   return (
-    <Page title="متابعة العمال والعهد" subtitle={`${data.length} عامل · إجمالي الذهب لدى العمال ${fmtW(total)} جم`} back="/sup" actions={<Search value={q} onChange={setQ} placeholder="بحث باسم العامل أو رقمه" />}>
+    <Page title="متابعة العمال والمكائن والعهد" subtitle={`${data.length} عامل · إجمالي الذهب لدى العمال ${fmtW(total)} جم`} back="/sup" actions={<Search value={q} onChange={setQ} placeholder="بحث باسم العامل أو رقمه" />}>
       <div className="card"><Table rows={rows} onRow={(w) => nav(`/sup/workers/${w.id}`)} columns={[
-        ['العامل', (w) => <b>{w.full_name}</b>], ['الرقم', 'employee_no'], ['القسم / التخصص', (w) => [w.department, w.specialty].filter(Boolean).join(' · ') || '—'],
+        ['العامل / المكينة', (w) => <b>{w.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{w.full_name}</b>], ['الرقم', 'employee_no'], ['القسم / التخصص', (w) => [w.department, w.specialty].filter(Boolean).join(' · ') || '—'],
         ['طلبات لديه', 'open_count'], ['منتهية بانتظار الاستلام', (w) => (w.finished_count ? <Badge tone="ok">{w.finished_count}</Badge> : '—')],
         ['الذهب في عهدته (جم)', (w) => <span className="n">{fmtW(w.open_weight)}</span>, { className: 'n' }],
         ['تحت المراجعة', (w) => (w.review_count ? <Badge tone="bad">{w.review_count}</Badge> : '—')],
