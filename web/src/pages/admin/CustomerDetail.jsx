@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtMoney, fmtDate, STATUS, METHODS } from '../../format.js';
-import { Btn, Card, Field, Input, Kv, Loader, Page, Select, StatusBadge, Table, Tabs, useAction, useFetch, Badge } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Kv, Loader, Page, Select, StatusBadge, Table, Tabs, useAction, useFetch, Badge, TierBadge } from '../../ui.jsx';
 
 export default function CustomerDetail() {
   const { id } = useParams();
@@ -24,7 +24,7 @@ export default function CustomerDetail() {
       <Btn kind="ghost" onClick={() => setEdit({ ...c })}>تعديل</Btn>
     </>}>
       <div className="grid g2 mb">
-        <Card title="بيانات المنشأة"><Kv items={[['الحالة', c.status], ['الجوال', c.phone], ['البريد', c.email], ['المدينة', c.city], ['العنوان', c.address], ['الرقم الضريبي', c.vat_number], ['السجل التجاري', c.cr_number], ['الفئة', c.tier_name], ['حسابات الدخول', data.users.map((u) => u.username).join('، ')]]} /></Card>
+        <Card title="بيانات المنشأة"><Kv items={[['الحالة', c.status], ['الجوال', c.phone], ['البريد', c.email], ['المدينة', c.city], ['العنوان', c.address], ['الرقم الضريبي', c.vat_number], ['السجل التجاري', c.cr_number], ['التصنيف', <TierBadge name={c.tier_name} color={c.tier_color} />], ['حسابات الدخول', data.users.map((u) => u.username).join('، ')]]} /></Card>
         <Card title="الرصيد"><Kv items={[['الرصيد المستحق', st ? fmtMoney(st.balance) : '—'], ['عدد الطلبات', data.orders.length], ['عدد الفواتير', data.invoices.length]]} />
           {data.docs.length > 0 && <><b className="small mt">مستندات المنشأة</b><div className="files">{data.docs.map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer"><div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div><span>{d.original_name}</span></a>)}</div></>}
         </Card>
@@ -39,7 +39,7 @@ export default function CustomerDetail() {
         <Card title="تعديل البيانات" className="mt">
           <div className="grid g3">
             {['shop_name', 'owner_name', 'phone', 'phone2', 'email', 'city', 'address', 'vat_number', 'cr_number', 'notes'].map((k) => <Field key={k} label={k}><Input value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} /></Field>)}
-            <Field label="الفئة"><Select value={edit.tier_id || ''} onChange={(e) => setEdit({ ...edit, tier_id: e.target.value })} placeholder="—" options={(lookups?.tiers || []).map((t) => [t.id, t.name])} /></Field>
+            <Field label="التصنيف"><Select value={edit.tier_id || ''} onChange={(e) => setEdit({ ...edit, tier_id: e.target.value })} placeholder="—" options={(lookups?.tiers || []).map((t) => [t.id, t.name])} /></Field>
           </div>
           <div className="row gap end mt"><Btn kind="ghost" onClick={() => setEdit(null)}>إلغاء</Btn><Btn loading={busy} onClick={() => run(async () => { const { status, ...rest } = edit; await api.put(`/admin/customers/${id}`, rest); setEdit(null); reload(); }, 'تم الحفظ')}>حفظ</Btn></div>
         </Card>

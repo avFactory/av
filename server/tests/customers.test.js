@@ -32,7 +32,7 @@ test('استيراد العملاء: أعمدة بأي ترتيب، تجاوز �
   ws.addRow(['قائمة عملاء المصنع']);
   ws.addRow(['الرقم الضريبي', 'جوال المحل', 'اسم المحل', 'اسم المالك', 'المدينة', 'الفئة', 'اسم المستخدم', 'كلمة المرور']);
   ws.addRow(['300000000000003', '0501111111', 'مجوهرات الماسة', 'خالد', 'الرياض', 'VIP', 'almasa', 'Almasa#2026']);
-  ws.addRow([null, '0552222222', 'ذهب النخبة', 'سعد', 'جدة', 'VIP', null, null]);
+  ws.addRow([null, '0552222222', 'ذهب النخبة', 'سعد', 'جدة', 'فضي', null, null]);
   ws.addRow(['123', '0553333333', 'محل خطأ', null, null, null, null, null]);
   ws.addRow([null, '+966 50 111 1111', 'نفس الجوال باسم آخر', null, null, null, null, null]);
   const fd = new FormData();
@@ -51,10 +51,29 @@ test('استيراد العملاء: أعمدة بأي ترتيب، تجاوز �
   const m = list.find((c) => c.shop_name === 'مجوهرات الماسة');
   assert.equal(m.status, 'approved');
   assert.equal(m.tier_name, 'VIP');
+  assert.equal(list.find((c) => c.shop_name === 'ذهب النخبة').tier_name, 'عميل فضي', 'فضي ← عميل فضي');
   // دخول المتجر بالحساب المستورد مع إلزام تغيير كلمة المرور
   const lg = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'almasa', password: 'Almasa#2026' }) });
   assert.equal(lg.status, 200);
   const x = await call('GET', '/admin/customers.xlsx');
   assert.equal(x.status, 200);
   assert.ok(x.data.byteLength > 1000);
+});
+
+test('تصنيفات العملاء: ذهبي وفضي وعادي، والعادي افتراضي للعملاء الجدد', async () => {
+  const tiers = (await call('GET', '/admin/tiers')).data;
+  assert.deepEqual(tiers.slice(0, 3).map((t) => [t.name, t.color]), [['عميل ذهبي', 'gold'], ['عميل فضي', 'silver'], ['عميل عادي', 'normal']]);
+  const reg = await fetch(base + '/api/auth/register-customer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'newshop', password: 'Newshop#2026', shop_name: 'محل جديد', owner_name: 'م', phone: '0599999999' }) });
+  assert.equal(reg.status, 200);
+  const list = (await call('GET', '/admin/customers')).data;
+  const c = list.find((x) => x.shop_name === 'محل جديد');
+  assert.equal(c.tier_name, 'عميل عادي');
+  const gold = tiers.find((t) => t.color === 'gold');
+  await call('PUT', `/admin/customers/${c.id}`, { tier_id: gold.id });
+  assert.equal((await call('GET', `/admin/customers/${c.id}`)).data.customer.tier_name, 'عميل ذهبي');
+  // أجرة خاصة للتصنيف الذهبي تنطبق على عملائه
+  await call('POST', '/catalog/labor-rates', { name: 'افتراضي', scope: 'default', method: 'per_gram', rate: '15' });
+  await call('POST', '/catalog/labor-rates', { name: 'أجرة الذهبي', scope: 'tier', tier_id: gold.id, method: 'per_gram', rate: '11' });
+  const o = (await call('POST', '/orders', { title: 'خاتم', product_type: 'خاتم', karat: 21, color: 'yellow', customer_id: c.id })).data;
+  assert.equal(Number((await call('GET', `/orders/${o.id}`)).data.order.labor_rate), 11);
 });

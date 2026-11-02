@@ -23,7 +23,7 @@ r.get('/lookups', requireAuth, async (req, res) => {
     departments: await many('select id, name from departments where active order by name'),
     workers: has(req, 'worker.self') ? [] : await many("select id, full_name, employee_no, kind from users where role_code='worker' and active order by kind, full_name"),
     customers: has(req, 'customers.view') || has(req, 'orders.manage') ? await many("select id, shop_name from customers where status='approved' order by shop_name") : [],
-    tiers: await many('select id, name from customer_tiers order by name'),
+    tiers: await many('select id, name, color, is_default from customer_tiers order by sort_order, name'),
   });
 });
 

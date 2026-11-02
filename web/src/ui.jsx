@@ -150,6 +150,11 @@ export function StatusBadge({ map, value }) {
   const [label, tone] = map[value] || [value, 'muted'];
   return <Badge tone={tone}>{label}</Badge>;
 }
+/** شارة تصنيف العميل: ذهبي / فضي / عادي */
+export function TierBadge({ name, color }) {
+  if (!name) return <span className="muted">—</span>;
+  return <span className={`tier tier-${color || 'other'}`}>{color === 'gold' ? '★ ' : color === 'silver' ? '☆ ' : ''}{name}</span>;
+}
 export const Empty = ({ children = 'لا توجد بيانات' }) => <div className="empty">{children}</div>;
 export const Loader = () => <div className="loader"><span className="spin" /> جارٍ التحميل…</div>;
 export function ErrorBox({ error }) { return error ? <div className="alert alert-bad">{error.message}</div> : null; }

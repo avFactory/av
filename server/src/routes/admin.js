@@ -281,16 +281,16 @@ r.post('/departments', requirePerm('employees.manage'), async (req, res) => {
   await audit(pool, req, 'department.create', 'department', d.id, d);
   res.json(d);
 });
-r.get('/tiers', requirePerm('customers.view', 'labor.manage'), async (_req, res) => res.json(await many('select * from customer_tiers order by name')));
+r.get('/tiers', requirePerm('customers.view', 'labor.manage'), async (_req, res) => res.json(await many(`select t.*, (select count(*) from customers c where c.tier_id=t.id)::int as customers from customer_tiers t order by t.sort_order, t.name`)));
 r.post('/tiers', requirePerm('customers.manage'), async (req, res) => {
-  const t = await one('insert into customer_tiers(name, description) values ($1,$2) returning *', [str(req.body.name, 'اسم الفئة', { required: true }), str(req.body.description, 'الوصف')]);
+  const t = await one('insert into customer_tiers(name, description, color) values ($1,$2,$3) returning *', [str(req.body.name, 'اسم الفئة', { required: true }), str(req.body.description, 'الوصف'), oneOf(req.body.color || 'other', ['gold', 'silver', 'normal', 'other'], 'اللون')]).catch((e) => { if (e.code === '23505') throw bad('التصنيف موجود مسبقاً'); throw e; });
   await audit(pool, req, 'tier.create', 'tier', t.id, t);
   res.json(t);
 });
 
 // ------------------------------------------------------------------ العملاء
 r.get('/customers', requirePerm('customers.view'), async (req, res) => {
-  res.json(await many(`select c.*, t.name as tier_name,
+  res.json(await many(`select c.*, t.name as tier_name, t.color as tier_color,
       (select count(*) from orders o where o.customer_id=c.id)::int as orders_count,
       (select coalesce(sum(case when invoice_type='invoice' then total else -total end),0) from invoices i where i.customer_id=c.id and i.status='issued')
         - (select coalesce(sum(case when kind='refund' then -amount else amount end),0) from payments p where p.customer_id=c.id) as balance
@@ -367,7 +367,11 @@ r.post('/customers/import/commit', requirePerm('customers.manage'), async (req, 
     for (const r of rows) {
       if (r.status === 'exists') { skipped.push(r.shop_name); continue; }
       let tierId = null;
-      if (r.tier) tierId = (await db.query('insert into customer_tiers(name) values ($1) on conflict (name) do update set name=excluded.name returning id', [r.tier])).rows[0].id;
+      if (r.tier) {
+        // "ذهبي" / "فضي" / "عادي" تُطابق التصنيفات الأساسية بدلاً من إنشاء تصنيف مكرر
+        const t = /ذهب|gold/i.test(r.tier) ? 'عميل ذهبي' : /فض|silver/i.test(r.tier) ? 'عميل فضي' : /عادي|normal|regular/i.test(r.tier) ? 'عميل عادي' : r.tier;
+        tierId = (await db.query('insert into customer_tiers(name) values ($1) on conflict (name) do update set name=excluded.name returning id', [t])).rows[0].id;
+      }
       const c = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, tier_id, notes, status, approved_by, approved_at)
         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,now()) returning id`,
         [r.shop_name, r.owner_name, r.phone, r.phone2, r.email, r.city, r.address, r.vat_number ? digits(r.vat_number) : null, r.cr_number, tierId, r.notes, req.user.id])).rows[0];
@@ -396,7 +400,7 @@ r.get('/customers.xlsx', requirePerm('customers.view'), async (_req, res) => {
 
 r.get('/customers/:id', requirePerm('customers.view'), async (req, res) => {
   const id = int(req.params.id);
-  const c = await one('select c.*, t.name as tier_name from customers c left join customer_tiers t on t.id=c.tier_id where c.id=$1', [id]);
+  const c = await one('select c.*, t.name as tier_name, t.color as tier_color from customers c left join customer_tiers t on t.id=c.tier_id where c.id=$1', [id]);
   if (!c) throw notFound();
   const users = await many('select id, username, full_name, active from users where customer_id=$1', [id]);
   const docs = await many('select * from customer_documents where customer_id=$1', [id]);

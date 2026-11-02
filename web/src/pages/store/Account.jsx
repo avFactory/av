@@ -13,7 +13,7 @@ export default function SAccount() {
   const locked = data.customer.status === 'approved';
   return (
     <>
-      <Page title="بيانات المنشأة" subtitle={`الفئة: ${data.customer.tier_name || '—'} · الرصيد المستحق: ${fmtMoney(data.balance)}`}>
+      <Page title="بيانات المنشأة" subtitle={`التصنيف: ${data.customer.tier_name || "—"} · الرصيد المستحق: ${fmtMoney(data.balance)}`}>
         <Card>
           <div className="grid g3">
             <Field label="اسم المحل"><Input value={f.shop_name} disabled /></Field>

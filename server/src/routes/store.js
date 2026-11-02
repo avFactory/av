@@ -17,7 +17,7 @@ const r = Router();
 r.use(requirePerm('store.access'));
 
 r.get('/account', async (req, res) => {
-  const c = await one('select c.*, t.name as tier_name from customers c left join customer_tiers t on t.id=c.tier_id where c.id=$1', [req.user.customer_id]);
+  const c = await one('select c.*, t.name as tier_name, t.color as tier_color from customers c left join customer_tiers t on t.id=c.tier_id where c.id=$1', [req.user.customer_id]);
   const bal = await one(`select
       coalesce((select sum(case when invoice_type='invoice' then total else -total end) from invoices where customer_id=$1 and status='issued'),0)::text as invoiced,
       coalesce((select sum(case when kind='refund' then -amount else amount end) from payments where customer_id=$1),0)::text as paid`, [req.user.customer_id]);
