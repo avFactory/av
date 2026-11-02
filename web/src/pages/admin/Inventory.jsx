@@ -8,7 +8,7 @@ import { Btn, Card, Field, Input, Loader, Modal, Page, Select, Table, Tabs, Weig
 const CATS = [['raw', 'مواد خام'], ['semi', 'نصف مصنعة'], ['finished', 'منتجات جاهزة'], ['supply', 'مستلزمات'], ['other', 'أخرى']];
 
 export default function Inventory() {
-  const { can } = useAuth();
+  const { can, lookups } = useAuth();
   const [sp, setSp] = useSearchParams();
   const tab = sp.get('tab') || 'gold';
   const setTab = (t) => setSp({ tab: t });
@@ -21,11 +21,14 @@ export default function Inventory() {
   for (const r of gold?.rows || []) (table[r.material_id] ||= { name: r.name })[r.loc_type] = r.balance;
   const locs = ['vault', 'order', 'worker', 'scrap', 'finished', 'loss_suspense', 'loss_normal', 'loss_abnormal', 'delivered'];
   return (
-    <Page title="المخزون" subtitle="الذهب يُحاسب منفصلاً لكل عيار ولون" actions={can('inventory.manage') && tab === 'gold' && <>
+    <Page title="المخزون" subtitle="الذهب يُحاسب منفصلاً لكل عيار ولون" actions={tab === 'gold' && <>
+      {can('custody.issue', 'inventory.manage') && <Btn kind="dark" onClick={() => setM({ type: 'worker', material_id: mats[3]?.id, loss_rate_percent: '0' })}>تحويل لعامل (عهدة عامة)</Btn>}
+      {can('inventory.manage') && <>
       <Btn onClick={() => setM({ type: 'in', material_id: mats[3]?.id })}>إضافة ذهب للخزنة</Btn>
       <Btn kind="ghost" onClick={() => setM({ type: 'out', material_id: mats[3]?.id, from: 'vault' })}>صرف</Btn>
       <Btn kind="ghost" onClick={() => setM({ type: 'scrap', material_id: mats[3]?.id })}>بقايا ← الخزنة</Btn>
       {can('stocktake.approve') && <Btn kind="ghost" onClick={() => setM({ type: 'convert' })}>تحويل موثق بين العيارات</Btn>}
+      </>}
     </>}>
       <Tabs value={tab} onChange={setTab} tabs={[['gold', 'الذهب حسب العيار واللون'], ['counts', 'الجرد'], ['rec', 'مطابقة الأرصدة'], ['items', 'المواد والمستلزمات'], ['products', 'المنتجات الجاهزة ونصف المصنعة'], ['moves', 'حركات المخزون']]} />
       {tab === 'gold' && (!gold ? <Loader /> : (
@@ -34,13 +37,25 @@ export default function Inventory() {
           ['داخل المصنع', (r) => <b className="n">{fmtW(['vault', 'order', 'worker', 'scrap', 'finished', 'loss_suspense'].reduce((s, k) => s + Number(r[k] || 0), 0))}</b>, { className: 'n' }],
         ]} /></div>
       ))}
+      {tab === 'gold' && <GeneralCustodies />}
       {tab === 'counts' && <Counts mats={mats} />}
       {tab === 'rec' && <Reconciliation />}
       {tab === 'items' && <Items />}
       {tab === 'products' && <ProductsStock />}
       {tab === 'moves' && <div className="card card-b"><Link className="link" to="/sup/log">فتح سجل حركات الذهب الكامل مع التصفية والتصدير ←</Link></div>}
 
-      <Modal open={!!m} onClose={() => setM(null)} title={{ in: 'إضافة ذهب للخزنة', out: 'صرف ذهب لخارج المصنع', scrap: 'تحويل البقايا إلى الخزنة', convert: 'تحويل موثق بين مادتين' }[m?.type]}>
+      <Modal open={m?.type === 'worker'} onClose={() => setM(null)} title="تحويل ذهب من الخزنة إلى عامل (عهدة عامة)">
+        {m?.type === 'worker' && <>
+          <div className="alert alert-info small">يُصرف الذهب من الخزنة إلى العامل كرصيد في عهدته بدون طلب تصنيع. يصله إشعار ليقبل الاستلام من جواله، ويُستلم منه لاحقاً من شاشة "استلام ذهب من العامل" فيعود للخزنة مع حساب العجز.</div>
+          <Field label="العامل / المكينة *"><Select value={m.worker_id || ''} onChange={(e) => setM({ ...m, worker_id: e.target.value })} placeholder="اختر" options={(lookups?.workers || []).map((w) => [w.id, `${w.kind === 'machine' ? '⚙ ' : ''}${w.full_name}${w.employee_no ? ` (${w.employee_no})` : ''}`])} /></Field>
+          <Field label="المادة (العيار واللون)"><Select value={m.material_id} onChange={(e) => setM({ ...m, material_id: e.target.value })} options={mats.map((x) => [x.id, x.name])} /></Field>
+          <Field label="الوزن (جم) *" hint={table[m.material_id]?.vault ? `المتاح في الخزنة: ${fmtW(table[m.material_id].vault)} جم` : 'لا يوجد رصيد في الخزنة من هذه المادة'}><WeightInput big value={m.weight || ''} onChange={(v) => setM({ ...m, weight: v })} /></Field>
+          <Field label="الغرض / البيان *"><Input value={m.purpose || ''} onChange={(e) => setM({ ...m, purpose: e.target.value })} placeholder="مثال: رصيد لحام وتصليحات، تجهيز سبائك…" /></Field>
+          <Field label="نسبة العجز المسموح %" hint="0 = أي نقص عند الإرجاع يُحال للمراجعة"><Input dir="ltr" inputMode="decimal" value={m.loss_rate_percent} onChange={(e) => setM({ ...m, loss_rate_percent: e.target.value })} /></Field>
+          <Btn loading={busy} disabled={!m.worker_id || !m.weight || !m.purpose} onClick={() => op('/inventory/gold/to-worker', { ...m, idempotency_key: m.key || (m.key = String(Date.now()) + Math.random()) }, 'تم التحويل - بانتظار قبول العامل')}>تحويل</Btn>
+        </>}
+      </Modal>
+      <Modal open={!!m && m.type !== 'worker'} onClose={() => setM(null)} title={{ in: 'إضافة ذهب للخزنة', out: 'صرف ذهب لخارج المصنع', scrap: 'تحويل البقايا إلى الخزنة', convert: 'تحويل موثق بين مادتين' }[m?.type]}>
         {m && m.type !== 'convert' && <>
           <Field label="المادة"><Select value={m.material_id} onChange={(e) => setM({ ...m, material_id: e.target.value })} options={mats.map((x) => [x.id, x.name])} /></Field>
           {m.type === 'out' && <Field label="من"><Select value={m.from} onChange={(e) => setM({ ...m, from: e.target.value })} options={[['vault', 'الخزنة'], ['scrap', 'البقايا (للتنقية)']]} /></Field>}
@@ -61,6 +76,23 @@ export default function Inventory() {
         </>}
       </Modal>
     </Page>
+  );
+}
+
+function GeneralCustodies() {
+  const { can } = useAuth();
+  const { data } = useFetch('/inventory/gold/general-custodies', { live: ['custodies', 'gold_ledger'] });
+  if (!data?.length) return null;
+  return (
+    <Card title={`العهد العامة لدى العمال (${data.length})`} className="mt" pad={false}>
+      <Table rows={data} columns={[
+        ['العهدة', 'custody_no'], ['العامل', (c) => <Link className="link" to={`/sup/workers/${c.worker_id}`}>{c.worker_kind === 'machine' ? '⚙ ' : ''}{c.worker_name}</Link>], ['الغرض', 'purpose'], ['المادة', 'material_name'],
+        ['الوزن', (c) => <b className="n">{fmtW(c.weight_issued)}</b>], ['نسبة العجز', (c) => `${Number(c.loss_rate_snapshot)}%`],
+        ['الحالة', (c) => (c.status === 'under_review' ? <Badge tone="warn">تحت المراجعة</Badge> : c.worker_ack_at ? <Badge tone="ok">قبِلها العامل</Badge> : c.worker_rejected_at ? <Badge tone="bad">رفضها: {c.worker_reject_reason}</Badge> : <Badge tone="warn">بانتظار القبول</Badge>)],
+        ['التاريخ', (c) => fmtDT(c.issued_at)], ['بواسطة', 'issued_by'],
+        ['', (c) => can('custody.receive') && c.status === 'open' && <Link className="btn btn-dark btn-sm" to={`/sup/receive?worker=${c.worker_id}`}>استلام</Link>],
+      ]} />
+    </Card>
   );
 }
 

@@ -103,7 +103,7 @@ export async function issue(db, req, body) {
 export async function preview(db, custodyId, returnedGross, scrap, stonesW) {
   const c = (await db.query('select * from custodies where id=$1', [custodyId])).rows[0];
   if (!c) throw notFound('العهدة غير موجودة');
-  const stones = stonesW != null && stonesW !== '' ? W(stonesW, 'وزن الأحجار', { allowZero: true }) : (await embeddedStonesGrams(db, c.order_id, c.worker_id)).total;
+  const stones = stonesW != null && stonesW !== '' ? W(stonesW, 'وزن الأحجار', { allowZero: true }) : c.order_id ? (await embeddedStonesGrams(db, c.order_id, c.worker_id)).total : '0';
   const gross = W(returnedGross, 'الوزن المرتجع', { allowZero: true });
   const returned = await sub(db, gross, stones);
   if (Number(returned) < 0) throw bad('الوزن المرتجع أقل من وزن الأحجار');
@@ -143,7 +143,8 @@ export async function receive(db, req, body) {
     if (!c) throw notFound('العهدة غير موجودة');
     if (c.worker_id !== workerId) throw bad(`العهدة ${c.custody_no} ليست لدى هذا العامل`);
     if (c.status !== 'open') throw conflict(`العهدة ${c.custody_no} تم استلامها مسبقاً - لا يمكن تكرار تسجيل الوزن`);
-    const order = await lockOrder(db, c.order_id);
+    const order = c.order_id ? await lockOrder(db, c.order_id) : null;
+    const label = order ? order.order_no : `عهدة عامة${c.purpose ? ' - ' + c.purpose : ''}`;
 
     const p = await preview(db, c.id, it.returned_weight, it.scrap_weight, it.stones_weight);
     const needsReview = Number(p.abnormal_loss) > Number(threshold) || Number(p.gain_weight) > 0;
@@ -161,7 +162,8 @@ export async function receive(db, req, body) {
 
     const base = { material_id: c.material_id, order_id: c.order_id, custody_id: c.id, settlement_id: st.id, worker_id: workerId, stage_id: c.stage_id, batch_id: batch.id, user_id: req.user.id };
     await ledger.postIf(db, { ...base, kind: 'gain_pending', weight: p.gain_weight, from: ['variance', null], to: ['worker', workerId], reason });
-    await ledger.postIf(db, { ...base, kind: 'return', weight: p.returned, from: ['worker', workerId], to: ['order', c.order_id] });
+    // العهدة العامة يعود ذهبها للخزنة، وعهدة الطلب يعود لرصيد الطلب
+    await ledger.postIf(db, { ...base, kind: c.order_id ? 'return' : 'general_return', weight: p.returned, from: ['worker', workerId], to: c.order_id ? ['order', c.order_id] : ['vault', null] });
     await ledger.postIf(db, { ...base, kind: 'scrap_return', weight: p.scrap, from: ['worker', workerId], to: ['scrap', null] });
     await ledger.postIf(db, { ...base, kind: 'normal_loss', weight: p.normal_loss, from: ['worker', workerId], to: ['loss_normal', null] });
     if (Number(p.abnormal_loss) > 0) {
@@ -178,11 +180,11 @@ export async function receive(db, req, body) {
 
     let advanced = null;
     if (needsReview) {
-      await notifyPerm(db, 'loss.review', { kind: 'loss', title: `عجز غير طبيعي ${Number(p.abnormal_loss) > 0 ? p.abnormal_loss : ''} جم - ${order.order_no}`, body: reason, link: '/sup/review' });
-    } else if (it.advance !== false) {
+      await notifyPerm(db, 'loss.review', { kind: 'loss', title: `عجز غير طبيعي ${Number(p.abnormal_loss) > 0 ? p.abnormal_loss : ''} جم - ${label}`, body: reason, link: '/sup/review' });
+    } else if (it.advance !== false && c.order_id) {
       advanced = await tryAdvance(db, req, c.order_id);
     }
-    results.push({ settlement: st, order_no: order.order_no, advanced });
+    results.push({ settlement: st, order_no: label, advanced });
   }
   await audit(db, req, 'custody.receive', 'custody_batch', batch.id, { worker_id: workerId, settlements: results.map((r) => r.settlement.settlement_no) });
   return { batch_id: batch.id, batch_no: batch.batch_no, results };
@@ -206,7 +208,7 @@ async function tryAdvance(db, req, orderId) {
 async function closeAfterReview(db, req, st) {
   await db.query("update custodies set status='closed', closed_at=now() where id=$1", [st.custody_id]);
   const c = (await db.query('select order_id from custodies where id=$1', [st.custody_id])).rows[0];
-  return tryAdvance(db, req, c.order_id);
+  return c.order_id ? tryAdvance(db, req, c.order_id) : null;
 }
 
 /** مراجعة المشرف: اعتماد التسوية أو إحالتها للتحقيق */
@@ -268,8 +270,8 @@ export async function reverseSettlement(db, req, id, reasonIn) {
   if (!st) throw notFound('التسوية غير موجودة');
   if (st.status === 'reversed') throw conflict('التسوية مصححة مسبقاً');
   const c = (await db.query('select * from custodies where id=$1 for update', [st.custody_id])).rows[0];
-  const order = await lockOrder(db, c.order_id);
-  const later = await db.query("select 1 from custodies where order_id=$1 and issued_at > $2 and status <> 'reversed' limit 1", [c.order_id, st.received_at]);
+  const order = c.order_id ? await lockOrder(db, c.order_id) : null;
+  const later = !order ? { rowCount: 0 } : await db.query("select 1 from custodies where order_id=$1 and issued_at > $2 and status <> 'reversed' limit 1", [c.order_id, st.received_at]);
   if (later.rowCount) throw conflict('تم تسليم الطلب لمرحلة لاحقة بعد هذه التسوية - صحّح العهدة اللاحقة أولاً أو سجّل تسوية مستقلة');
   const mvs = (await db.query(
     'select * from gold_ledger g where settlement_id=$1 and reverses_id is null and not exists (select 1 from gold_ledger r where r.reverses_id=g.id) order by id desc', [id]
@@ -280,7 +282,7 @@ export async function reverseSettlement(db, req, id, reasonIn) {
   }
   await db.query("update settlements set status='reversed', reversed_by=$2, reversed_at=now(), reversal_reason=$3 where id=$1", [id, req.user.id, reason]);
   await db.query("update custodies set status='open', closed_at=null where id=$1", [c.id]);
-  if (order.current_stage_id !== c.stage_id && order.status === 'in_production') {
+  if (order && order.current_stage_id !== c.stage_id && order.status === 'in_production') {
     const seq = (await db.query('select seq from route_stages where route_id=$1 and stage_id=$2 order by seq limit 1', [order.route_id, c.stage_id])).rows[0];
     if (seq) await db.query("update orders set current_stage_id=$2, stage_seq=$3, stage_state='in_progress' where id=$1", [order.id, c.stage_id, seq.seq]);
   }
@@ -295,11 +297,40 @@ export async function reverseIssue(db, req, id, reasonIn) {
   const c = (await db.query('select * from custodies where id=$1 for update', [id])).rows[0];
   if (!c) throw notFound('العهدة غير موجودة');
   if (c.status !== 'open') throw conflict('لا يمكن إلغاء عهدة تم استلامها - صحّح التسوية أولاً');
-  await lockOrder(db, c.order_id);
-  const mvs = (await db.query("select * from gold_ledger g where custody_id=$1 and settlement_id is null and kind='issue' and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)", [id])).rows;
+  if (c.order_id) await lockOrder(db, c.order_id);
+  const mvs = (await db.query("select * from gold_ledger g where custody_id=$1 and settlement_id is null and kind in ('issue','general_issue') and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)", [id])).rows;
   for (const mv of mvs) await ledger.reverse(db, mv, `إلغاء تسليم ${c.custody_no}: ${reason}`, req.user.id);
   await db.query("update custodies set status='reversed', reversed_by=$2, reversed_at=now(), reversal_reason=$3 where id=$1", [id, req.user.id, reason]);
   await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `إلغاء التسليم ${c.custody_no}: ${reason}`);
   await audit(db, req, 'custody.reverse', 'custody', id, { reason });
   return { reversed: mvs.length };
+}
+
+/**
+ * عهدة عامة: تحويل ذهب من الخزنة إلى عامل كرصيد في عهدته بدون طلب تصنيع.
+ * تُستلم لاحقاً من شاشة الاستلام المعتادة ويعود الذهب للخزنة مع حساب العجز.
+ */
+export async function issueGeneral(db, req, body) {
+  const workerId = int(body.worker_id, 'العامل');
+  const worker = await getWorker(db, workerId);
+  const materialId = int(body.material_id, 'المادة');
+  const weight = W(body.weight, 'الوزن');
+  const purpose = str(body.purpose, 'الغرض / البيان', { required: true, max: 300 });
+  const rate = body.loss_rate_percent != null && body.loss_rate_percent !== '' ? String(body.loss_rate_percent).trim() : '0';
+  if (!/^\d{1,2}(\.\d{1,5})?$/.test(rate)) throw bad('نسبة العجز المسموح غير صالحة');
+  const key = str(body.idempotency_key, 'idempotency', { max: 100 });
+  if (key) {
+    const dup = (await db.query('select id, issue_batch_id from custodies where idempotency_key=$1', [`${key}:g`])).rows[0];
+    if (dup) return { custody_id: dup.id, batch_id: dup.issue_batch_id, duplicate: true };
+  }
+  await ledger.requireBalance(db, 'vault', null, materialId, weight, 'رصيد الخزنة من هذه المادة غير كافٍ');
+  const batch = (await db.query(`insert into custody_batches(batch_no, kind, worker_id, supervisor_id, note) values (next_doc_no('ISS'),'issue',$1,$2,$3) returning *`,
+    [workerId, req.user.id, purpose])).rows[0];
+  const c = (await db.query(`insert into custodies(custody_no, kind, purpose, order_id, worker_id, supervisor_id, stage_id, material_id, weight_issued, gross_weight, pieces,
+      loss_rate_snapshot, issue_batch_id, notes, idempotency_key) values (next_doc_no('CUS'),'general',$1,null,$2,$3,null,$4,$5,$5,0,$6,$7,$8,$9) returning *`,
+    [purpose, workerId, req.user.id, materialId, weight, rate, batch.id, str(body.notes, 'ملاحظات'), key ? `${key}:g` : null])).rows[0];
+  await ledger.post(db, { kind: 'general_issue', material_id: materialId, weight, from: ['vault', null], to: ['worker', workerId], custody_id: c.id, worker_id: workerId, batch_id: batch.id, reason: purpose, user_id: req.user.id });
+  await notifyUsers(db, [workerId], { kind: 'custody', title: `بانتظار قبولك: عهدة عامة ${weight} جم`, body: `${purpose} — افتح مهامك واضغط قبول الاستلام`, link: '/w' });
+  await audit(db, req, 'custody.general_issue', 'custody', c.id, { worker: worker.full_name, material_id: materialId, weight, purpose, rate });
+  return { custody_id: c.id, custody_no: c.custody_no, batch_id: batch.id, batch_no: batch.batch_no };
 }

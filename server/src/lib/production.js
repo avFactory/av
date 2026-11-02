@@ -42,6 +42,7 @@ export async function embeddedStonesGrams(db, orderId, workerId = null) {
   return { total: (used + Math.max(0, out)).toFixed(4), used: used.toFixed(4) };
 }
 async function logStage(db, orderId, stageId, event, userId, note, customerVisible = false, workerId = null) {
+  if (!orderId) return; // العهدة العامة لا ترتبط بطلب
   await db.query(
     'insert into order_stage_log(order_id, stage_id, event, user_id, note, customer_visible, worker_id) values ($1,$2,$3,$4,$5,$6,$7)',
     [orderId, stageId, event, userId, note, customerVisible, workerId]

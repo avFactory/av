@@ -9,7 +9,7 @@ export default function WCustody() {
   const { id } = useParams();
   const { data: tasks, reload } = useFetch('/w/tasks', { live: ['custodies'] });
   const c = tasks?.custodies.find((x) => String(x.id) === id);
-  const { data: od, reload: reloadOrder } = useFetch(c ? `/w/orders/${c.order_id}` : null, { deps: [c?.order_id] });
+  const { data: od, reload: reloadOrder } = useFetch(c?.order_id ? `/w/orders/${c.order_id}` : null, { deps: [c?.order_id] });
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [decl, setDecl] = useState(null);
@@ -33,7 +33,8 @@ export default function WCustody() {
       <Link to="/w" className="back">→ مهامي</Link>
       <Card title={<span>{c.order_no}</span>} actions={c.status === 'open' ? <Badge tone="gold">{WORK_STATE[c.work_state]}</Badge> : <StatusBadge map={CUSTODY_STATUS} value={c.status} />}>
         <Kv items={[['الوصف', c.title], ['المرحلة الحالية', c.stage_name], ['المادة', c.material_name], ['الوزن المسلم لك', <span dir="ltr">{fmtW(c.weight_issued)} جم</span>],
-          ['عدد القطع', c.pieces], ['المقاس', c.size], ['تاريخ التسليم', fmtDT(c.issued_at)], c.order_notes && ['ملاحظات الطلب', c.order_notes]]} />
+          c.kind === 'general' && ['نوع العهدة', 'عهدة عامة (رصيد بدون طلب)'],
+          c.kind !== 'general' && ['عدد القطع', c.pieces], ['المقاس', c.size], ['تاريخ التسليم', fmtDT(c.issued_at)], c.order_notes && ['ملاحظات الطلب', c.order_notes]]} />
       </Card>
       {od?.files?.length > 0 && (
         <Card title="التصاميم والصور">
@@ -43,7 +44,7 @@ export default function WCustody() {
       {c.status === 'open' && !c.worker_ack_at && (
         <Card title="قبول استلام العهدة">
           {c.worker_rejected_at && <div className="alert alert-bad mb">رفضتَ هذا التسليم: {c.worker_reject_reason} — بانتظار تصحيح المشرف.</div>}
-          <p className="mb">أقر باستلام <b dir="ltr">{fmtW(c.weight_issued)} جم</b> من {c.material_name} و<b>{c.pieces}</b> قطعة للطلب {c.order_no}.</p>
+          <p className="mb">أقر باستلام <b dir="ltr">{fmtW(c.weight_issued)} جم</b> من {c.material_name}{c.kind === 'general' ? <> كعهدة عامة: {c.purpose}</> : <> و<b>{c.pieces}</b> قطعة للطلب {c.order_no}</>}.</p>
           <p className="small muted mb">ضغطك على "قبول" يُسجَّل كتوقيعك الإلكتروني على العهدة بالتاريخ والوقت.</p>
           <div className="grid g2">
             <Btn size="xl" kind="ok" loading={busy} onClick={() => act('ack', {}, 'تم قبول العهدة')}>✓ قبول الاستلام</Btn>
@@ -67,14 +68,14 @@ export default function WCustody() {
             {k && <p className="small muted mt">الفرق عن المسلَّم: <b dir="ltr">{fmtW(k.actual, 4)}</b> جم — الوزن النهائي يعتمده المشرف عند الاستلام.</p>}
             <Btn className="mt" kind="dark" loading={busy} disabled={d.returned === ''} onClick={() => act('declare', d, 'تم حفظ الأوزان')}>حفظ الأوزان</Btn>
           </Card>
-          <Card title="صور التنفيذ والملاحظات">
+          {c.order_id && <Card title="صور التنفيذ والملاحظات">
             <label className="btn btn-ghost">📷 رفع صور التنفيذ<input type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>
             <Field label="ملاحظة أو طلب توضيح" className="mt"><Textarea value={note} onChange={(e) => setNote(e.target.value)} /></Field>
             <div className="row gap mt">
               <Btn kind="ghost" disabled={!note} loading={busy} onClick={() => run(async () => { await api.post(`/w/orders/${c.order_id}/note`, { note }); setNote(''); }, 'تم حفظ الملاحظة')}>حفظ ملاحظة</Btn>
               <Btn kind="dark" disabled={!note} loading={busy} onClick={() => run(async () => { await api.post(`/w/orders/${c.order_id}/note`, { note, clarification: true }); setNote(''); }, 'تم إرسال طلب التوضيح للمشرف')}>طلب توضيح من المشرف</Btn>
             </div>
-          </Card>
+          </Card>}
           <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started'} onClick={() => { if (window.confirm('إنهاء المرحلة وتسليمها للمشرف؟')) act('finish', {}, 'تم إنهاء المرحلة - سلّم القطعة للمشرف'); }}>إنهاء المرحلة وتسليمها</Btn>
         </>
       )}

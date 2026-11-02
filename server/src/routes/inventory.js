@@ -43,6 +43,20 @@ r.post('/gold/out', requirePerm('inventory.manage'), async (req, res) => {
   }));
 });
 
+/** تحويل ذهب من الخزنة إلى عامل كرصيد في عهدته (عهدة عامة بدون طلب تصنيع) */
+r.post('/gold/to-worker', requirePerm('custody.issue', 'inventory.manage'), async (req, res) => {
+  const { issueGeneral } = await import('../lib/custody.js');
+  res.json(await tx((db) => issueGeneral(db, req, req.body)));
+});
+
+/** العهد العامة القائمة لدى العمال */
+r.get('/gold/general-custodies', requirePerm('inventory.view', 'custody.view_all'), async (_req, res) => {
+  res.json(await many(`select c.id, c.custody_no, c.purpose, c.status, c.work_state, c.weight_issued::text, c.loss_rate_snapshot::text, c.issued_at, c.worker_ack_at, c.worker_rejected_at,
+      c.worker_reject_reason, u.full_name as worker_name, u.id as worker_id, u.kind as worker_kind, m.name as material_name, s.full_name as issued_by
+    from custodies c join users u on u.id=c.worker_id join materials m on m.id=c.material_id join users s on s.id=c.supervisor_id
+    where c.kind='general' and c.status in ('open','under_review') order by c.issued_at desc`));
+});
+
 /** تحويل البقايا المستردة إلى الخزنة (بعد التنقية/إعادة الاستخدام) */
 r.post('/gold/scrap-to-vault', requirePerm('inventory.manage'), async (req, res) => {
   res.json(await tx(async (db) => {

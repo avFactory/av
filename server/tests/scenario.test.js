@@ -459,3 +459,38 @@ test('تقسيم طلب على عدة عمال + القبول الإلكترون
   const sheet = await sup.get(`/api/sup/batches/${fix.batch_id}`);
   assert.ok(sheet.lines[0].worker_ack_at, 'الكشف يحمل وقت القبول الإلكتروني');
 });
+
+test('عهدة عامة: تحويل ذهب من الخزنة لعامل بدون طلب، ثم إرجاعه للخزنة مع حساب العجز', async () => {
+  const vault = async () => n((await pool.query("select coalesce(sum(balance),0) b from gold_balances where loc_type='vault' and material_id=$1", [ids.m21])).rows[0].b);
+  const before = await vault();
+  assert.equal((await w1.req('POST', '/api/inventory/gold/to-worker', { worker_id: ids.w3, material_id: ids.m21, weight: '25', purpose: 'x' })).status, 403, 'العامل لا يحوّل');
+  assert.equal((await sup.req('POST', '/api/inventory/gold/to-worker', { worker_id: ids.w3, material_id: ids.m21, weight: '25' })).status, 400, 'الغرض إلزامي');
+  const g = await sup.post('/api/inventory/gold/to-worker', { worker_id: ids.w3, material_id: ids.m21, weight: '25', purpose: 'رصيد لحام وتصليحات', loss_rate_percent: '0.2', idempotency_key: 'gen-1' });
+  const dup = await sup.post('/api/inventory/gold/to-worker', { worker_id: ids.w3, material_id: ids.m21, weight: '25', purpose: 'رصيد لحام وتصليحات', idempotency_key: 'gen-1' });
+  assert.equal(dup.duplicate, true);
+  assert.equal((await vault()).toFixed(4), (before - 25).toFixed(4));
+  const list = await sup.get('/api/inventory/gold/general-custodies');
+  assert.equal(list.length, 1);
+  // تظهر في عهد العامل وشاشة الاستلام
+  const open = await sup.get(`/api/sup/workers/${ids.w3}/open`);
+  const c = open.find((x) => x.id === g.custody_id);
+  assert.equal(c.order_no, 'عهدة عامة');
+  assert.equal((await sup.get('/api/inventory/reconciliation')).ok, true, 'المطابقة سليمة مع العهدة العامة');
+  // إرجاع 24.9: عجز 0.1، المسموح 0.05 → غير طبيعي 0.05 يتطلب سبباً
+  const noReason = await sup.req('POST', '/api/sup/receive', { worker_id: ids.w3, items: [{ custody_id: g.custody_id, returned_weight: '24.9', scrap_weight: '0' }] });
+  assert.equal(noReason.status, 400);
+  const r = await sup.post('/api/sup/receive', { worker_id: ids.w3, items: [{ custody_id: g.custody_id, returned_weight: '24.9', scrap_weight: '0', reason: 'لحام' }] });
+  assert.equal(r.results[0].settlement.status, 'pending_review');
+  assert.equal(r.results[0].order_no, 'عهدة عامة - رصيد لحام وتصليحات');
+  await admin.post(`/api/sup/reviews/${r.results[0].settlement.id}`, { decision: 'approve', notes: 'مقبول' });
+  assert.equal((await vault()).toFixed(4), (before - 0.1).toFixed(4), 'عاد المرتجع للخزنة');
+  const rec = await sup.get('/api/inventory/reconciliation');
+  assert.equal(rec.ok, true);
+  const rep = await admin.get('/api/reports/losses/worker');
+  assert.ok(rep.find((x) => x.key === ids.w3));
+  // تصحيح التسوية يعيد العهدة مفتوحة ويسحب الذهب من الخزنة
+  await admin.post(`/api/sup/settlements/${r.results[0].settlement.id}/reverse`, { reason: 'خطأ وزن' });
+  assert.equal((await vault()).toFixed(4), (before - 25).toFixed(4));
+  await sup.post('/api/sup/receive', { worker_id: ids.w3, items: [{ custody_id: g.custody_id, returned_weight: '25', scrap_weight: '0' }] });
+  assert.equal((await vault()).toFixed(4), before.toFixed(4));
+});

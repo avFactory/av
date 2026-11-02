@@ -31,7 +31,7 @@ export const DESIGN_STATUS = { not_required: 'غير مطلوب', pending_upload
 export const COLORS = { yellow: 'أصفر', white: 'أبيض', rose: 'روز' };
 export const METHODS = { per_gram: 'لكل جرام', per_piece: 'لكل قطعة', fixed: 'ثابتة للطلب', manual: 'يدوية (تتطلب اعتماد)' };
 export const KINDS = {
-  allocate: 'تخصيص من الخزنة', customer_gold_in: 'ذهب من العميل', stock_in: 'إضافة للخزنة', stock_out: 'صرف من الخزنة', issue: 'تسليم للعامل',
+  allocate: 'تخصيص من الخزنة', customer_gold_in: 'ذهب من العميل', stock_in: 'إضافة للخزنة', stock_out: 'صرف من الخزنة', issue: 'تسليم للعامل', general_issue: 'عهدة عامة للعامل', general_return: 'إرجاع عهدة عامة للخزنة',
   return: 'استلام من العامل', scrap_return: 'بقايا مستردة', normal_loss: 'عجز طبيعي', abnormal_pending: 'عجز غير طبيعي (معلق)', abnormal_loss: 'عجز غير طبيعي',
   abnormal_loss_approved: 'اعتماد عجز غير طبيعي', loss_recovered: 'مسترد بعد التحقيق', gain_pending: 'زيادة وزن', reversal: 'حركة عكسية',
   delivery: 'تسليم للعميل', to_finished_stock: 'إدخال للمخزون الجاهز', from_finished_stock: 'صرف من المخزون الجاهز', final_excess: 'فائض الوزن النهائي',

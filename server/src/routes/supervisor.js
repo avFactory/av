@@ -64,11 +64,11 @@ r.get('/workers/:id', requirePerm('workers.view', 'custody.issue', 'custody.rece
                        from users u left join departments d on d.id=u.department_id where u.id=$1 and u.role_code='worker'`, [id]);
   if (!w) throw notFound('العامل غير موجود');
   const custodies = await many(`
-    select c.*, c.weight_issued::text, o.order_no, o.title, o.due_date, s.name as stage_name, m.name as material_name,
+    select c.*, c.weight_issued::text, coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, o.due_date, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name,
       st.id as settlement_id, st.settlement_no, st.status as settlement_status, st.returned_weight::text, st.scrap_weight::text,
       st.actual_loss::text, st.normal_loss::text, st.abnormal_loss::text, st.received_at,
       (s.expected_hours is not null and c.status='open' and c.issued_at + (s.expected_hours || ' hours')::interval < now()) as late
-    from custodies c join orders o on o.id=c.order_id join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
+    from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
     left join settlements st on st.custody_id=c.id and st.status <> 'reversed'
     where c.worker_id=$1 and c.status <> 'reversed' order by c.issued_at desc limit 300`, [id]);
   const totals = await one(`
@@ -161,8 +161,8 @@ r.get('/workers/:id/open', requirePerm('custody.receive', 'custody.view_all'), a
   const rows = await many(`
     select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.gross_weight::text, c.stones_weight::text, c.pieces, c.loss_rate_snapshot::text,
            c.issued_at, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text,
-           o.order_no, o.title, s.name as stage_name, m.name as material_name
-    from custodies c join orders o on o.id=c.order_id join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
+           coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name
+    from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
     where c.worker_id=$1 and c.status='open' order by c.issued_at`, [id]);
   for (const x of rows) x.stones_now = (await embeddedStonesGrams(pool, x.order_id, id)).total;
   res.json(rows);
@@ -174,10 +174,10 @@ r.get('/reviews', requirePerm('loss.review', 'loss.investigate', 'loss.approve')
   res.json(await many(`
     select st.*, st.weight_issued::text, st.returned_weight::text, st.scrap_weight::text, st.actual_loss::text, st.allowed_loss::text,
       st.normal_loss::text, st.abnormal_loss::text, st.gain_weight::text, st.rate_snapshot::text, st.recovered_weight::text,
-      c.custody_no, c.worker_id, w.full_name as worker_name, o.order_no, o.id as order_id, s.name as stage_name, m.name as material_name,
+      c.custody_no, c.worker_id, w.full_name as worker_name, coalesce(o.order_no, 'عهدة عامة') as order_no, o.id as order_id, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name,
       rb.full_name as received_by_name, rv.full_name as reviewed_by_name, rs.full_name as resolved_by_name
-    from settlements st join custodies c on c.id=st.custody_id join users w on w.id=c.worker_id join orders o on o.id=c.order_id
-    join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
+    from settlements st join custodies c on c.id=st.custody_id join users w on w.id=c.worker_id left join orders o on o.id=c.order_id
+    left join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
     left join users rb on rb.id=st.received_by left join users rv on rv.id=st.reviewed_by left join users rs on rs.id=st.resolved_by
     where ($1::text[] is null and (st.abnormal_loss > 0 or st.gain_weight > 0 or st.status <> 'approved')) or st.status = any($1::text[])
     order by st.received_at desc limit 300`, [status]));
@@ -203,14 +203,14 @@ r.get('/batches/:id', requirePerm('custody.issue', 'custody.receive', 'custody.v
   if (!b) throw notFound();
   if (req.user.role_code === 'worker' && b.worker_id !== req.user.id) throw forbidden();
   const lines = b.kind === 'issue'
-    ? await many(`select c.custody_no as doc_no, o.order_no, o.title, s.name as stage_name, m.name as material_name, c.gross_weight::text, c.stones_weight::text,
+    ? await many(`select c.custody_no as doc_no, coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name, c.gross_weight::text, c.stones_weight::text,
                     c.weight_issued::text as weight, c.pieces, c.loss_rate_snapshot::text as rate, c.notes, c.status, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason
-                  from custodies c join orders o on o.id=c.order_id join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
+                  from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
                   where c.issue_batch_id=$1 order by c.id`, [b.id])
-    : await many(`select st.settlement_no as doc_no, o.order_no, o.title, s.name as stage_name, m.name as material_name, st.weight_issued::text,
+    : await many(`select st.settlement_no as doc_no, coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name, st.weight_issued::text,
                     st.gross_returned::text, st.stones_weight::text, st.returned_weight::text, st.scrap_weight::text, st.actual_loss::text, st.allowed_loss::text,
                     st.abnormal_loss::text, st.gain_weight::text, st.status, st.reason, st.pieces_returned as pieces, c.finished_at as worker_handover_at, c.worker_ack_at
-                  from settlements st join custodies c on c.id=st.custody_id join orders o on o.id=c.order_id join stages s on s.id=c.stage_id
+                  from settlements st join custodies c on c.id=st.custody_id left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id
                   join materials m on m.id=c.material_id where st.receive_batch_id=$1 order by st.id`, [b.id]);
   res.json({ batch: b, lines });
 });
@@ -248,7 +248,7 @@ async function movementsQuery(req) {
   if (req.user.role_code === 'worker') add('g.worker_id = ?', req.user.id);
   const sql = `
     select g.id, g.movement_no, g.kind, g.weight::text, g.from_type, g.to_type, g.created_at, g.reason, g.reverses_id,
-           o.order_no, w.full_name as worker_name, s.name as stage_name, m.name as material_name, u.full_name as user_name,
+           coalesce(o.order_no, case when c.kind = 'general' then 'عهدة عامة' end) as order_no, w.full_name as worker_name, s.name as stage_name, m.name as material_name, u.full_name as user_name,
            st.settlement_no, st.status as settlement_status, st.abnormal_loss::text, st.actual_loss::text, c.custody_no, c.notes,
            exists (select 1 from gold_ledger r where r.reverses_id=g.id) as reversed
     from gold_ledger g left join orders o on o.id=g.order_id left join users w on w.id=g.worker_id left join stages s on s.id=g.stage_id
@@ -265,7 +265,7 @@ r.get('/movements', requirePerm('custody.view_all', 'inventory.view', 'reports.v
 
 export const KIND_LABELS = {
   allocate: 'تخصيص من الخزنة للطلب', customer_gold_in: 'ذهب مستلم من العميل', stock_in: 'إضافة للخزنة', stock_out: 'صرف من الخزنة',
-  issue: 'تسليم للعامل', return: 'استلام من العامل', scrap_return: 'بقايا مستردة', normal_loss: 'عجز طبيعي',
+  issue: 'تسليم للعامل', return: 'استلام من العامل', general_issue: 'عهدة عامة من الخزنة للعامل', general_return: 'إرجاع عهدة عامة للخزنة', scrap_return: 'بقايا مستردة', normal_loss: 'عجز طبيعي',
   abnormal_pending: 'عجز غير طبيعي (معلق)', abnormal_loss: 'عجز غير طبيعي', abnormal_loss_approved: 'اعتماد عجز غير طبيعي',
   loss_recovered: 'عجز مسترد بعد التحقيق', gain_pending: 'زيادة وزن (معلقة)', reversal: 'حركة عكسية (تصحيح)',
   delivery: 'تسليم للعميل', to_finished_stock: 'إدخال منتج جاهز للمخزون', from_finished_stock: 'صرف منتج جاهز لطلب',

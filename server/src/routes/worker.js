@@ -30,9 +30,9 @@ r.get('/tasks', async (req, res) => {
   const custodies = await many(`
     select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
            c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text, c.issue_batch_id,
-           o.order_no, o.title, o.due_date, o.size, o.notes as order_notes, s.name as stage_name, s.required_fields, m.name as material_name,
+           coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, m.name as material_name, c.kind, c.purpose,
            (select f.path from order_files f where f.order_id=o.id and f.kind in ('design','reference','sketch') and f.mime like 'image/%' order by f.id desc limit 1) as thumb
-    from custodies c join orders o on o.id=c.order_id join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
+    from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
     where c.worker_id=$1 and c.status in ('open','under_review') order by c.issued_at`, [req.user.id]);
   // مهام بدون ذهب (مثل التصميم) مسندة للعامل
   const tasks = await many(`
@@ -82,7 +82,7 @@ r.post('/custody/:id/reject', async (req, res) => {
     await db.query('update custodies set worker_rejected_at=now(), worker_reject_reason=$2 where id=$1', [c.id, reason]);
     await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'reject',$2,$3)", [c.id, req.user.id, reason]);
     const o = (await db.query('select order_no from orders where id=$1', [c.order_id])).rows[0];
-    await notifyPerm(db, 'custody.issue', { kind: 'reject', title: `${req.user.full_name} رفض استلام ${o.order_no}`, body: reason, link: `/sup/workers/${req.user.id}` });
+    await notifyPerm(db, 'custody.issue', { kind: 'reject', title: `${req.user.full_name} رفض استلام ${o?.order_no || 'عهدة عامة'}`, body: reason, link: `/sup/workers/${req.user.id}` });
     await audit(db, req, 'custody.reject', 'custody', c.id, { reason });
     return { ok: true };
   }));
@@ -133,8 +133,8 @@ r.post('/custody/:id/finish', async (req, res) => {
     if (c.status !== 'open') throw conflict('العهدة مغلقة');
     if (!c.worker_ack_at) throw conflict('يجب قبول استلام العهدة أولاً');
     const stage = (await db.query('select * from stages where id=$1', [c.stage_id])).rows[0];
-    if (stage.requires_weight && c.worker_declared_returned == null) throw bad('سجّل الوزن المرتجع والبقايا قبل إنهاء المرحلة');
-    for (const f of stage.required_fields || []) {
+    if (stage?.requires_weight && c.worker_declared_returned == null) throw bad('سجّل الوزن المرتجع والبقايا قبل إنهاء المرحلة');
+    for (const f of stage?.required_fields || []) {
       if (f === 'photo') {
         const p = await db.query("select 1 from order_files where order_id=$1 and kind='execution' and uploaded_by=$2 and created_at >= $3 limit 1", [c.order_id, req.user.id, c.issued_at]);
         if (!p.rowCount) throw bad('هذه المرحلة تتطلب رفع صورة التنفيذ');
@@ -144,7 +144,7 @@ r.post('/custody/:id/finish', async (req, res) => {
     await db.query("insert into custody_work_log(custody_id, event, reason, user_id) values ($1,'finish',$2,$3)", [c.id, str(req.body.note, 'ملاحظة'), req.user.id]);
     const o = (await db.query('select order_no from orders where id=$1', [c.order_id])).rows[0];
     await logStage(db, c.order_id, c.stage_id, 'completed', req.user.id, 'أنهى العامل المرحلة - بانتظار الاستلام', false, req.user.id);
-    await notifyPerm(db, 'custody.receive', { kind: 'receive', title: `${req.user.full_name} أنهى ${stage.name} - ${o.order_no}`, body: 'بانتظار الاستلام', link: `/sup/receive?worker=${req.user.id}` });
+    await notifyPerm(db, 'custody.receive', { kind: 'receive', title: `${req.user.full_name} أنهى ${stage?.name || 'العهدة العامة'} - ${o?.order_no || c.purpose || 'عهدة عامة'}`, body: 'بانتظار الاستلام', link: `/sup/receive?worker=${req.user.id}` });
     return { ok: true };
   }));
 });
@@ -188,9 +188,9 @@ r.post('/orders/:id/note', async (req, res) => {
 
 r.get('/history', async (req, res) => {
   res.json(await many(`
-    select c.id, c.custody_no, c.status, c.weight_issued::text, c.issued_at, c.closed_at, o.order_no, o.title, s.name as stage_name,
+    select c.id, c.custody_no, c.status, c.weight_issued::text, c.issued_at, c.closed_at, coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name,
            st.returned_weight::text, st.scrap_weight::text, st.actual_loss::text, st.normal_loss::text, st.abnormal_loss::text, st.status as settlement_status
-    from custodies c join orders o on o.id=c.order_id join stages s on s.id=c.stage_id
+    from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id
     left join settlements st on st.custody_id=c.id and st.status <> 'reversed'
     where c.worker_id=$1 order by c.id desc limit 200`, [req.user.id]));
 });

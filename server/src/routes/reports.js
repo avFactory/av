@@ -9,8 +9,8 @@ const r = Router();
 function lossQuery(group, q) {
   const cols = {
     worker: "w.id as key, w.full_name as label",
-    stage: "s.id as key, s.name as label",
-    order: "o.id as key, o.order_no || ' - ' || o.title as label",
+    stage: "s.id as key, coalesce(s.name, 'عهدة عامة') as label",
+    order: "o.id as key, coalesce(o.order_no || ' - ' || o.title, 'عهدة عامة') as label",
     material: "m.id as key, m.name as label",
   }[group];
   if (!cols) return null;
@@ -22,8 +22,8 @@ function lossQuery(group, q) {
       case when sum(st.weight_issued) > 0 then round(100 * sum(st.actual_loss) / sum(st.weight_issued), 4)::text end as loss_pct,
       count(*) filter (where st.status in ('pending_review','investigating'))::int as open_cases,
       count(*) filter (where st.review_decision='worker_responsible')::int as worker_responsible
-    from settlements st join custodies c on c.id=st.custody_id join users w on w.id=c.worker_id join stages s on s.id=c.stage_id
-    join orders o on o.id=c.order_id join materials m on m.id=c.material_id
+    from settlements st join custodies c on c.id=st.custody_id join users w on w.id=c.worker_id left join stages s on s.id=c.stage_id
+    left join orders o on o.id=c.order_id join materials m on m.id=c.material_id
     where st.status <> 'reversed' and st.received_at >= $1::date and st.received_at < $2::date + 1
     group by 1, 2 order by sum(st.abnormal_loss) desc nulls last, 2`, params);
 }

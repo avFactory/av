@@ -14,8 +14,8 @@ async function checkDelays() {
     await notifyPerm(pool, 'orders.advance', { kind: 'delay', title: `تأخر الطلب ${o.order_no} عن موعد التسليم`, link: `/orders/${o.id}` });
     if (o.assigned_worker_id) await notifyUsers(pool, [o.assigned_worker_id], { kind: 'delay', title: `الطلب ${o.order_no} متأخر`, link: `/w/orders/${o.id}` });
   }
-  const lateCustody = await pool.query(`select c.id, c.custody_no, c.worker_id, o.order_no, u.full_name from custodies c join stages s on s.id=c.stage_id
-    join orders o on o.id=c.order_id join users u on u.id=c.worker_id
+  const lateCustody = await pool.query(`select c.id, c.custody_no, c.worker_id, coalesce(o.order_no, 'عهدة عامة') as order_no, u.full_name from custodies c left join stages s on s.id=c.stage_id
+    left join orders o on o.id=c.order_id join users u on u.id=c.worker_id
     where c.status='open' and s.expected_hours is not null and c.issued_at + (s.expected_hours || ' hours')::interval < now()
       and not exists (select 1 from notifications n where n.kind='delay' and n.link = '/sup/workers/' || c.worker_id || '#' || c.id)`);
   for (const c of lateCustody.rows) {
