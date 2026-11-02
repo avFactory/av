@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtW, fmtDT, fmtPct, WORK_STATE, calcLoss, CUSTODY_STATUS } from '../../format.js';
-import { Btn, Card, Field, Input, Loader, SignaturePad, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Loader, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal } from '../../ui.jsx';
 
 /** شاشة العهدة للعامل: تأكيد الاستلام، بدء/إيقاف العمل، تسجيل الأوزان، رفع الصور، إنهاء المرحلة */
 export default function WCustody() {
@@ -10,7 +10,8 @@ export default function WCustody() {
   const { data: tasks, reload } = useFetch('/w/tasks', { live: ['custodies'] });
   const c = tasks?.custodies.find((x) => String(x.id) === id);
   const { data: od, reload: reloadOrder } = useFetch(c ? `/w/orders/${c.order_id}` : null, { deps: [c?.order_id] });
-  const [sig, setSig] = useState(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
   const [decl, setDecl] = useState(null);
   const [pause, setPause] = useState(false);
   const [reason, setReason] = useState('');
@@ -40,10 +41,14 @@ export default function WCustody() {
         </Card>
       )}
       {c.status === 'open' && !c.worker_ack_at && (
-        <Card title="تأكيد استلام العهدة">
-          <p className="mb">أقر باستلام <b dir="ltr">{fmtW(c.weight_issued)} جم</b> من {c.material_name} للطلب {c.order_no}.</p>
-          <SignaturePad onChange={setSig} />
-          <Btn size="xl" className="mt" disabled={!sig} loading={busy} onClick={() => act('ack', { signature: sig }, 'تم تأكيد العهدة')}>أؤكد الاستلام</Btn>
+        <Card title="قبول استلام العهدة">
+          {c.worker_rejected_at && <div className="alert alert-bad mb">رفضتَ هذا التسليم: {c.worker_reject_reason} — بانتظار تصحيح المشرف.</div>}
+          <p className="mb">أقر باستلام <b dir="ltr">{fmtW(c.weight_issued)} جم</b> من {c.material_name} و<b>{c.pieces}</b> قطعة للطلب {c.order_no}.</p>
+          <p className="small muted mb">ضغطك على "قبول" يُسجَّل كتوقيعك الإلكتروني على العهدة بالتاريخ والوقت.</p>
+          <div className="grid g2">
+            <Btn size="xl" kind="ok" loading={busy} onClick={() => act('ack', {}, 'تم قبول العهدة')}>✓ قبول الاستلام</Btn>
+            <Btn size="xl" kind="ghost" onClick={() => setRejectOpen(true)}>رفض (الوزن أو الطلب غير صحيح)</Btn>
+          </div>
         </Card>
       )}
       {c.status === 'open' && c.worker_ack_at && c.work_state !== 'finished' && (
@@ -74,6 +79,10 @@ export default function WCustody() {
         </>
       )}
       {c.work_state === 'finished' && c.status === 'open' && <div className="alert alert-ok">أنهيت المرحلة. سلّم القطعة والبقايا للمشرف ليعتمد الوزن.</div>}
+      <Modal open={rejectOpen} onClose={() => setRejectOpen(false)} title="رفض استلام العهدة">
+        <Field label="ما الخطأ؟ *"><Input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="مثال: الوزن الفعلي 39.5 جم" autoFocus /></Field>
+        <Btn kind="danger" disabled={!rejectReason} loading={busy} onClick={() => act('reject', { reason: rejectReason }, 'أُبلغ المشرف بالرفض').then(() => { setRejectOpen(false); setRejectReason(''); })}>إرسال الرفض للمشرف</Btn>
+      </Modal>
       <Modal open={pause} onClose={() => setPause(false)} title="إيقاف العمل">
         <Field label="سبب الإيقاف *"><Input value={reason} onChange={(e) => setReason(e.target.value)} autoFocus /></Field>
         <Btn disabled={!reason} loading={busy} onClick={() => act('pause', { reason }, 'تم الإيقاف').then(() => { setPause(false); setReason(''); })}>تأكيد الإيقاف</Btn>

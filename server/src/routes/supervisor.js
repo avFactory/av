@@ -19,6 +19,8 @@ r.get('/summary', SUP, async (_req, res) => {
           and not exists (select 1 from custodies c where c.order_id=o.id and c.status in ('open','under_review')))::int as awaiting_issue,
       (select count(*) from custodies where status='open')::int as with_workers,
       (select count(*) from custodies where status='open' and work_state='finished')::int as awaiting_receive,
+      (select count(*) from custodies where status='open' and worker_ack_at is null)::int as pending_ack,
+      (select count(*) from custodies where status='open' and worker_ack_at is null and worker_rejected_at is not null)::int as rejected,
       (select count(*) from settlements where status in ('pending_review','investigating'))::int as abnormal,
       (select coalesce(sum(weight_issued),0) from custodies where status='open')::text as with_workers_weight,
       (select count(distinct worker_id) from custodies where status='open')::int as active_workers`);
@@ -46,7 +48,9 @@ r.get('/workers', requirePerm('workers.view', 'custody.issue', 'custody.receive'
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open')::int as open_count,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.work_state='finished')::int as finished_count,
       (select coalesce(sum(weight_issued),0) from custodies c where c.worker_id=u.id and c.status='open')::text as open_weight,
-      (select count(*) from settlements s join custodies c on c.id=s.custody_id where c.worker_id=u.id and s.status in ('pending_review','investigating'))::int as review_count
+      (select count(*) from settlements s join custodies c on c.id=s.custody_id where c.worker_id=u.id and s.status in ('pending_review','investigating'))::int as review_count,
+      (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.worker_ack_at is null)::int as pending_ack,
+      (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.worker_ack_at is null and c.worker_rejected_at is not null)::int as rejected_count
     from users u left join departments d on d.id=u.department_id
     where u.role_code='worker' and u.active
       and ($1::text is null or u.full_name ilike $1 or u.employee_no ilike $1 or u.username ilike $1)
@@ -118,6 +122,29 @@ r.post('/issue', requirePerm('custody.issue'), async (req, res) => {
   res.json(await tx((db) => custody.issue(db, req, req.body)));
 });
 
+/** تقسيم طلب واحد على عدة عمال: عهدة مستقلة لكل عامل (وزنه وقطعه وعجزه) في معاملة واحدة */
+r.post('/issue-split', requirePerm('custody.issue'), async (req, res) => {
+  const orderId = int(req.body.order_id, 'الطلب');
+  const parts = Array.isArray(req.body.parts) ? req.body.parts : [];
+  if (parts.length < 1) throw bad('أضف عاملاً واحداً على الأقل');
+  if (parts.length > 50) throw bad('عدد العمال كبير جداً');
+  const ids = parts.map((p) => int(p.worker_id, 'العامل'));
+  if (new Set(ids).size !== ids.length) throw bad('لا يمكن تكرار العامل نفسه - اجمع وزنه في سطر واحد');
+  const key = str(req.body.idempotency_key, 'idempotency', { max: 80 });
+  res.json(await tx(async (db) => {
+    const results = [];
+    for (const [i, p] of parts.entries()) {
+      const r1 = await custody.issue(db, req, {
+        worker_id: p.worker_id, note: str(req.body.note, 'ملاحظات') || `تقسيم الطلب على ${parts.length} عمال`,
+        idempotency_key: key ? `${key}-p${i}` : null,
+        items: [{ order_id: orderId, weight: p.weight, pieces: p.pieces, notes: p.notes, stones_weight: p.stones_weight }],
+      });
+      results.push({ worker_id: ids[i], ...r1 });
+    }
+    return { parts: results };
+  }));
+});
+
 r.post('/preview', requirePerm('custody.receive'), async (req, res) => {
   const p = await custody.preview(pool, int(req.body.custody_id), req.body.returned_weight, req.body.scrap_weight, req.body.stones_weight);
   delete p.custody;
@@ -133,7 +160,7 @@ r.get('/workers/:id/open', requirePerm('custody.receive', 'custody.view_all'), a
   const id = int(req.params.id);
   const rows = await many(`
     select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.gross_weight::text, c.stones_weight::text, c.pieces, c.loss_rate_snapshot::text,
-           c.issued_at, c.work_state, c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text,
+           c.issued_at, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text,
            o.order_no, o.title, s.name as stage_name, m.name as material_name
     from custodies c join orders o on o.id=c.order_id join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
     where c.worker_id=$1 and c.status='open' order by c.issued_at`, [id]);
@@ -177,12 +204,12 @@ r.get('/batches/:id', requirePerm('custody.issue', 'custody.receive', 'custody.v
   if (req.user.role_code === 'worker' && b.worker_id !== req.user.id) throw forbidden();
   const lines = b.kind === 'issue'
     ? await many(`select c.custody_no as doc_no, o.order_no, o.title, s.name as stage_name, m.name as material_name, c.gross_weight::text, c.stones_weight::text,
-                    c.weight_issued::text as weight, c.pieces, c.loss_rate_snapshot::text as rate, c.notes, c.status
+                    c.weight_issued::text as weight, c.pieces, c.loss_rate_snapshot::text as rate, c.notes, c.status, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason
                   from custodies c join orders o on o.id=c.order_id join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
                   where c.issue_batch_id=$1 order by c.id`, [b.id])
     : await many(`select st.settlement_no as doc_no, o.order_no, o.title, s.name as stage_name, m.name as material_name, st.weight_issued::text,
                     st.gross_returned::text, st.stones_weight::text, st.returned_weight::text, st.scrap_weight::text, st.actual_loss::text, st.allowed_loss::text,
-                    st.abnormal_loss::text, st.gain_weight::text, st.status, st.reason, st.pieces_returned as pieces
+                    st.abnormal_loss::text, st.gain_weight::text, st.status, st.reason, st.pieces_returned as pieces, c.finished_at as worker_handover_at, c.worker_ack_at
                   from settlements st join custodies c on c.id=st.custody_id join orders o on o.id=c.order_id join stages s on s.id=c.stage_id
                   join materials m on m.id=c.material_id where st.receive_batch_id=$1 order by st.id`, [b.id]);
   res.json({ batch: b, lines });

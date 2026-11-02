@@ -16,6 +16,7 @@ export default function Workers() {
         ['العامل / المكينة', (w) => <b>{w.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{w.full_name}</b>], ['الرقم', 'employee_no'], ['القسم / التخصص', (w) => [w.department, w.specialty].filter(Boolean).join(' · ') || '—'],
         ['طلبات لديه', 'open_count'], ['منتهية بانتظار الاستلام', (w) => (w.finished_count ? <Badge tone="ok">{w.finished_count}</Badge> : '—')],
         ['الذهب في عهدته (جم)', (w) => <span className="n">{fmtW(w.open_weight)}</span>, { className: 'n' }],
+        ['بانتظار القبول', (w) => (w.rejected_count ? <Badge tone="bad">{w.rejected_count} مرفوض</Badge> : w.pending_ack ? <Badge tone="warn">{w.pending_ack}</Badge> : '—')],
         ['تحت المراجعة', (w) => (w.review_count ? <Badge tone="bad">{w.review_count}</Badge> : '—')],
       ]} /></div>
     </Page>

@@ -44,17 +44,16 @@ async function sign(page) {
   const s = await newPage(browser, { width: 1280, height: 900 });
   await login(s, 'demo_sup', 'Demo#2026');
   await s.screenshot({ path: SHOTS + 'sup_home.png', fullPage: true });
-  await s.click('text=تسليم ذهب للعامل');
+  await s.click('.big-action.ba-issue');
   await s.fill('input[type=search]', 'تجريبي 6');
   await s.click('.pick >> text=عامل تجريبي 6');
   await s.locator('.pick').first().click();
   await s.waitForSelector('.line-item');
   const w = s.locator('.line-item input.weight').first();
   if (!(await w.inputValue())) await w.fill('12.5');
-  await sign(s);
   await s.screenshot({ path: SHOTS + 'sup_issue.png', fullPage: true });
   await s.click('button:has-text("تأكيد التسليم")');
-  await s.waitForSelector('text=تم التسليم بنجاح', { timeout: 8000 });
+  await s.waitForSelector('text=أُرسل للعامل إشعار', { timeout: 8000 });
   // 3) receive from worker 1 with abnormal loss
   await s.goto(BASE + '/sup/receive');
   await s.locator('.pick:not([disabled])').first().click();
@@ -65,7 +64,6 @@ async function sign(page) {
   await s.screenshot({ path: SHOTS + 'sup_receive_calc.png', fullPage: true });
   const reason = s.locator('.line-item textarea');
   if (await reason.count()) await reason.first().fill('اختبار واجهة: تطاير');
-  await sign(s);
   await s.click('button:has-text("تأكيد الاستلام")');
   await s.waitForSelector('text=تم الاستلام', { timeout: 8000 });
   await s.screenshot({ path: SHOTS + 'sup_receive_done.png', fullPage: true });
@@ -79,9 +77,10 @@ async function sign(page) {
   const wk = await newPage(browser, { width: 390, height: 844 });
   await login(wk, 'demo_w6', 'Demo#2026');
   await wk.screenshot({ path: SHOTS + 'worker_home.png', fullPage: true });
-  await wk.locator('a.task:has-text("لم يبدأ"), a.task:has-text("بانتظار تأكيدك")').first().click();
+  await wk.locator('a.task:has-text("لم يبدأ"), a.task:has-text("بانتظار قبولك")').first().click();
   await wk.waitForLoadState('networkidle');
-  if (await wk.locator('text=أؤكد الاستلام').count()) { await sign(wk); await wk.click('text=أؤكد الاستلام'); await wk.waitForTimeout(500); }
+  await wk.waitForSelector('button:has-text("قبول الاستلام"), button:has-text("بدء العمل")');
+  if (await wk.locator('button:has-text("قبول الاستلام")').count()) { await wk.click('button:has-text("قبول الاستلام")'); await wk.waitForSelector('button:has-text("بدء العمل")'); }
   await wk.click('button:has-text("بدء العمل")'); await wk.waitForTimeout(500);
   await wk.locator('input.weight').nth(0).fill('12.48'); await wk.locator('input.weight').nth(1).fill('0.01');
   await wk.click('button:has-text("حفظ الأوزان")'); await wk.waitForTimeout(400);

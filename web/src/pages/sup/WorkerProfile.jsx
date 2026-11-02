@@ -27,7 +27,8 @@ export default function WorkerProfile() {
   const cols = [
     ['الطلب', (c) => <Link to={`/orders/${c.order_id}`} className="link">{c.order_no}</Link>], ['الوصف', 'title'], ['المرحلة', 'stage_name'], ['المادة', 'material_name'],
     ['الوزن المستلم', (c) => <span className="n">{fmtW(c.weight_issued)}</span>], ['نسبة العجز', (c) => fmtPct(c.loss_rate_snapshot)],
-    ['الحالة', (c) => (c.status === 'open' ? <Badge tone={c.work_state === 'finished' ? 'ok' : 'gold'}>{WORK_STATE[c.work_state]}</Badge> : <StatusBadge map={CUSTODY_STATUS} value={c.status} />)],
+    ['الحالة', (c) => (c.status === 'open' ? (!c.worker_ack_at ? <Badge tone={c.worker_rejected_at ? 'bad' : 'warn'}>{c.worker_rejected_at ? `رفضها: ${c.worker_reject_reason}` : 'بانتظار قبول العامل'}</Badge> : <Badge tone={c.work_state === 'finished' ? 'ok' : 'gold'}>{WORK_STATE[c.work_state]}</Badge>) : <StatusBadge map={CUSTODY_STATUS} value={c.status} />)],
+    ['القبول', (c) => (c.worker_ack_at ? <span className="small">✓ {fmtDT(c.worker_ack_at)}</span> : '—')],
     ['التسليم', (c) => fmtDT(c.issued_at)],
   ];
   const closedCols = [

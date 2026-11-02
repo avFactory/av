@@ -28,7 +28,7 @@ async function canSeeOrder(db, req, orderId) {
 
 r.get('/tasks', async (req, res) => {
   const custodies = await many(`
-    select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.pieces, c.status, c.work_state, c.worker_ack_at, c.issued_at, c.started_at,
+    select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
            c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text, c.issue_batch_id,
            o.order_no, o.title, o.due_date, o.size, o.notes as order_notes, s.name as stage_name, s.required_fields, m.name as material_name,
            (select f.path from order_files f where f.order_id=o.id and f.kind in ('design','reference','sketch') and f.mime like 'image/%' order by f.id desc limit 1) as thumb
@@ -59,17 +59,31 @@ r.get('/orders/:id', async (req, res) => {
   });
 });
 
-/** تأكيد استلام العهدة بالتوقيع */
+/** قبول العامل للعهدة = توقيعه الإلكتروني (يُسجل التاريخ والوقت وعنوان الجهاز) */
 r.post('/custody/:id/ack', async (req, res) => {
   res.json(await tx(async (db) => {
     const c = await myCustody(db, req, req.params.id, true);
+    if (c.status !== 'open') throw conflict('العهدة لم تعد مفتوحة');
     if (c.worker_ack_at) return { ok: true, already: true };
-    const sig = await saveSignature(db, req.body.signature, req.user.id);
-    if (!sig) throw bad('التوقيع مطلوب لتأكيد العهدة');
-    await db.query('update custodies set worker_ack_at=now() where id=$1', [c.id]);
-    await db.query('update custody_batches set signature_path=coalesce(signature_path,$2), signed_at=coalesce(signed_at, now()) where id=$1', [c.issue_batch_id, sig]);
-    await db.query("insert into custody_work_log(custody_id, event, user_id) values ($1,'ack',$2)", [c.id, req.user.id]);
-    await audit(db, req, 'custody.ack', 'custody', c.id);
+    await db.query('update custodies set worker_ack_at=now(), ack_ip=$2, worker_rejected_at=null, worker_reject_reason=null where id=$1', [c.id, req.ip]);
+    await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'ack',$2,'قبول إلكتروني')", [c.id, req.user.id]);
+    await audit(db, req, 'custody.accept', 'custody', c.id, { weight: c.weight_issued, at: new Date().toISOString() });
+    return { ok: true };
+  }));
+});
+
+/** رفض العامل للعهدة (وزن أو طلب غير صحيح) - يُبلَّغ المشرف ليصحح التسليم */
+r.post('/custody/:id/reject', async (req, res) => {
+  res.json(await tx(async (db) => {
+    const c = await myCustody(db, req, req.params.id, true);
+    if (c.status !== 'open') throw conflict('العهدة لم تعد مفتوحة');
+    if (c.worker_ack_at) throw conflict('قبلت هذه العهدة مسبقاً - تواصل مع المشرف');
+    const reason = str(req.body.reason, 'سبب الرفض', { required: true });
+    await db.query('update custodies set worker_rejected_at=now(), worker_reject_reason=$2 where id=$1', [c.id, reason]);
+    await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'reject',$2,$3)", [c.id, req.user.id, reason]);
+    const o = (await db.query('select order_no from orders where id=$1', [c.order_id])).rows[0];
+    await notifyPerm(db, 'custody.issue', { kind: 'reject', title: `${req.user.full_name} رفض استلام ${o.order_no}`, body: reason, link: `/sup/workers/${req.user.id}` });
+    await audit(db, req, 'custody.reject', 'custody', c.id, { reason });
     return { ok: true };
   }));
 });
@@ -85,7 +99,7 @@ r.post('/custody/:id/:action', async (req, res, next) => {
   res.json(await tx(async (db) => {
     const c = await myCustody(db, req, req.params.id, true);
     if (c.status !== 'open') throw conflict('العهدة مغلقة');
-    if (!c.worker_ack_at) throw conflict('يجب تأكيد استلام العهدة أولاً');
+    if (!c.worker_ack_at) throw conflict('يجب قبول استلام العهدة أولاً');
     const t = transitions[req.params.action];
     if (!t.from.includes(c.work_state)) throw conflict('لا يمكن تنفيذ هذا الإجراء في الحالة الحالية');
     const reason = str(req.body.reason, 'السبب');
@@ -117,7 +131,7 @@ r.post('/custody/:id/finish', async (req, res) => {
   res.json(await tx(async (db) => {
     const c = await myCustody(db, req, req.params.id, true);
     if (c.status !== 'open') throw conflict('العهدة مغلقة');
-    if (!c.worker_ack_at) throw conflict('يجب تأكيد استلام العهدة أولاً');
+    if (!c.worker_ack_at) throw conflict('يجب قبول استلام العهدة أولاً');
     const stage = (await db.query('select * from stages where id=$1', [c.stage_id])).rows[0];
     if (stage.requires_weight && c.worker_declared_returned == null) throw bad('سجّل الوزن المرتجع والبقايا قبل إنهاء المرحلة');
     for (const f of stage.required_fields || []) {

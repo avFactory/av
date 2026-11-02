@@ -201,7 +201,7 @@ r.put('/employees/:id', requirePerm('employees.manage'), async (req, res) => {
       await db.query('update users set password_hash=$2, must_change_password=$3 where id=$1', [id, hashPassword(String(b.password)), id !== req.user.id && b.must_change_password !== false]);
       await db.query('delete from sessions where user_id=$1', [id]);
     }
-    if (b.active === false || b.role_code !== u.role_code) await db.query('delete from sessions where user_id=$1', [id]);
+    if (b.active === false || (b.role_code && b.role_code !== u.role_code)) await db.query('delete from sessions where user_id=$1', [id]);
     if (Array.isArray(b.stage_ids)) {
       await db.query('delete from stage_workers where user_id=$1', [id]);
       for (const sid of b.stage_ids) await db.query('insert into stage_workers values ($1,$2) on conflict do nothing', [int(sid), id]);

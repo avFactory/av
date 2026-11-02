@@ -19,7 +19,7 @@ export default function WHome() {
               {c.thumb ? <img src={fileUrl(c.thumb)} alt="" /> : null}
               <div><b>{c.order_no}</b><div className="muted small">{c.title}</div></div>
             </div>
-            {!c.worker_ack_at ? <Badge tone="bad">بانتظار تأكيدك</Badge> : c.status === 'under_review' ? <Badge tone="warn">تحت المراجعة</Badge> : <Badge tone={c.work_state === 'finished' ? 'ok' : 'gold'}>{WORK_STATE[c.work_state]}</Badge>}
+            {c.status === 'under_review' ? <Badge tone="warn">تحت المراجعة</Badge> : !c.worker_ack_at ? <Badge tone="bad">{c.worker_rejected_at ? 'رفضتها - بانتظار المشرف' : 'بانتظار قبولك'}</Badge> : <Badge tone={c.work_state === 'finished' ? 'ok' : 'gold'}>{WORK_STATE[c.work_state]}</Badge>}
           </div>
           <div className="row between small"><span>المرحلة: <b>{c.stage_name}</b></span><span dir="ltr"><b>{fmtW(c.weight_issued)}</b> جم</span></div>
           <div className="row between small muted"><span>{c.material_name}</span><span>{c.due_date ? `التسليم ${fmtDate(c.due_date)}` : ''}</span></div>

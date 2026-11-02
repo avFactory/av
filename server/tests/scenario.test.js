@@ -422,3 +422,40 @@ test('المتجر: منتجات جاهزة وسلة وأجور خاصة بال�
   await admin.post(`/api/orders/${r.orders[0].id}/start`);
   assert.equal((await orderOf(r.orders[0].id)).status, 'in_production');
 });
+
+test('تقسيم طلب على عدة عمال + القبول الإلكتروني بدل التوقيع + الرفض', async () => {
+  const o = await admin.post('/api/orders', { title: 'طقم للتقسيم', product_type: 'طقم', karat: 21, color: 'yellow', quantity: 10, route_id: 2 });
+  await sup.post(`/api/orders/${o.id}/advance`);
+  await sup.post(`/api/orders/${o.id}/advance`);
+  await sup.post(`/api/orders/${o.id}/allocate`, { weight: '100', source: 'vault' });
+  const dupW = await sup.req('POST', '/api/sup/issue-split', { order_id: o.id, parts: [{ worker_id: ids.w1, weight: '50' }, { worker_id: ids.w1, weight: '50' }] });
+  assert.equal(dupW.status, 400, 'لا يتكرر العامل');
+  const r = await sup.post('/api/sup/issue-split', { order_id: o.id, idempotency_key: 'split-1', parts: [{ worker_id: ids.w1, weight: '60', pieces: 6 }, { worker_id: ids.w2, weight: '40', pieces: 4 }] });
+  assert.equal(r.parts.length, 2);
+  const again = await sup.post('/api/sup/issue-split', { order_id: o.id, idempotency_key: 'split-1', parts: [{ worker_id: ids.w1, weight: '60', pieces: 6 }, { worker_id: ids.w2, weight: '40', pieces: 4 }] });
+  assert.ok(again.parts.every((p) => p.duplicate), 'لا تكرار بالإرسال المزدوج');
+  const c1 = r.parts[0].custodies[0];
+  const c2 = r.parts[1].custodies[0];
+  assert.equal(c1.worker_ack_at, null, 'بدون توقيع: بانتظار قبول العامل');
+  assert.equal((await sup.get('/api/sup/summary')).pending_ack >= 2, true);
+  assert.equal((await w1.req('POST', `/api/w/custody/${c1.id}/start`)).status, 409, 'لا يبدأ قبل القبول');
+  await w1.post(`/api/w/custody/${c1.id}/ack`);
+  await w1.post(`/api/w/custody/${c1.id}/start`);
+  // العامل الثاني يرفض لخطأ في الوزن
+  assert.equal((await w2.req('POST', `/api/w/custody/${c2.id}/reject`, {})).status, 400, 'سبب الرفض إلزامي');
+  await w2.post(`/api/w/custody/${c2.id}/reject`, { reason: 'الوزن 39.5 وليس 40' });
+  const open2 = await sup.get(`/api/sup/workers/${ids.w2}/open`);
+  assert.equal(open2.find((x) => x.id === c2.id).worker_reject_reason, 'الوزن 39.5 وليس 40');
+  // المشرف يلغي التسليم الخاطئ ويعيد التسليم الصحيح
+  await admin.post(`/api/sup/custodies/${c2.id}/reverse`, { reason: 'رفض العامل - وزن خاطئ' });
+  const fix = await sup.post('/api/sup/issue', { worker_id: ids.w2, items: [{ order_id: o.id, weight: '40', pieces: 4 }] });
+  const c2b = fix.custodies[0].id;
+  await w2.post(`/api/w/custody/${c2b}/ack`);
+  // الطلب لا ينتقل حتى تُستلم كل العهد
+  await sup.post('/api/sup/receive', { worker_id: ids.w1, items: [{ custody_id: c1.id, returned_weight: '59.98', scrap_weight: '0' }] });
+  assert.equal((await orderOf(o.id)).stage_name, 'تجهيز الذهب والألماس');
+  await sup.post('/api/sup/receive', { worker_id: ids.w2, items: [{ custody_id: c2b, returned_weight: '39.99', scrap_weight: '0' }] });
+  assert.equal((await orderOf(o.id)).stage_name, 'الصب', 'انتقل بعد استلام عهد كل العمال');
+  const sheet = await sup.get(`/api/sup/batches/${fix.batch_id}`);
+  assert.ok(sheet.lines[0].worker_ack_at, 'الكشف يحمل وقت القبول الإلكتروني');
+});

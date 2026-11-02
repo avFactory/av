@@ -10,6 +10,6 @@
     "dev:web": "npm --prefix web run dev",
     "test": "npm --prefix server test",
     "seed:demo": "npm --prefix server run seed:demo",
-    "e2e": "node e2e/ui-flows.cjs && node e2e/ui-lifecycle.cjs"
+    "e2e": "node e2e/ui-flows.cjs && node e2e/ui-lifecycle.cjs && node e2e/ui-split.cjs"
   }
 }

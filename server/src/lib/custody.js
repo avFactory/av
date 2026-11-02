@@ -94,7 +94,7 @@ export async function issue(db, req, body) {
     created.push({ ...c, order_no: order.order_no });
   }
 
-  await notifyUsers(db, [workerId], { kind: 'custody', title: `تم تسليمك ${created.length} طلب/طلبات`, body: created.map((c) => `${c.order_no}: ${c.weight_issued} جم`).join('، '), link: '/w' });
+  await notifyUsers(db, [workerId], { kind: 'custody', title: `بانتظار قبولك: ${created.length} طلب`, body: created.map((c) => `${c.order_no}: ${c.weight_issued} جم`).join('، ') + ' — افتح مهامك واضغط قبول الاستلام', link: '/w' });
   await audit(db, req, 'custody.issue', 'custody_batch', batch.id, { worker: worker.full_name, items: created.map((c) => ({ custody: c.custody_no, order: c.order_no, weight: c.weight_issued })) });
   return { batch_id: batch.id, batch_no: batch.batch_no, custodies: created };
 }

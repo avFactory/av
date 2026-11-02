@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, newKey } from '../../api.js';
 import { calcLoss, fmtW, fmtPct, sub, WORK_STATE, SETTLEMENT_STATUS } from '../../format.js';
-import { Btn, Card, Field, Input, Page, ScanInput, SignaturePad, WeightInput, useAction, useToast, Badge, Kv, Loader, Empty, StatusBadge, Textarea } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Page, ScanInput, WeightInput, useAction, useToast, Badge, Kv, Loader, Empty, StatusBadge, Textarea } from '../../ui.jsx';
 import WorkerPicker from '../../components/WorkerPicker.jsx';
 
 /** استلام ذهب من العامل: كل العهد في شاشة واحدة، وزن مستقل لكل طلب، حساب العجز تلقائياً */
@@ -12,7 +12,6 @@ export default function Receive() {
   const [worker, setWorker] = useState(null);
   const [open, setOpen] = useState(null);
   const [lines, setLines] = useState({});
-  const [sig, setSig] = useState(null);
   const [done, setDone] = useState(null);
   const key = useRef(newKey());
   const [run, busy] = useAction();
@@ -66,13 +65,13 @@ export default function Receive() {
 
   const submit = () => run(async () => {
     const r = await api.post('/sup/receive', {
-      worker_id: worker.id, signature: sig, idempotency_key: key.current,
+      worker_id: worker.id, idempotency_key: key.current,
       items: selected.map((c) => ({ custody_id: c.id, returned_weight: lines[c.id].returned, scrap_weight: lines[c.id].scrap || '0', stones_weight: lines[c.id].stones || '0', reason: lines[c.id].reason, pieces_returned: lines[c.id].pieces, notes: lines[c.id].notes })),
     });
     setDone(r);
   }, 'تم الاستلام وتسجيل التسويات');
 
-  const reset = () => { setWorker(null); setOpen(null); setLines({}); setSig(null); setDone(null); key.current = newKey(); };
+  const reset = () => { setWorker(null); setOpen(null); setLines({}); setDone(null); key.current = newKey(); };
 
   if (done) {
     return (
@@ -136,6 +135,7 @@ export default function Receive() {
                       <span className="row gap wrap">
                         <Badge tone="gold">{c.stage_name}</Badge>
                         <Badge tone={c.work_state === 'finished' ? 'ok' : 'muted'}>{WORK_STATE[c.work_state]}</Badge>
+                        {!c.worker_ack_at && <Badge tone={c.worker_rejected_at ? 'bad' : 'warn'}>{c.worker_rejected_at ? `رفضها العامل: ${c.worker_reject_reason}` : 'لم يقبلها العامل بعد'}</Badge>}
                       </span>
                     </label>
                     <div className="calc">
@@ -179,7 +179,6 @@ export default function Receive() {
               })}
               {selected.length > 0 && (
                 <>
-                  <Card title="توقيع العامل على التسليم"><SignaturePad onChange={setSig} /></Card>
                   <div className="sticky-foot">
                     <Kv items={[['طلبات مختارة', selected.length], ['تحتاج مراجعة', problems.length]]} />
                     <Btn size="lg" kind={problems.length ? 'danger' : 'primary'} loading={busy} disabled={!valid} onClick={submit}>

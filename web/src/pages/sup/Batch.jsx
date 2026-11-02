@@ -1,17 +1,14 @@
 import { useParams } from 'react-router-dom';
-import { useState } from 'react';
-import { api, fileUrl } from '../../api.js';
+import { fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtDT, fmtPct, SETTLEMENT_STATUS } from '../../format.js';
-import { Btn, Loader, SignaturePad, useAction, useFetch, ErrorBox } from '../../ui.jsx';
+import { Btn, Loader, useFetch, ErrorBox } from '../../ui.jsx';
 
 /** كشف جماعي للتسليم/الاستلام قابل للطباعة مع توقيع العامل */
 export default function Batch({ print }) {
   const { id } = useParams();
   const { lookups } = useAuth();
-  const { data, error, reload } = useFetch(`/sup/batches/${id}`);
-  const [sig, setSig] = useState(null);
-  const [run, busy] = useAction();
+  const { data, error } = useFetch(`/sup/batches/${id}`, { live: ['custodies'] });
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
   const { batch: b, lines } = data;
@@ -46,17 +43,18 @@ export default function Batch({ print }) {
             </tr>
           </tbody>
         </table></div>
-        <div className="grid g2 mt">
-          <div><div className="muted small">توقيع العامل {b.signed_at ? `(${fmtDT(b.signed_at)})` : ''}</div><div className="sig-box">{b.signature_path ? <img src={fileUrl(b.signature_path)} alt="توقيع العامل" /> : null}</div></div>
-          <div><div className="muted small">توقيع المشرف</div><div className="sig-box" /></div>
+        <div className="mt">
+          <b>{issue ? 'القبول الإلكتروني من العامل (بمثابة التوقيع)' : 'تسليم العامل وقبوله'}</b>
+          <table className="table keep mt"><tbody>
+            {lines.map((l, i) => (
+              <tr key={i}><td>{l.order_no}</td><td>{issue
+                ? (l.worker_ack_at ? `✓ قبِل العامل الاستلام في ${fmtDT(l.worker_ack_at)}` : l.worker_rejected_at ? `✗ رفض العامل: ${l.worker_reject_reason}` : l.status === 'reversed' ? 'ملغاة' : '⏳ بانتظار قبول العامل')
+                : `${l.worker_handover_at ? `أنهى العامل المرحلة وسلّمها في ${fmtDT(l.worker_handover_at)}` : 'استلم المشرف مباشرة'}`}</td></tr>
+            ))}
+          </tbody></table>
+          {b.signature_path && <div className="mt"><span className="muted small">توقيع يدوي مسجل سابقاً ({fmtDT(b.signed_at)})</span><div className="sig-box"><img src={fileUrl(b.signature_path)} alt="توقيع" /></div></div>}
+          <div className="small muted mt">المشرف: {b.supervisor_name} · تاريخ الجلسة {fmtDT(b.created_at)}</div>
         </div>
-        {!b.signature_path && (
-          <div className="no-print mt">
-            <b>توقيع العامل على الكشف</b>
-            <SignaturePad onChange={setSig} />
-            <Btn className="mt" loading={busy} disabled={!sig} onClick={() => run(async () => { await api.post(`/sup/batches/${b.id}/sign`, { signature: sig }); reload(); }, 'تم حفظ التوقيع')}>حفظ التوقيع</Btn>
-          </div>
-        )}
       </div>
     </div>
   );
