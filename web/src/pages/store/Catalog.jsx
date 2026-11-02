@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import { fileUrl, qs } from '../../api.js';
 import { fmtW, fmtMoney, METHODS } from '../../format.js';
 import { Loader, Search, useFetch, Empty, LinkBtn } from '../../ui.jsx';
+import { useCart } from '../../components/StoreLayout.jsx';
 
 export default function Catalog() {
   const [f, setF] = useState({ q: '', type: '', karat: '' });
-  const { data } = useFetch(`/store/products${qs(f)}`);
+  const { apiBase, approved, loginUrl } = useCart();
+  const { data } = useFetch(`${apiBase}/products${qs(f)}`, { deps: [apiBase] });
   return (
     <div className="page">
       <div className="hero mb">
@@ -31,7 +33,8 @@ export default function Catalog() {
                 <span className="small muted">{p.sku} · {p.product_type} · عيار {p.karats.join('/')}</span>
                 <span className="small">الوزن التقريبي {fmtW(p.final_weight || p.approx_weight)} جم</span>
                 {p.labor && <span><b style={{ color: 'var(--gold-ink)' }}>{fmtMoney(p.labor.rate)}</b> <span className="small muted">{METHODS[p.labor.method]}</span></span>}
-                <span className="small muted">{p.availability === 'available' && p.stock_qty > 0 ? `متوفر (${p.stock_qty})` : 'يصنع حسب الطلب'}</span>
+                {!approved && <span className="small muted">أجور التصنيع تظهر بعد تسجيل الدخول</span>}
+                <span className="small muted">{p.in_stock || (p.availability === 'available' && p.stock_qty > 0) ? (p.stock_qty ? `متوفر (${p.stock_qty})` : 'متوفر') : 'يصنع حسب الطلب'}</span>
               </div>
             </Link>
           ))}

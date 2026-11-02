@@ -124,17 +124,18 @@ export default function App() {
           <Route path="/w/account" element={<Account />} />
         </Route>
 
-        <Route element={<Guard perms={['store.access']}><StoreLayout /></Guard>}>
+        {/* المتجر: التصفح عام للجميع، وصفحات الحساب والطلبات للعملاء فقط */}
+        <Route element={<StoreLayout />}>
           <Route path="/store" element={<Catalog />} />
           <Route path="/store/products/:id" element={<Product />} />
           <Route path="/store/cart" element={<Cart />} />
           <Route path="/store/custom" element={<Custom />} />
-          <Route path="/store/orders" element={<MyOrders />} />
-          <Route path="/store/orders/:id" element={<Track />} />
-          <Route path="/store/invoices" element={<SInvoices />} />
-          <Route path="/store/invoices/:id" element={<InvoiceView store />} />
-          <Route path="/store/account" element={<SAccount />} />
-          <Route path="/store/notifications" element={<Notifications />} />
+          <Route path="/store/orders" element={S(<MyOrders />, ['store.access'])} />
+          <Route path="/store/orders/:id" element={S(<Track />, ['store.access'])} />
+          <Route path="/store/invoices" element={S(<SInvoices />, ['store.access'])} />
+          <Route path="/store/invoices/:id" element={S(<InvoiceView store />, ['store.access'])} />
+          <Route path="/store/account" element={S(<SAccount />, ['store.access'])} />
+          <Route path="/store/notifications" element={S(<Notifications />, ['store.access'])} />
         </Route>
         <Route path="*" element={<div className="page"><h1>الصفحة غير موجودة</h1></div>} />
       </Routes>

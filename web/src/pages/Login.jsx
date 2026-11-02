@@ -30,6 +30,7 @@ export default function Login() {
         <Field label="كلمة المرور"><Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="current-password" dir="ltr" /></Field>
         <Btn size="lg" loading={busy} type="submit">دخول</Btn>
         <p className="login-foot">صاحب محل ذهب؟ <Link to="/register">سجّل حساب محلك للطلب بالجملة</Link></p>
+        <p className="login-foot"><Link to="/store">تصفح المتجر بدون تسجيل ←</Link></p>
       </form>
     </div>
   );

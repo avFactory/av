@@ -494,3 +494,20 @@ test('عهدة عامة: تحويل ذهب من الخزنة لعامل بدون
   await sup.post('/api/sup/receive', { worker_id: ids.w3, items: [{ custody_id: g.custody_id, returned_weight: '25', scrap_weight: '0' }] });
   assert.equal((await vault()).toFixed(4), before.toFixed(4));
 });
+
+test('المتجر العام: التصفح بدون تسجيل، والطلب يتطلب حساباً معتمداً', async () => {
+  const guest = new Client('guest');
+  const list = await guest.req('GET', '/api/public/products');
+  assert.equal(list.status, 200);
+  assert.ok(list.data.products.length >= 1);
+  const p = list.data.products[0];
+  assert.ok(!('labor' in p) && !('stock_qty' in p), 'لا أجور ولا كميات مخزون للزوار');
+  assert.equal((await guest.req('GET', `/api/public/products/${p.id}`)).status, 200);
+  assert.equal((await guest.req('POST', '/api/store/orders', { items: [{ product_id: p.id, karat: 21, quantity: 1 }] })).status, 401, 'الزائر لا يرسل طلباً');
+  assert.equal((await guest.req('GET', '/api/store/products')).status, 401, 'أسعار العملاء محمية');
+  // عميل غير معتمد يتصفح العام لكن لا يطلب
+  const pend = new Client('pending');
+  await pend.ok('POST', '/api/auth/register-customer', { username: 'pendshop', password: 'Passw0rd!', shop_name: 'محل قيد المراجعة', owner_name: 'م', phone: '0544444444' });
+  assert.equal((await pend.req('GET', '/api/public/products')).status, 200);
+  assert.equal((await pend.req('POST', '/api/store/orders', { items: [{ product_id: p.id, karat: 21, quantity: 1 }] })).status, 403);
+});

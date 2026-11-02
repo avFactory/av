@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api.js';
 import { COLORS } from '../../format.js';
+import { useCart, OrderGate } from '../../components/StoreLayout.jsx';
 import { Btn, Card, Field, Input, Page, Textarea, WeightInput, useAction } from '../../ui.jsx';
 
 /** اطلب تصميمك: رفع الصور والرسومات وملفات 3D */
 export default function Custom() {
+  const { approved } = useCart();
   const nav = useNavigate();
   const [f, setF] = useState({ product_type: '', title: '', karat: '21', color: 'yellow', approx_weight: '', size: '', quantity: '1', due_date: '', notes: '' });
   const [files, setFiles] = useState({ reference: [], sketch: [], model: [] });
@@ -22,6 +24,18 @@ export default function Custom() {
       nav(`/store/orders/${r.id}`);
     }, 'تم إرسال طلب التصميم - سيصلكم عرض أجور التصنيع');
   };
+  if (!approved) {
+    return (
+      <Page title="اطلب تصميمك" subtitle="صمّم قطعتك الخاصة: ارفع صورة أو رسماً أو ملف 3D، ويرسل لك المصنع عرض أجور التصنيع">
+        <div className="grid g3 mb">
+          <div className="card card-b"><b>1. ارفع التصميم</b><p className="small muted">صور، رسم يدوي، أو ملفات 3D (STL, OBJ, 3DM…)</p></div>
+          <div className="card card-b"><b>2. حدد المواصفات</b><p className="small muted">العيار، اللون، الوزن التقريبي، المقاس، الكمية</p></div>
+          <div className="card card-b"><b>3. استلم العرض</b><p className="small muted">يراجع المصنع طلبك ويرسل عرض أجور التصنيع للموافقة</p></div>
+        </div>
+        <OrderGate what="طلب تصميم خاص" />
+      </Page>
+    );
+  }
   return (
     <Page title="اطلب تصميمك" subtitle="ارفع صورة أو رسماً أو ملف 3D، وسيرسل لكم المصنع عرض أجور التصنيع للموافقة">
       <form onSubmit={submit} className="grid">

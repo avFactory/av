@@ -2,10 +2,10 @@ import { useNavigate } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { COLORS, fmtMoney, METHODS } from '../../format.js';
 import { Btn, Empty, Page, useAction, LinkBtn } from '../../ui.jsx';
-import { useCart } from '../../components/StoreLayout.jsx';
+import { useCart, OrderGate } from '../../components/StoreLayout.jsx';
 
 export default function Cart() {
-  const { cart, setCart } = useCart();
+  const { cart, setCart, approved } = useCart();
   const nav = useNavigate();
   const [run, busy] = useAction();
   const send = () => run(async () => {
@@ -30,7 +30,7 @@ export default function Cart() {
             </div>
           ))}
           <div className="alert alert-info small">سيراجع المصنع الطلب ويؤكده. أجور التصنيع النهائية تحسب على الوزن النهائي الفعلي.</div>
-          <div className="row end"><Btn size="lg" loading={busy} onClick={send}>إرسال الطلب ({cart.length} منتج)</Btn></div>
+          {!approved ? <OrderGate what="إرسال الطلب" /> : <div className="row end"><Btn size="lg" loading={busy} onClick={send}>إرسال الطلب ({cart.length} منتج)</Btn></div>}
         </div>
       )}
     </Page>

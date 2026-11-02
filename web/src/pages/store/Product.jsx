@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { fileUrl } from '../../api.js';
 import { fmtW, fmtMoney, METHODS, COLORS } from '../../format.js';
 import { Btn, Field, Input, Loader, Page, Textarea, useFetch, useToast, ErrorBox } from '../../ui.jsx';
@@ -9,8 +9,8 @@ export default function Product() {
   const { id } = useParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { cart, setCart } = useCart();
-  const { data: p, error } = useFetch(`/store/products/${id}`);
+  const { cart, setCart, apiBase, approved, loginUrl } = useCart();
+  const { data: p, error } = useFetch(`${apiBase}/products/${id}`, { deps: [apiBase] });
   const [img, setImg] = useState(0);
   const [sel, setSel] = useState({ karat: null, color: null, size: '', quantity: '1', notes: '' });
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
@@ -39,6 +39,7 @@ export default function Product() {
             <div><dt>التوفر</dt><dd>{p.availability === 'available' && p.stock_qty > 0 ? `متوفر (${p.stock_qty})` : 'يصنع حسب الطلب'}</dd></div>
             {p.labor && <div><dt>أجور التصنيع</dt><dd style={{ color: 'var(--gold-ink)' }}>{fmtMoney(p.labor.rate)} {METHODS[p.labor.method]}</dd></div>}
             {p.labor && <div><dt>تقدير أجرة القطعة</dt><dd>{fmtMoney(p.labor.estimate)}</dd></div>}
+            {!approved && <div><dt>أجور التصنيع</dt><dd><Link to={loginUrl} className="link">سجّل الدخول لعرض الأجور</Link></dd></div>}
           </div>
           <Field label="العيار"><div className="chips">{p.karats.map((k) => <button key={k} className={`chip ${karat === k ? 'on' : ''}`} onClick={() => setSel({ ...sel, karat: k })}>{k}</button>)}</div></Field>
           <Field label="اللون"><div className="chips">{p.colors.map((c) => <button key={c} className={`chip ${color === c ? 'on' : ''}`} onClick={() => setSel({ ...sel, color: c })}>{COLORS[c]}</button>)}</div></Field>

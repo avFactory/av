@@ -5,7 +5,7 @@ import { Router } from 'express';
 import QRCode from 'qrcode';
 import { pool, many, one } from '../db.js';
 import { requireAuth, has } from '../lib/auth.js';
-import { forbidden, notFound, int } from '../lib/http.js';
+import { HttpError, forbidden, notFound, int } from '../lib/http.js';
 import { UPLOAD_DIR } from '../lib/uploads.js';
 import { sseHandler } from '../lib/events.js';
 
@@ -48,10 +48,17 @@ r.get('/qr', requireAuth, async (req, res) => {
 });
 
 /** الملفات: لا تقدم إلا لمن يملك صلاحية على الكيان المرتبط */
-r.get('/files/*filepath', requireAuth, async (req, res) => {
+r.get('/files/*filepath', async (req, res) => {
   const rel = [].concat(req.params.filepath).join('/');
   const abs = path.resolve(UPLOAD_DIR, rel);
   if (!abs.startsWith(UPLOAD_DIR + path.sep)) throw forbidden();
+  // صور المنتجات عامة (المتجر مفتوح للزوار)
+  if (await one('select 1 from product_media pm join products p on p.id=pm.product_id where pm.path=$1 and p.active limit 1', [rel])) {
+    if (!fs.existsSync(abs)) throw notFound('الملف غير موجود');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.sendFile(abs);
+  }
+  if (!req.user) throw new HttpError(401, 'يجب تسجيل الدخول');
   const u = req.user;
   let allowed = false;
   const of = await one('select o.customer_id, o.assigned_worker_id, f.customer_visible, f.order_id from order_files f join orders o on o.id=f.order_id where f.path=$1 limit 1', [rel]);

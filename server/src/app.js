@@ -17,6 +17,7 @@ import financeRoutes from './routes/finance.js';
 import reportRoutes from './routes/reports.js';
 import storeRoutes from './routes/store.js';
 import miscRoutes from './routes/misc.js';
+import publicRoutes from './routes/public.js';
 
 export function createApp() {
   const app = express();
@@ -60,6 +61,7 @@ export function createApp() {
   app.use('/api/finance', financeRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/store', storeRoutes);
+  app.use('/api/public', publicRoutes);
   app.use('/api', miscRoutes);
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'المسار غير موجود')));
 
