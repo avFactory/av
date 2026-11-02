@@ -11,7 +11,7 @@ export default function Catalog() {
   const { data } = useFetch(`${apiBase}/products${qs(f)}`, { deps: [apiBase] });
   return (
     <div className="page">
-      <div className="hero mb">
+      <div className="hero mb d-none d-md-flex">
         <div className="hrow gap"><img src="/logo-gold.png" alt="AV" style={{ height: 64, width: 'auto' }} /><div><h2>مصنع AV للمجوهرات — الجملة من المصنع مباشرة</h2><p>أجور تصنيع واضحة لكل جرام أو قطعة — قيمة الذهب خارج الفاتورة.</p></div></div>
         <LinkBtn to="/store/custom" kind="primary" size="lg">اطلب تصميمك الخاص</LinkBtn>
       </div>
