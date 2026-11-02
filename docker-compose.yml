@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: goldfactory
+      POSTGRES_USER: goldadmin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    restart: unless-stopped
+  app:
+    build: .
+    depends_on: [db]
+    environment:
+      DATABASE_URL: postgres://goldadmin:${DB_PASSWORD}@db:5432/goldfactory
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+      # اختياري: WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, SMS_WEBHOOK_URL, EMAIL_WEBHOOK_URL
+    volumes: [uploads:/data/uploads]
+    ports: ["3000:3000"]
+    restart: unless-stopped
+volumes:
+  pgdata:
+  uploads:

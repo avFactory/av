@@ -1,0 +1,15 @@
+{
+  "name": "gold-factory",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix server ci && npm --prefix web ci",
+    "build": "npm --prefix web run build",
+    "migrate": "npm --prefix server run migrate",
+    "start": "npm --prefix server start",
+    "dev:server": "npm --prefix server run dev",
+    "dev:web": "npm --prefix web run dev",
+    "test": "npm --prefix server test",
+    "seed:demo": "npm --prefix server run seed:demo",
+    "e2e": "node e2e/ui-flows.cjs && node e2e/ui-lifecycle.cjs"
+  }
+}

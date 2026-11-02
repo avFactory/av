@@ -95,13 +95,14 @@ r.get('/workers/:id', requirePerm('workers.view', 'custody.issue', 'custody.rece
 /** البحث عن طلب بالرقم أو رمز QR */
 r.get('/lookup', requirePerm('scan.use', 'custody.issue', 'custody.receive', 'orders.view'), async (req, res) => {
   const code = String(req.query.code || '').trim();
-  if (!code) throw bad('أدخل رقم الطلب أو امسح الرمز');
+  const byId = req.query.id ? int(req.query.id) : null;
+  if (!code && !byId) throw bad('أدخل رقم الطلب أو امسح الرمز');
   const token = code.includes('/') ? code.split('/').pop() : code;
   const o = await one(`
     select o.id, o.order_no, o.title, o.status, o.quantity, o.material_id, o.current_stage_id, o.design_status, o.design_approval_required,
            o.assigned_worker_id, s.name as stage_name, s.handles_gold, m.name as material_name, m.karat, m.color
     from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
-    where o.qr_token=$1 or upper(o.order_no)=upper($1) or o.order_no ilike '%-' || lpad($1, 6, '0')`, [token]);
+    where ($2::int is not null and o.id=$2) or ($2::int is null and (o.qr_token=$1 or upper(o.order_no)=upper($1) or o.order_no ilike '%-' || lpad($1, 6, '0')))`, [token, byId]);
   if (!o) throw notFound('لم يتم العثور على الطلب');
   if (req.user.role_code === 'worker' && o.assigned_worker_id !== req.user.id) {
     const mine = await one("select 1 from custodies where order_id=$1 and worker_id=$2 and status <> 'reversed' limit 1", [o.id, req.user.id]);

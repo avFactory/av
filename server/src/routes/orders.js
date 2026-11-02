@@ -88,7 +88,7 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
                           left join stages s on s.id=l.stage_id left join users u on u.id=l.user_id left join users w on w.id=l.worker_id
                           where l.order_id=$1 order by l.id desc`, [id]);
   const files = await many('select f.*, u.full_name as uploaded_by_name from order_files f left join users u on u.id=f.uploaded_by where order_id=$1 order by id', [id]);
-  const custodies = await many(`select c.id, c.custody_no, c.status, c.work_state, c.weight_issued::text, c.issued_at, c.closed_at, c.loss_rate_snapshot::text,
+  const custodies = await many(`select c.id, c.worker_id, c.custody_no, c.status, c.work_state, c.weight_issued::text, c.issued_at, c.closed_at, c.loss_rate_snapshot::text,
       u.full_name as worker_name, s.name as stage_name, st.settlement_no, st.returned_weight::text, st.scrap_weight::text, st.actual_loss::text,
       st.normal_loss::text, st.abnormal_loss::text, st.status as settlement_status, st.id as settlement_id
     from custodies c join users u on u.id=c.worker_id join stages s on s.id=c.stage_id
