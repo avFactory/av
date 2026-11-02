@@ -298,6 +298,102 @@ r.get('/customers', requirePerm('customers.view'), async (req, res) => {
     where ($1::text is null or c.status=$1) order by (c.status='pending') desc, c.id desc`, [req.query.status || null]));
 });
 
+// ------------------------------------------------------------------ استيراد العملاء من Excel
+// الترتيب مهم: الأعمدة الأكثر تحديداً أولاً (مثل "جوال المحل" هو جوال وليس اسم المحل)
+const CUST_HEADERS = [
+  ['phone2', /جوال ?2|جوال آخر|هاتف ?2|phone ?2/i], ['phone', /جوال|هاتف|رقم التواصل|موبايل|phone|mobile/i], ['email', /بريد|ايميل|إيميل|email/i],
+  ['vat_number', /ضريب|vat/i], ['cr_number', /سجل|^cr\b/i], ['username', /اسم المستخدم|username/i], ['password', /كلمة المرور|كلمه المرور|password/i],
+  ['shop_name', /اسم المحل|اسم العميل|المحل|اسم المنشأة|المنشأة|shop|customer/i], ['owner_name', /المالك|صاحب|owner/i],
+  ['city', /مدينة|المدينة|city/i], ['address', /عنوان|address/i], ['tier', /فئة|تصنيف|tier/i], ['notes', /ملاحظ|notes/i],
+];
+const SHOP_HEADER = /اسم المحل|اسم العميل|المحل|اسم المنشأة|المنشأة|shop|customer/i;
+const digits = (v) => String(v || '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d+]/g, '');
+
+async function readTable(file) {
+  if (/\.csv$/i.test(file.originalname)) return file.buffer.toString('utf8').replace(/^﻿/, '').split(/\r?\n/).map((l) => l.split(/[,;\t]/).map((x) => x.trim()));
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(file.buffer);
+  const table = [];
+  wb.worksheets[0].eachRow({ includeEmpty: false }, (row) => { const cells = []; row.eachCell({ includeEmpty: true }, (c, i) => { cells[i - 1] = cellText(c.value); }); table.push(cells); });
+  return table;
+}
+
+async function checkCustomerRows(db, rows) {
+  const existing = (await db.query('select id, shop_name, phone, vat_number, cr_number from customers')).rows;
+  const users = new Set((await db.query('select lower(username) u from users')).rows.map((x) => x.u));
+  const seen = new Set();
+  return rows.map((r) => {
+    const errors = [];
+    if (!r.shop_name) errors.push('اسم المحل مفقود');
+    if (r.vat_number && !/^\d{15}$/.test(digits(r.vat_number))) errors.push('الرقم الضريبي يجب أن يكون 15 رقماً');
+    if (r.username && !/^[A-Za-z0-9_.@-]{3,60}$/.test(r.username)) errors.push('اسم المستخدم بالإنجليزية بدون مسافات');
+    if (r.username && String(r.password || '').length < 8) errors.push('كلمة المرور أقل من 8 أحرف');
+    if (r.username && users.has(r.username.toLowerCase())) errors.push('اسم المستخدم مستخدم مسبقاً');
+    const ph = digits(r.phone).slice(-9);
+    const dup = existing.find((c) => (r.vat_number && digits(c.vat_number) === digits(r.vat_number)) || (r.cr_number && digits(c.cr_number) === digits(r.cr_number))
+      || (ph.length >= 9 && digits(c.phone).slice(-9) === ph) || c.shop_name.trim() === String(r.shop_name || '').trim());
+    const key = `${String(r.shop_name || '').trim()}|${digits(r.vat_number)}`;
+    if (seen.has(key)) errors.push('مكرر في الملف');
+    seen.add(key);
+    const status = errors.length ? 'error' : dup ? 'exists' : 'new';
+    return { ...r, status, errors, existing_id: dup?.id ?? null, existing_name: dup?.shop_name ?? null };
+  });
+}
+
+r.post('/customers/import/parse', requirePerm('customers.manage'), empUpload.single('file'), async (req, res) => {
+  if (!req.file) throw bad('اختر الملف');
+  const table = await readTable(req.file);
+  const hIdx = table.findIndex((cells) => cells.some((c) => SHOP_HEADER.test(c || '')));
+  if (hIdx < 0) throw bad('لم يتم العثور على صف العناوين (يجب أن يحتوي عموداً باسم "اسم المحل" أو "اسم العميل")');
+  const map = {};
+  table[hIdx].forEach((h, i) => { const k = CUST_HEADERS.find(([key, re]) => map[key] === undefined && re.test(h || '')); if (k) map[k[0]] = i; });
+  const get = (c, k) => (map[k] === undefined ? null : (c[map[k]] || '').trim() || null);
+  const rows = table.slice(hIdx + 1).map((c) => Object.fromEntries(CUST_HEADERS.map(([k]) => [k, get(c, k)]))).filter((r) => Object.values(r).some(Boolean));
+  if (!rows.length) throw bad('لا توجد بيانات تحت صف العناوين');
+  res.json({ columns: Object.keys(map), rows: await checkCustomerRows(pool, rows) });
+});
+
+/** إضافة العملاء الجدد (معتمدين مباشرة لأن المصنع هو من أدخلهم). الموجودون مسبقاً يُتجاوزون ولا تُعدّل بياناتهم. */
+r.post('/customers/import/commit', requirePerm('customers.manage'), async (req, res) => {
+  const input = (Array.isArray(req.body.rows) ? req.body.rows : []).map((r) => Object.fromEntries(CUST_HEADERS.map(([k]) => [k, str(r[k], k, { max: 300 })])));
+  if (!input.length) throw bad('لا توجد بيانات');
+  res.json(await tx(async (db) => {
+    const rows = await checkCustomerRows(db, input);
+    const errs = rows.filter((r) => r.status === 'error');
+    if (errs.length) throw bad(`يوجد ${errs.length} صف به أخطاء - صححها أو استبعدها`, { rows: errs });
+    let created = 0;
+    let logins = 0;
+    const skipped = [];
+    for (const r of rows) {
+      if (r.status === 'exists') { skipped.push(r.shop_name); continue; }
+      let tierId = null;
+      if (r.tier) tierId = (await db.query('insert into customer_tiers(name) values ($1) on conflict (name) do update set name=excluded.name returning id', [r.tier])).rows[0].id;
+      const c = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, tier_id, notes, status, approved_by, approved_at)
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,now()) returning id`,
+        [r.shop_name, r.owner_name, r.phone, r.phone2, r.email, r.city, r.address, r.vat_number ? digits(r.vat_number) : null, r.cr_number, tierId, r.notes, req.user.id])).rows[0];
+      if (r.username) {
+        await db.query("insert into users(username, password_hash, full_name, role_code, customer_id, phone, must_change_password) values ($1,$2,$3,'customer',$4,$5,true)",
+          [r.username, hashPassword(String(r.password)), r.owner_name || r.shop_name, c.id, r.phone]);
+        logins++;
+      }
+      created++;
+    }
+    await audit(db, req, 'customer.import', 'customer', null, { created, logins, skipped });
+    return { created, logins, skipped };
+  }));
+});
+
+/** تصدير العملاء إلى Excel */
+r.get('/customers.xlsx', requirePerm('customers.view'), async (_req, res) => {
+  const rows = await many(`select c.*, t.name as tier_name, (select count(*) from orders o where o.customer_id=c.id)::int as orders_count,
+      (select coalesce(sum(case when invoice_type='invoice' then total else -total end),0) from invoices i where i.customer_id=c.id and i.status='issued')
+        - (select coalesce(sum(case when kind='refund' then -amount else amount end),0) from payments p where p.customer_id=c.id) as balance
+    from customers c left join customer_tiers t on t.id=c.tier_id order by c.shop_name`);
+  const ST = { pending: 'بانتظار الموافقة', approved: 'معتمد', rejected: 'مرفوض', suspended: 'موقوف' };
+  await sendXlsx(res, 'العملاء', [['اسم المحل', 'shop_name'], ['المالك', 'owner_name'], ['الجوال', 'phone'], ['جوال 2', 'phone2'], ['البريد', 'email'], ['المدينة', 'city'], ['العنوان', 'address'],
+    ['الرقم الضريبي', 'vat_number'], ['السجل التجاري', 'cr_number'], ['الفئة', 'tier_name'], ['الحالة', (x) => ST[x.status]], ['عدد الطلبات', 'orders_count'], ['الرصيد المستحق', (x) => Number(x.balance)], ['ملاحظات', 'notes']], rows, 'customers.xlsx');
+});
+
 r.get('/customers/:id', requirePerm('customers.view'), async (req, res) => {
   const id = int(req.params.id);
   const c = await one('select c.*, t.name as tier_name from customers c left join customer_tiers t on t.id=c.tier_id where c.id=$1', [id]);
