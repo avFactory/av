@@ -21,7 +21,7 @@ export default function SupHome() {
         <Link to="/sup/review" className={`sup-card ${s.abnormal ? 'alarm' : ''}`}><b>{s.abnormal}</b><span>عجز غير طبيعي يحتاج مراجعة</span></Link>
       </div>
       <div className="sup-actions">
-        {can('custody.issue') && <Link to="/sup/issue" className="big-action ba-issue"><i>↧</i><span>تسليم ذهب للعامل<small>لعامل واحد أو تقسيم طلب على عدة عمال</small></span></Link>}
+        {can('custody.issue') && <Link to="/sup/issue" className="big-action ba-issue"><i>↧</i><span>تسليم ذهب للعامل<small>لعامل واحد، تقسيم طلب، أو عهدة عامة بدون طلب</small></span></Link>}
         {can('custody.receive') && <Link to="/sup/receive" className="big-action ba-receive"><i>↥</i><span>استلام ذهب من العامل<small>وزن واحد لكل طلب والحساب تلقائي</small></span></Link>}
         <Link to="/sup/workers" className="big-action ba-workers"><i>☷</i><span>متابعة العمال والعهد<small>ملف كامل لكل عامل</small></span></Link>
         {can('loss.review', 'loss.investigate') && <Link to="/sup/review" className={`big-action ba-review ${s.abnormal ? 'alarm' : ''}`}><i>⚠</i><span>مراجعة العجز<small>{s.abnormal ? `${s.abnormal} حالة مفتوحة` : 'لا توجد حالات مفتوحة'}</small></span></Link>}

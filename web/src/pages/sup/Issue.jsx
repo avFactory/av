@@ -3,18 +3,19 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api, newKey } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, sub } from '../../format.js';
-import { Btn, Card, Field, Input, Page, ScanInput, WeightInput, useAction, useFetch, useToast, Badge, Kv, Tabs, Select } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Page, ScanInput, WeightInput, useAction, useFetch, useToast, Badge, Kv, Tabs, Select, Table } from '../../ui.jsx';
+import { fmtDT } from '../../format.js';
 import WorkerPicker from '../../components/WorkerPicker.jsx';
 
 /** تسليم ذهب: (أ) لعامل واحد - طلب أو عدة طلبات، (ب) تقسيم طلب واحد على عدة عمال.
  *  لا توقيع يدوي: يصل للعامل إشعار، وقبوله من جواله هو توقيعه الإلكتروني. */
 export default function Issue() {
   const [sp] = useSearchParams();
-  const [mode, setMode] = useState(sp.get('mode') === 'split' ? 'split' : 'single');
+  const [mode, setMode] = useState(['split', 'general'].includes(sp.get('mode')) ? sp.get('mode') : 'single');
   return (
     <Page title="تسليم ذهب" back="/sup">
-      <Tabs value={mode} onChange={setMode} tabs={[['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال']]} />
-      {mode === 'single' ? <SingleIssue sp={sp} /> : <SplitIssue sp={sp} />}
+      <Tabs value={mode} onChange={setMode} tabs={[['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال'], ['general', 'عهدة عامة (بدون طلب)']]} />
+      {mode === 'single' ? <SingleIssue sp={sp} /> : mode === 'split' ? <SplitIssue sp={sp} /> : <GeneralIssue sp={sp} />}
     </Page>
   );
 }
@@ -272,6 +273,83 @@ function SplitIssue({ sp }) {
           balance > 0 && ['المتبقي من رصيد الطلب', <span dir="ltr" style={{ color: remaining < 0 ? 'var(--bad)' : undefined }}>{fmtW(Math.max(0, remaining), 4)} جم</span>], ['القطع', `${totalP} / ${order.quantity}`]]} />
         <Btn size="lg" loading={busy} disabled={!valid || totalW <= 0} onClick={submit}>تأكيد التقسيم والتسليم</Btn>
       </div>
+    </div>
+  );
+}
+
+/** عهدة عامة: ذهب من الخزنة إلى العامل كرصيد في عهدته بدون طلب تصنيع */
+function GeneralIssue({ sp }) {
+  const { lookups, can } = useAuth();
+  const [worker, setWorker] = useState(null);
+  const [f, setF] = useState({ material_id: '', weight: '', purpose: '', loss_rate_percent: '0' });
+  const [done, setDone] = useState(null);
+  const key = useRef(newKey());
+  const [run, busy] = useAction();
+  const { data: list, reload } = useFetch('/inventory/gold/general-custodies', { live: ['custodies', 'gold_ledger'] });
+  const mats = lookups?.materials || [];
+  useEffect(() => {
+    const wid = sp.get('worker');
+    if (wid) api.get(`/sup/workers/${wid}`).then((p) => setWorker(p.worker)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const materialId = f.material_id || mats.find((m) => m.karat === 21 && m.color === 'yellow')?.id || mats[0]?.id;
+  const valid = worker && materialId && Number(f.weight) > 0 && f.purpose.trim();
+  const submit = () => run(async () => {
+    const r = await api.post('/inventory/gold/to-worker', { ...f, material_id: materialId, worker_id: worker.id, idempotency_key: key.current });
+    setDone(r); reload();
+  }, 'تم التسليم - بانتظار قبول العامل');
+  const reset = () => { setWorker(null); setF({ material_id: '', weight: '', purpose: '', loss_rate_percent: '0' }); setDone(null); key.current = newKey(); };
+
+  return (
+    <div className="grid">
+      {done ? (
+        <Card>
+          <div className="alert alert-ok mb">سُجلت العهدة العامة {done.custody_no} للعامل {worker.full_name}: {fmtW(f.weight)} جم. أُرسل له إشعار لقبول الاستلام.</div>
+          <div className="row gap wrap">
+            <a className="btn btn-dark btn-lg" href={`/print/batch/${done.batch_id}`} target="_blank" rel="noreferrer">طباعة الكشف</a>
+            <Btn size="lg" onClick={reset}>عهدة عامة جديدة</Btn>
+            <Link className="btn btn-ghost btn-lg" to={`/sup/workers/${worker.id}`}>ملف العامل</Link>
+          </div>
+        </Card>
+      ) : !worker ? (
+        <>
+          <div className="alert alert-info small">يُصرف الذهب من الخزنة إلى العامل كرصيد في عهدته بدون طلب تصنيع (مثل: رصيد لحام، تصليحات، تجهيز). يستلمه منه المشرف لاحقاً من شاشة "استلام ذهب" فيعود للخزنة مع حساب العجز.</div>
+          <WorkerPicker onPick={setWorker} />
+        </>
+      ) : (
+        <>
+          <Card>
+            <div className="row between wrap gap">
+              <div><span className="muted small">المستلم</span><h3>{worker.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{worker.full_name} <span className="muted small">{worker.employee_no}</span></h3></div>
+              <Btn kind="ghost" size="sm" onClick={() => setWorker(null)}>تغيير</Btn>
+            </div>
+          </Card>
+          <div className="line-item sel">
+            <div className="grid g2">
+              <Field label="المادة (العيار واللون)"><Select value={materialId || ''} onChange={(e) => setF({ ...f, material_id: e.target.value })} options={mats.map((m) => [m.id, m.name])} /></Field>
+              <Field label="الوزن (جم) *"><WeightInput big value={f.weight} onChange={(v) => setF({ ...f, weight: v })} autoFocus /></Field>
+              <Field label="الغرض / البيان *"><Input value={f.purpose} onChange={(e) => setF({ ...f, purpose: e.target.value })} placeholder="مثال: رصيد لحام وتصليحات" /></Field>
+              <Field label="نسبة العجز المسموح %" hint="0 = أي نقص عند الإرجاع يُحال للمراجعة"><Input dir="ltr" inputMode="decimal" value={f.loss_rate_percent} onChange={(e) => setF({ ...f, loss_rate_percent: e.target.value })} /></Field>
+            </div>
+          </div>
+          <AcceptNote />
+          <div className="sticky-foot">
+            <Kv items={[['يُصرف من', 'الخزنة'], ['الوزن', <span dir="ltr">{fmtW(f.weight || 0)} جم</span>]]} />
+            <Btn size="lg" loading={busy} disabled={!valid} onClick={submit}>تأكيد تسليم العهدة العامة</Btn>
+          </div>
+        </>
+      )}
+      {list?.length > 0 && (
+        <Card title={`العهد العامة القائمة لدى العمال (${list.length})`} pad={false}>
+          <Table rows={list} columns={[
+            ['العامل', (c) => <Link className="link" to={`/sup/workers/${c.worker_id}`}>{c.worker_kind === 'machine' ? '⚙ ' : ''}{c.worker_name}</Link>], ['الغرض', 'purpose'], ['المادة', 'material_name'],
+            ['الوزن', (c) => <b className="n">{fmtW(c.weight_issued)}</b>],
+            ['الحالة', (c) => (c.status === 'under_review' ? <Badge tone="warn">تحت المراجعة</Badge> : c.worker_ack_at ? <Badge tone="ok">قبِلها العامل</Badge> : c.worker_rejected_at ? <Badge tone="bad">رفضها: {c.worker_reject_reason}</Badge> : <Badge tone="warn">بانتظار القبول</Badge>)],
+            ['التاريخ', (c) => fmtDT(c.issued_at)],
+            ['', (c) => can('custody.receive') && c.status === 'open' && <Link className="btn btn-dark btn-sm" to={`/sup/receive?worker=${c.worker_id}`}>استلام</Link>],
+          ]} />
+        </Card>
+      )}
     </div>
   );
 }
