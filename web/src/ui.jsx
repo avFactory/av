@@ -3,12 +3,16 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { Link } from 'react-router-dom';
 import jsQR from 'jsqr';
 import { api } from './api.js';
+import { useAuth } from './auth.jsx';
 
 // ------------------------------------------------------------- بيانات من الخادم + تحديث فوري
 const LiveCtx = createContext(null);
 export function LiveProvider({ children }) {
   const subs = useRef(new Set());
+  const { me } = useAuth();
+  const loggedIn = !!me;
   useEffect(() => {
+    if (!loggedIn) return undefined;
     let es;
     let stop = false;
     const connect = () => {
@@ -24,7 +28,7 @@ export function LiveProvider({ children }) {
     };
     connect();
     return () => { stop = true; es?.close(); };
-  }, []);
+  }, [loggedIn]);
   return <LiveCtx.Provider value={subs}>{children}</LiveCtx.Provider>;
 }
 

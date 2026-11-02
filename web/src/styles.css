@@ -346,3 +346,42 @@ a.stat:hover { border-color: var(--gold); }
   .sticky-foot .btn-lg { width: 100%; }
 }
 @media print { body:has(.doc-sheet) .print-head { display: none !important; } }
+
+/* مخزون الألماس */
+.stone-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stone-stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stone-stat span { color: var(--muted); font-size: .84rem; }
+.stone-stat b { font-size: 1.6rem; font-variant-numeric: tabular-nums; text-align: right; }
+.stone-stat small { color: var(--muted); font-size: .78rem; }
+.stone-stat.main { background: linear-gradient(135deg, #17140f, #2c2417); border-color: #2c2417; color: #f3e9d3; }
+.stone-stat.main span, .stone-stat.main small { color: #cbbd9f; }
+.stone-stat.main b { color: var(--gold-2); }
+.stone-stat.warn { border-color: var(--warn); background: var(--warn-soft); }
+.shape-chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.shape-chip { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 14px; cursor: pointer; font: inherit; color: var(--ink); white-space: nowrap; }
+.shape-chip svg { color: var(--gold); }
+.shape-chip span { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
+.shape-chip.on { border-color: var(--gold); background: var(--gold-soft); }
+.shape-group { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
+.shape-group > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; background: linear-gradient(90deg, var(--gold-soft), transparent); }
+.shape-ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--card); border: 1px solid var(--line); color: var(--gold); }
+.shape-total { text-align: left; min-width: 160px; }
+.shape-total b { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.shape-total span, .shape-total small { color: var(--muted); font-size: .8rem; }
+.shape-total .share { height: 5px; background: var(--bg); border-radius: 9px; overflow: hidden; margin: 4px 0 2px; }
+.shape-total .share div { height: 100%; background: var(--gold); }
+.stone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; padding: 14px 18px 18px; }
+.stone-tile { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: right; background: var(--bg); border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; font: inherit; color: var(--ink); transition: border-color .15s, transform .1s; min-width: 0; }
+.stone-tile:hover { border-color: var(--gold); transform: translateY(-1px); }
+.stone-tile .size { font-weight: 700; font-size: 1rem; }
+.stone-tile .sub { font-size: .72rem; color: var(--muted); }
+.stone-tile .qty { font-size: 1.3rem; font-weight: 700; color: var(--gold-ink); font-variant-numeric: tabular-nums; margin-top: 4px; align-self: stretch; text-align: left; }
+.stone-tile .unit { font-size: .72rem; color: var(--muted); align-self: stretch; text-align: left; }
+.stone-tile .bar { align-self: stretch; height: 4px; background: var(--line); border-radius: 9px; overflow: hidden; margin-top: 6px; }
+.stone-tile .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold-2), var(--gold)); }
+.stone-tile .meta { font-size: .72rem; color: var(--muted); margin-top: 4px; }
+.stone-tile .flag { position: absolute; top: 8px; left: 8px; font-size: .68rem; background: var(--warn-soft); color: var(--warn); border-radius: 9px; padding: 0 7px; font-weight: 700; }
+.stone-tile.out { opacity: .6; border-style: dashed; }
+.stone-tile.out .qty { color: var(--muted); }
+.stone-tile.low { border-color: var(--warn); }
+@media (max-width: 800px) { .stone-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stone-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); padding: 12px; } }
