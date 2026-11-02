@@ -23,7 +23,7 @@ export default function Customers() {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   return (
     <Page title="العملاء - محلات الذهب" actions={<>
-      <a className="btn btn-ghost" href="/api/admin/customers.xlsx">تصدير Excel</a>
+      <a className="btn btn-outline-secondary" href="/api/admin/customers.xlsx">تصدير Excel</a>
       {can('customers.manage') && <Btn kind="ghost" onClick={() => setImp({ step: 1 })}>استيراد من Excel</Btn>}
       {can('customers.manage') && <Btn onClick={() => setF({})}>إضافة عميل</Btn>}
     </>}>
@@ -41,14 +41,14 @@ export default function Customers() {
       {!data ? <Loader /> : <div className="card"><Table rows={data.filter((c) => !tierF || String(c.tier_id) === tierF)} onRow={(c) => nav(`/admin/customers/${c.id}`)} columns={[
         ['المحل', (c) => <b>{c.shop_name}</b>], ['المالك', 'owner_name'], ['الجوال', 'phone'], ['المدينة', 'city'], ['الرقم الضريبي', 'vat_number'],
         ['التصنيف', (c) => (can('customers.manage') && tiers
-          ? <span onClick={(e) => e.stopPropagation()} className="row gap"><TierBadge name={c.tier_name} color={c.tier_color} />
-              <select className="input tier-select" value={c.tier_id || ''} onChange={(e) => setCustTier(c, e.target.value)} aria-label="تغيير التصنيف">{tiers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></span>
+          ? <span onClick={(e) => e.stopPropagation()} className="hrow gap"><TierBadge name={c.tier_name} color={c.tier_color} />
+              <select className="form-select tier-select" value={c.tier_id || ''} onChange={(e) => setCustTier(c, e.target.value)} aria-label="تغيير التصنيف">{tiers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></span>
           : <TierBadge name={c.tier_name} color={c.tier_color} />)],
         ['الطلبات', 'orders_count'], ['الرصيد', (c) => fmtMoney(c.balance)], ['الحالة', (c) => <Badge tone={ST[c.status][1]}>{ST[c.status][0]}</Badge>],
         ['', (c) => c.status === 'pending' && can('customers.manage') && <Btn size="sm" kind="ok" onClick={(e) => { e.stopPropagation(); run(async () => { await api.put(`/admin/customers/${c.id}`, { status: 'approved' }); reload(); }, 'تمت الموافقة'); }}>موافقة</Btn>],
       ]} /></div>}
       {can('customers.manage') && (
-        <div className="card card-b mt row gap wrap">
+        <div className="card card-body mt hrow gap wrap">
           <b>تصنيف جديد:</b>
           <Input value={tier} onChange={(e) => setTier(e.target.value)} placeholder="مثال: عميل بلاتيني" style={{ width: 200 }} />
           <Select value={tierColor} onChange={(e) => setTierColor(e.target.value)} options={[['gold', 'ذهبي'], ['silver', 'فضي'], ['normal', 'رمادي'], ['other', 'أزرق']]} style={{ width: 120 }} />
@@ -65,7 +65,7 @@ export default function Customers() {
             <Field label="اسم مستخدم للمتجر (اختياري)"><Input value={f.username || ''} onChange={set('username')} dir="ltr" /></Field>
             <Field label="كلمة المرور"><Input type="password" value={f.password || ''} onChange={set('password')} dir="ltr" /></Field>
           </div>
-          <div className="row end"><Btn loading={busy} onClick={() => run(async () => { await api.post('/admin/customers', f); setF(null); reload(); }, 'تمت الإضافة')}>حفظ</Btn></div>
+          <div className="hrow end"><Btn loading={busy} onClick={() => run(async () => { await api.post('/admin/customers', f); setF(null); reload(); }, 'تمت الإضافة')}>حفظ</Btn></div>
         </>}
       </Modal>
     </Page>
@@ -96,7 +96,7 @@ function ImportModal({ imp, setImp, busy, run, onDone }) {
         <label className="btn btn-primary btn-lg" style={{ justifySelf: 'start' }}>{busy ? 'جارٍ القراءة…' : 'اختيار الملف'}<input type="file" accept=".xlsx,.csv" hidden onChange={(e) => e.target.files[0] && parse(e.target.files[0])} /></label>
       </>}
       {imp.step === 2 && <>
-        <div className="row gap wrap">
+        <div className="hrow gap wrap">
           <Badge tone="info">{fresh.length} جديد</Badge><Badge>{rows.filter((r) => r.status === 'exists').length} موجود مسبقاً</Badge>
           {errors.length > 0 && <Badge tone="bad">{errors.length} به أخطاء</Badge>}
           {fresh.some((r) => r.username) && <Badge tone="gold">{fresh.filter((r) => r.username).length} حساب متجر</Badge>}
@@ -107,9 +107,9 @@ function ImportModal({ imp, setImp, busy, run, onDone }) {
           ['الحالة', (r) => <Badge tone={IST[r.status][1]}>{IST[r.status][0]}</Badge>],
           ['ملاحظة', (r) => <span className="small">{r.errors.join('، ')}{r.status === 'exists' ? `مطابق لـ: ${r.existing_name}` : ''}</span>],
         ]} />
-        {errors.length > 0 && <div className="alert alert-bad small">الصفوف الحمراء لن تُضاف. صححها في الملف وارفعه مرة أخرى، أو أضف الصفوف السليمة الآن.</div>}
+        {errors.length > 0 && <div className="alert alert-danger small">الصفوف الحمراء لن تُضاف. صححها في الملف وارفعه مرة أخرى، أو أضف الصفوف السليمة الآن.</div>}
         {fresh.some((r) => r.username) && <div className="small muted">أصحاب حسابات المتجر يُطلب منهم تغيير كلمة المرور عند أول دخول.</div>}
-        <div className="row gap end">
+        <div className="hrow gap end">
           <Btn kind="ghost" onClick={() => setImp({ step: 1 })}>ملف آخر</Btn>
           <Btn loading={busy} disabled={!fresh.length} onClick={() => run(async () => {
             const r = await api.post('/admin/customers/import/commit', { rows: rows.filter((x) => x.status !== 'error') });

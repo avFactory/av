@@ -25,7 +25,7 @@ export default function SAccount() {
         </Card>
         <Card title="مستندات المنشأة" className="mt">
           <div className="files mb">{data.docs.map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer"><div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div><span>{d.original_name}</span></a>)}</div>
-          <label className="btn btn-ghost">رفع السجل التجاري / شهادة الضريبة<input type="file" multiple hidden accept="image/*,.pdf" onChange={(e) => { const fd = new FormData(); for (const x of e.target.files) fd.append('files', x); run(async () => { await api.post('/store/account/documents', fd); reload(); }, 'تم رفع المستندات'); }} /></label>
+          <label className="btn btn-outline-secondary">رفع السجل التجاري / شهادة الضريبة<input type="file" multiple hidden accept="image/*,.pdf" onChange={(e) => { const fd = new FormData(); for (const x of e.target.files) fd.append('files', x); run(async () => { await api.post('/store/account/documents', fd); reload(); }, 'تم رفع المستندات'); }} /></label>
         </Card>
       </Page>
       <AccountPw />

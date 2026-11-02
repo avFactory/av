@@ -29,12 +29,12 @@ export default function WOrder() {
       </Card>
       <Card title="الملفات والتصاميم">
         <div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
-        {o.assigned_to_me && <label className="btn btn-ghost mt">{isDesign ? 'رفع ملفات التصميم (صور / 3D)' : 'رفع صور التنفيذ'}<input type="file" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>}
+        {o.assigned_to_me && <label className="btn btn-outline-secondary mt">{isDesign ? 'رفع ملفات التصميم (صور / 3D)' : 'رفع صور التنفيذ'}<input type="file" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>}
       </Card>
       {o.assigned_to_me && (
         <Card title="ملاحظة / طلب توضيح">
           <Field><Textarea value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-          <div className="row gap mt">
+          <div className="hrow gap mt">
             <Btn kind="ghost" disabled={!note} onClick={() => run(async () => { await api.post(`/w/orders/${o.id}/note`, { note }); setNote(''); reload(); }, 'تم الحفظ')}>حفظ</Btn>
             <Btn kind="dark" disabled={!note} onClick={() => run(async () => { await api.post(`/w/orders/${o.id}/note`, { note, clarification: true }); setNote(''); reload(); }, 'أرسل للمشرف')}>طلب توضيح</Btn>
           </div>
@@ -44,8 +44,8 @@ export default function WOrder() {
         <Btn size="xl" kind="ok" loading={busy} onClick={() => run(async () => { await api.post(`/w/orders/${o.id}/finish`); reload(); }, 'تم إنهاء المهمة')}>إنهاء المرحلة</Btn>
       )}
       {o.stage_state === 'pending_approval' && <div className="alert alert-info">بانتظار اعتماد المشرف</div>}
-      {custodies.length > 0 && <Card title="عهدي على هذا الطلب">{custodies.map((c) => <div key={c.id} className="row between small"><Link className="link" to={`/w/custody/${c.id}`}>{c.custody_no}</Link><span>{c.stage_name}</span><span dir="ltr">{c.weight_issued}</span></div>)}</Card>}
-      <Card title="سجلي على الطلب">{log.map((l, i) => <div key={i} className="small row between"><span>{l.stage_name} · {l.note || l.event}</span><span className="muted">{fmtDT(l.created_at)}</span></div>)}</Card>
+      {custodies.length > 0 && <Card title="عهدي على هذا الطلب">{custodies.map((c) => <div key={c.id} className="hrow between small"><Link className="link" to={`/w/custody/${c.id}`}>{c.custody_no}</Link><span>{c.stage_name}</span><span dir="ltr">{c.weight_issued}</span></div>)}</Card>}
+      <Card title="سجلي على الطلب">{log.map((l, i) => <div key={i} className="small hrow between"><span>{l.stage_name} · {l.note || l.event}</span><span className="muted">{fmtDT(l.created_at)}</span></div>)}</Card>
     </div>
   );
 }

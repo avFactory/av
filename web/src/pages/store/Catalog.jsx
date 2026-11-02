@@ -12,10 +12,10 @@ export default function Catalog() {
   return (
     <div className="page">
       <div className="hero mb">
-        <div className="row gap"><img src="/logo-gold.png" alt="AV" style={{ height: 64, width: 'auto' }} /><div><h2>مصنع AV للمجوهرات — الجملة من المصنع مباشرة</h2><p>أجور تصنيع واضحة لكل جرام أو قطعة — قيمة الذهب خارج الفاتورة.</p></div></div>
+        <div className="hrow gap"><img src="/logo-gold.png" alt="AV" style={{ height: 64, width: 'auto' }} /><div><h2>مصنع AV للمجوهرات — الجملة من المصنع مباشرة</h2><p>أجور تصنيع واضحة لكل جرام أو قطعة — قيمة الذهب خارج الفاتورة.</p></div></div>
         <LinkBtn to="/store/custom" kind="primary" size="lg">اطلب تصميمك الخاص</LinkBtn>
       </div>
-      <div className="row gap wrap mb">
+      <div className="hrow gap wrap mb">
         <Search value={f.q} onChange={(q) => setF({ ...f, q })} placeholder="ابحث باسم المنتج أو رقمه" />
         <div className="chips">
           <button className={`chip ${!f.type ? 'on' : ''}`} onClick={() => setF({ ...f, type: '' })}>الكل</button>

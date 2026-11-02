@@ -14,14 +14,14 @@ export default function Log() {
   return (
     <Page title="سجل العمليات" subtitle="كل حركة ذهب مرتبطة بطلب وعامل ومرحلة" back="/sup"
       actions={<><Btn kind="ghost" onClick={() => window.print()}>طباعة</Btn><a className="btn btn-dark" href={`/api/sup/movements.xlsx${qs(applied)}`}>تصدير Excel</a></>}>
-      <form className="card card-b grid g4 mb no-print" onSubmit={(e) => { e.preventDefault(); setApplied(f); }}>
+      <form className="card card-body grid g4 mb no-print" onSubmit={(e) => { e.preventDefault(); setApplied(f); }}>
         <Field label="العامل"><Select value={f.worker_id} onChange={set('worker_id')} placeholder="الكل" options={(lookups?.workers || []).map((w) => [w.id, w.full_name])} /></Field>
         <Field label="رقم الطلب"><Input value={f.order} onChange={set('order')} /></Field>
         <Field label="نوع الحركة"><Select value={f.kind} onChange={set('kind')} placeholder="الكل" options={Object.entries(KINDS)} /></Field>
         <Field label="المرحلة"><Select value={f.stage_id} onChange={set('stage_id')} placeholder="الكل" options={(lookups?.stages || []).map((s) => [s.id, s.name])} /></Field>
         <Field label="من تاريخ"><Input type="date" value={f.from} onChange={set('from')} /></Field>
         <Field label="إلى تاريخ"><Input type="date" value={f.to} onChange={set('to')} /></Field>
-        <div className="row gap" style={{ alignSelf: 'end' }}><Btn type="submit">تطبيق</Btn><Btn type="button" kind="ghost" onClick={() => { const e = { worker_id: '', order: '', kind: '', stage_id: '', from: '', to: '' }; setF(e); setApplied(e); }}>مسح</Btn></div>
+        <div className="hrow gap" style={{ alignSelf: 'end' }}><Btn type="submit">تطبيق</Btn><Btn type="button" kind="ghost" onClick={() => { const e = { worker_id: '', order: '', kind: '', stage_id: '', from: '', to: '' }; setF(e); setApplied(e); }}>مسح</Btn></div>
       </form>
       {!data ? <Loader /> : (
         <div className="card"><Table rows={data} rowClass={(m) => (m.reversed || m.kind === 'reversal' ? 'row-warn' : '')} columns={[

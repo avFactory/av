@@ -28,9 +28,9 @@ export default function Custom() {
     return (
       <Page title="اطلب تصميمك" subtitle="صمّم قطعتك الخاصة: ارفع صورة أو رسماً أو ملف 3D، ويرسل لك المصنع عرض أجور التصنيع">
         <div className="grid g3 mb">
-          <div className="card card-b"><b>1. ارفع التصميم</b><p className="small muted">صور، رسم يدوي، أو ملفات 3D (STL, OBJ, 3DM…)</p></div>
-          <div className="card card-b"><b>2. حدد المواصفات</b><p className="small muted">العيار، اللون، الوزن التقريبي، المقاس، الكمية</p></div>
-          <div className="card card-b"><b>3. استلم العرض</b><p className="small muted">يراجع المصنع طلبك ويرسل عرض أجور التصنيع للموافقة</p></div>
+          <div className="card card-body"><b>1. ارفع التصميم</b><p className="small muted">صور، رسم يدوي، أو ملفات 3D (STL, OBJ, 3DM…)</p></div>
+          <div className="card card-body"><b>2. حدد المواصفات</b><p className="small muted">العيار، اللون، الوزن التقريبي، المقاس، الكمية</p></div>
+          <div className="card card-body"><b>3. استلم العرض</b><p className="small muted">يراجع المصنع طلبك ويرسل عرض أجور التصنيع للموافقة</p></div>
         </div>
         <OrderGate what="طلب تصميم خاص" />
       </Page>
@@ -59,7 +59,7 @@ export default function Custom() {
           </div>
           <Field label="ملاحظات" className="mt"><Textarea value={f.notes} onChange={set('notes')} rows={4} /></Field>
         </Card>
-        <div className="row end"><Btn size="lg" type="submit" loading={busy}>إرسال الطلب للمصنع</Btn></div>
+        <div className="hrow end"><Btn size="lg" type="submit" loading={busy}>إرسال الطلب للمصنع</Btn></div>
       </form>
     </Page>
   );

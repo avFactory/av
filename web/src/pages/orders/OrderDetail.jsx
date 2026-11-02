@@ -35,7 +35,7 @@ export default function OrderDetail() {
   return (
     <Page title={<span>{o.order_no} <StatusBadge map={STATUS} value={o.status} /></span>} subtitle={`${o.title}${o.shop_name ? ' · ' + o.shop_name : ' · طلب داخلي'}`} back="/orders"
       actions={<>
-        <a className="btn btn-ghost" href={`/print/labels?auto=1&ids=${o.id}`} target="_blank" rel="noreferrer">طباعة الملصق</a>
+        <a className="btn btn-outline-secondary" href={`/print/labels?auto=1&ids=${o.id}`} target="_blank" rel="noreferrer">طباعة الملصق</a>
         {o.status === 'pending_review' && can('orders.quote') && o.source === 'store_custom' && <Btn onClick={() => open('quote', { labor_method: suggestedLabor?.method || 'per_gram', labor_rate: suggestedLabor?.rate || '', approx_weight: o.approx_weight || '', due_date: o.due_date?.slice(0, 10) || '' })}>إرسال عرض أجور</Btn>}
         {['pending_review', 'approved'].includes(o.status) && can('orders.manage') && <Btn onClick={() => act('start', {}, 'تم تحويل الطلب لأمر إنتاج')} loading={busy}>بدء الإنتاج</Btn>}
         {['pending_review', 'approved'].includes(o.status) && o.product_id && can('orders.manage') && <Btn kind="ghost" onClick={() => act('from-stock', {}, 'تمت التلبية من المخزون الجاهز')}>تلبية من المخزون الجاهز</Btn>}
@@ -54,18 +54,18 @@ export default function OrderDetail() {
             ['ذهب مخصص للطلب', fmtW(goldFlow.allocated)], ['رصيد الطلب (تحت التشغيل)', fmtW(orderBal)], ['لدى العمال', fmtW(openCust.reduce((s, c) => s + Number(c.weight_issued), 0))],
             ['بقايا مستردة', fmtW(Number(goldFlow.scrap) + Number(goldFlow.recovered))], ['عجز طبيعي', fmtW(goldFlow.normal_loss)], ['عجز غير طبيعي', fmtW(Number(goldFlow.abnormal_loss) + Number(goldFlow.abnormal_pending))],
             Number(stonesGrams.used) > 0 && ['أحجار مركبة', `${fmtW(stonesGrams.used)} جم`]]} />
-          <div className="row gap wrap mt">
+          <div className="hrow gap wrap mt">
             {can('orders.manage') && !['delivered', 'cancelled'].includes(o.status) && <Btn size="sm" kind="ghost" onClick={() => open('labor', { labor_method: o.labor_method || '', labor_rate: o.labor_rate || '' })}>تعديل الأجرة</Btn>}
             {o.labor_method === 'manual' && !o.labor_manual_approved_by && can('labor.approve_manual') && <Btn size="sm" onClick={() => act('approve-manual-labor', {}, 'تم اعتماد الأجرة')}>اعتماد الأجرة اليدوية</Btn>}
           </div>
         </Card>
-        <div className="card card-b" style={{ textAlign: 'center' }}><img src={qrUrl(o.qr_token)} alt="QR" style={{ width: 130, height: 130 }} /><div className="small muted">QR الطلب</div></div>
+        <div className="card card-body" style={{ textAlign: 'center' }}><img src={qrUrl(o.qr_token)} alt="QR" style={{ width: 130, height: 130 }} /><div className="small muted">QR الطلب</div></div>
       </div>
 
       {inProd || o.status === 'ready' ? (
         <Card title={<span>المرحلة الحالية: {o.stage_name}</span>} actions={<span className="small muted">{o.worker_name ? `العامل: ${o.worker_name}` : ''}</span>}>
           <div className="progress mb"><div style={{ width: `${Math.round(((o.stage_seq - 1) / Math.max(1, stages.length - 1)) * 100)}%` }} /></div>
-          <div className="row gap wrap">
+          <div className="hrow gap wrap">
             {cur?.handles_gold && !openCust.length && can('custody.issue') && <LinkBtn kind="primary" to={`/sup/issue?order=${o.id}${o.assigned_worker_id ? `&worker=${o.assigned_worker_id}` : ''}`}>تسليم الذهب لعامل</LinkBtn>}
             {can('custody.receive') && openCust.filter((c) => c.status === 'open').map((c) => <LinkBtn key={c.id} kind="dark" to={`/sup/receive?worker=${c.worker_id}`}>استلام من {c.worker_name}</LinkBtn>)}
             {(can('custody.issue') || can('orders.manage')) && inProd && <Btn kind="ghost" onClick={() => open('allocate', { source: 'vault' })}>تسجيل ذهب على الطلب</Btn>}
@@ -77,7 +77,7 @@ export default function OrderDetail() {
             {inProd && can('orders.manage') && <Btn kind="ghost" size="sm" onClick={() => open('force')}>تجاوز المرحلة (بسبب)</Btn>}
           </div>
           {o.stage_state === 'pending_approval' && <div className="alert alert-info mt">أنهى العامل المرحلة وهي بانتظار اعتماد المشرف</div>}
-          {cur?.kind === 'design_approval' && o.design_status !== 'approved' && <div className="alert alert-warn mt">بانتظار اعتماد العميل للتصميم — لا يمكن بدء الصب قبل الاعتماد</div>}
+          {cur?.kind === 'design_approval' && o.design_status !== 'approved' && <div className="alert alert-warning mt">بانتظار اعتماد العميل للتصميم — لا يمكن بدء الصب قبل الاعتماد</div>}
         </Card>
       ) : null}
 
@@ -101,9 +101,9 @@ export default function OrderDetail() {
         {tab === 'files' && (
           <div className="grid">
             <Card title="الملفات" actions={can('orders.manage', 'design.manage', 'orders.advance') && (
-              <div className="row gap">
+              <div className="hrow gap">
                 <Select value={f.kind || 'design'} onChange={setv('kind')} options={[['design', 'تصميم'], ['model3d', 'ملف 3D'], ['reference', 'مرجع'], ['sketch', 'رسم يدوي'], ['execution', 'صورة تنفيذ'], ['other', 'أخرى']]} style={{ width: 140 }} />
-                <label className="btn btn-ghost btn-sm">رفع ملفات<input type="file" multiple hidden onChange={upload} /></label>
+                <label className="btn btn-outline-secondary btn-sm">رفع ملفات<input type="file" multiple hidden onChange={upload} /></label>
               </div>
             )}>
               <div className="files">{files.map((x) => (
@@ -113,7 +113,7 @@ export default function OrderDetail() {
             </Card>
             {can('design.manage') && o.customer_id && (
               <Card title="اعتماد التصميم من العميل" actions={<Badge tone={o.design_status === 'approved' ? 'ok' : 'warn'}>{DESIGN_STATUS[o.design_status]}</Badge>}>
-                <div className="row gap wrap">
+                <div className="hrow gap wrap">
                   <Btn onClick={() => open('design', { file_ids: files.filter((x) => ['design', 'model3d'].includes(x.kind)).map((x) => x.id) })} disabled={!files.some((x) => ['design', 'model3d'].includes(x.kind))}>إرسال التصميم للعميل</Btn>
                   {designs.some((d) => d.status === 'pending') && <Btn kind="ghost" onClick={() => open('designRecord', { decision: 'approved' })}>تسجيل قرار العميل (هاتفياً/حضورياً)</Btn>}
                 </div>

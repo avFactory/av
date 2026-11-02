@@ -31,7 +31,7 @@ export default function Product() {
           <div className="gallery">{media ? (media.kind === 'video' ? <video src={fileUrl(media.path)} controls /> : <img src={fileUrl(media.path)} alt={p.name} />) : '◇'}</div>
           <div className="thumbs">{p.media.map((m, i) => (m.kind === 'image' ? <img key={i} src={fileUrl(m.path)} alt="" className={i === img ? 'on' : ''} onClick={() => setImg(i)} /> : <button key={i} className="chip" onClick={() => setImg(i)}>فيديو</button>))}</div>
         </div>
-        <div className="card card-b grid">
+        <div className="card card-body grid">
           {p.description && <p>{p.description}</p>}
           <div className="kv">
             <div><dt>الوزن التقريبي</dt><dd>{fmtW(p.approx_weight)} جم</dd></div>

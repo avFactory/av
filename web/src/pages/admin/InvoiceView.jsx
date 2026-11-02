@@ -20,10 +20,10 @@ export default function InvoiceView({ store, print }) {
   const paid = payments.reduce((s, p) => s + (p.kind === 'refund' ? -1 : 1) * Number(p.amount), 0);
   return (
     <div className={print ? '' : 'page'}>
-      <div className="row gap end no-print mb" style={{ padding: print ? 12 : 0 }}>
-        {!print && !store && <Link to="/admin/invoices" className="btn btn-ghost">→ الفواتير</Link>}
+      <div className="hrow gap end no-print mb" style={{ padding: print ? 12 : 0 }}>
+        {!print && !store && <Link to="/admin/invoices" className="btn btn-outline-secondary">→ الفواتير</Link>}
         <Btn onClick={() => window.print()}>طباعة / حفظ PDF</Btn>
-        {!store && <a className="btn btn-ghost" href={`/api/finance/invoices/${i.id}/xml`}>XML (UBL)</a>}
+        {!store && <a className="btn btn-outline-secondary" href={`/api/finance/invoices/${i.id}/xml`}>XML (UBL)</a>}
         {!store && can('invoices.manage') && i.invoice_type === 'invoice' && !i.credited_by && <Btn kind="danger" onClick={() => setCredit(true)}>إلغاء بإشعار دائن</Btn>}
       </div>
       <div className="doc-sheet">

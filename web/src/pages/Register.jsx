@@ -20,8 +20,8 @@ export default function Register() {
     <div className="page" style={{ maxWidth: 760 }}>
       <Link to="/login" className="back">→ تسجيل الدخول</Link>
       <h1 className="mb">تسجيل محل ذهب</h1>
-      <form className="card card-b grid" onSubmit={submit}>
-        {err && <div className="alert alert-bad">{err}</div>}
+      <form className="card card-body grid" onSubmit={submit}>
+        {err && <div className="alert alert-danger">{err}</div>}
         <div className="grid g2">
           <Field label="اسم المحل *"><Input value={f.shop_name} onChange={set('shop_name')} required /></Field>
           <Field label="اسم المالك *"><Input value={f.owner_name} onChange={set('owner_name')} required /></Field>

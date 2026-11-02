@@ -9,7 +9,7 @@ export default function Audit() {
   const { data } = useFetch(`/admin/audit${qs(applied)}`);
   return (
     <Page title="سجل التدقيق" subtitle="كل العمليات: الإنشاء، التعديل، الحذف، التصحيح، الاعتماد - غير قابل للتعديل" actions={<a className="btn btn-dark" href={`/api/admin/audit.xlsx${qs(applied)}`}>Excel</a>}>
-      <form className="card card-b row gap wrap mb" style={{ alignItems: 'flex-end' }} onSubmit={(e) => { e.preventDefault(); setApplied(f); }}>
+      <form className="card card-body hrow gap wrap mb" style={{ alignItems: 'flex-end' }} onSubmit={(e) => { e.preventDefault(); setApplied(f); }}>
         <Field label="الإجراء"><Input value={f.action} onChange={(e) => setF({ ...f, action: e.target.value })} placeholder="custody, loss, invoice…" dir="ltr" /></Field>
         <Field label="الكيان"><Input value={f.entity} onChange={(e) => setF({ ...f, entity: e.target.value })} dir="ltr" /></Field>
         <Field label="من"><Input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></Field>

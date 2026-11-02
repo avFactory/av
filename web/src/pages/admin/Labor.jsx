@@ -22,7 +22,7 @@ export default function Labor() {
         ['ينطبق على', (r) => [r.product_type, r.product_name, r.tier_name, r.shop_name, r.stage_name].filter(Boolean).join(' · ') || 'الكل'],
         ['الطريقة', (r) => METHODS[r.method]], ['الأجرة', (r) => <b>{fmtMoney(r.rate)}</b>], ['أنشأها', (r) => `${r.created_by_name || ''} ${fmtDT(r.created_at)}`],
         ['الحالة', (r) => (r.active ? <Badge tone="ok">فعالة</Badge> : <Badge>سابقة</Badge>)],
-        ['', (r) => r.active && <div className="row gap"><Btn size="sm" kind="ghost" onClick={() => setF({ ...r })}>تعديل</Btn><Btn size="sm" kind="ghost" onClick={() => run(async () => { await api.put(`/catalog/labor-rates/${r.id}`, { active: false }); reload(); }, 'تم الإيقاف')}>إيقاف</Btn></div>],
+        ['', (r) => r.active && <div className="hrow gap"><Btn size="sm" kind="ghost" onClick={() => setF({ ...r })}>تعديل</Btn><Btn size="sm" kind="ghost" onClick={() => run(async () => { await api.put(`/catalog/labor-rates/${r.id}`, { active: false }); reload(); }, 'تم الإيقاف')}>إيقاف</Btn></div>],
       ]} /></div>
       <Modal open={!!f} onClose={() => setF(null)} title={f?.id ? 'تعديل قاعدة (تحفظ القديمة في السجل)' : 'قاعدة أجور جديدة'}>
         {f && <>

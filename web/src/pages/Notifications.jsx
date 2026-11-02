@@ -14,8 +14,8 @@ export default function Notifications() {
       {!data.length && <Empty>لا توجد إشعارات</Empty>}
       <div className="grid" style={{ gap: 8 }}>
         {data.map((n) => (
-          <button key={n.id} onClick={() => open(n)} className="card card-b" style={{ textAlign: 'right', cursor: 'pointer', font: 'inherit', color: 'inherit', borderInlineStart: n.read_at ? undefined : '4px solid var(--gold)' }}>
-            <div className="row between"><b>{n.title}</b><span className="small muted">{fmtDT(n.created_at)}</span></div>
+          <button key={n.id} onClick={() => open(n)} className="card card-body" style={{ textAlign: 'right', cursor: 'pointer', font: 'inherit', color: 'inherit', borderInlineStart: n.read_at ? undefined : '4px solid var(--gold)' }}>
+            <div className="hrow between"><b>{n.title}</b><span className="small muted">{fmtDT(n.created_at)}</span></div>
             {n.body && <div className="small muted">{n.body}</div>}
           </button>
         ))}

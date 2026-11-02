@@ -53,29 +53,29 @@ export default function StaffLayout() {
       {open && <div className="scrim" onClick={() => setOpen(false)} />}
       <aside className={`side ${open ? 'open' : ''}`}>
         <a href="/" className="brand"><img src="/logo-gold.png" alt="AV" className="brand-logo" /><span>مصنع AV للمجوهرات</span></a>
-        <nav>
+        <nav className="nav nav-pills flex-column">
           {NAV.map(([grp, items]) => {
             const vis = items.filter(([, , p]) => can(...p));
             if (!vis.length) return null;
             return (
-              <div key={grp}>
+              <div key={grp} className="d-flex flex-column">
                 <div className="grp">{grp}</div>
-                {vis.map(([to, label, , end]) => <NavLink key={to} to={to} end={end}>{label}</NavLink>)}
+                {vis.map(([to, label, , end]) => <NavLink key={to} to={to} end={end} className="nav-link">{label}</NavLink>)}
               </div>
             );
           })}
         </nav>
       </aside>
       <div style={{ minWidth: 0 }}>
-        <header className="topbar no-print">
-          <div className="row gap">
-            <button className="btn btn-ghost menu-btn" onClick={() => setOpen(true)} aria-label="القائمة">☰</button>
-            <span className="muted small">{me.full_name}</span>
+        <header className="navbar bg-body border-bottom sticky-top topbar no-print">
+          <div className="d-flex align-items-center gap-2">
+            <button className="btn btn-outline-secondary menu-btn" onClick={() => setOpen(true)} aria-label="القائمة"><span className="navbar-toggler-icon" style={{ width: '1.1em', height: '1.1em' }} /></button>
+            <span className="text-body-secondary small">{me.full_name}</span>
           </div>
-          <div className="row gap">
+          <div className="d-flex align-items-center gap-2">
             <Bell />
-            <NavLink to="/account" className="btn btn-ghost btn-sm">حسابي</NavLink>
-            <button className="btn btn-ghost btn-sm" onClick={logout}>خروج</button>
+            <NavLink to="/account" className="btn btn-outline-secondary btn-sm">حسابي</NavLink>
+            <button className="btn btn-outline-secondary btn-sm" onClick={logout}>خروج</button>
           </div>
         </header>
         <div className="print-only print-head"><img src="/logo.png" alt="AV" /><b>مصنع AV للمجوهرات</b></div>

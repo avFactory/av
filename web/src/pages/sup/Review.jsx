@@ -43,7 +43,7 @@ export default function Review() {
               <Kv items={[['المرحلة', s.stage_name], ['المادة', s.material_name], ['السبب المسجل', s.reason], ['استلمها', `${s.received_by_name} · ${fmtDT(s.received_at)}`],
                 s.review_notes && ['ملاحظات المراجعة', `${s.review_notes} (${s.reviewed_by_name || ''})`], s.investigation_result && ['نتيجة التحقيق', `${s.investigation_result} (${s.resolved_by_name || ''})`],
                 s.review_decision && ['القرار', DECISIONS.find((d) => d[0] === s.review_decision)?.[1]]]} />
-              <div className="row gap wrap mt">
+              <div className="hrow gap wrap mt">
                 {s.status === 'pending_review' && can('loss.approve') && <Btn kind="ok" onClick={() => setAct({ s, mode: 'approve' })}>اعتماد التسوية</Btn>}
                 {s.status === 'pending_review' && can('loss.review') && <Btn kind="ghost" onClick={() => setAct({ s, mode: 'investigate' })}>إحالة للتحقيق</Btn>}
                 {['pending_review', 'investigating'].includes(s.status) && can('loss.investigate') && <Btn kind="dark" onClick={() => { setF({ decision: 'no_fault', recovered_weight: '0' }); setAct({ s, mode: 'investigation' }); }}>تسجيل نتيجة التحقيق</Btn>}
@@ -61,7 +61,7 @@ export default function Review() {
             <Field label="وزن مسترد بعد التحقيق (جم)" hint={`الحد الأقصى ${fmtW(act.s.abnormal_loss)}`}><WeightInput value={f.recovered_weight} onChange={(v) => setF({ ...f, recovered_weight: v })} /></Field>
           </>
         ) : <Field label={act?.mode === 'investigate' ? 'سبب الإحالة *' : 'ملاحظات الاعتماد'}><Textarea value={f.notes || ''} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>}
-        <div className="row gap end"><Btn kind="ghost" onClick={() => setAct(null)}>إلغاء</Btn><Btn loading={busy} onClick={submit}>حفظ القرار</Btn></div>
+        <div className="hrow gap end"><Btn kind="ghost" onClick={() => setAct(null)}>إلغاء</Btn><Btn loading={busy} onClick={submit}>حفظ القرار</Btn></div>
       </Modal>
     </Page>
   );

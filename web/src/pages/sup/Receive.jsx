@@ -97,10 +97,10 @@ export default function Receive() {
             ))}
             {done.duplicate && <div className="alert alert-info">هذه الجلسة مسجلة مسبقاً - لم يتم تكرار الوزن</div>}
           </div>
-          <div className="row gap wrap mt">
+          <div className="hrow gap wrap mt">
             <a className="btn btn-dark btn-lg" href={`/print/batch/${done.batch_id}`} target="_blank" rel="noreferrer">طباعة كشف الاستلام</a>
             <Btn size="lg" onClick={reset}>استلام جديد</Btn>
-            {(done.results || []).some((r) => r.settlement.status === 'pending_review') && <Link to="/sup/review" className="btn btn-ghost btn-lg">مراجعة العجز</Link>}
+            {(done.results || []).some((r) => r.settlement.status === 'pending_review') && <Link to="/sup/review" className="btn btn-outline-secondary btn-lg">مراجعة العجز</Link>}
           </div>
         </Card>
       </Page>
@@ -113,9 +113,9 @@ export default function Receive() {
       {!worker ? <WorkerPicker onPick={setWorker} mode="receive" /> : (
         <div className="grid">
           <Card>
-            <div className="row between wrap gap">
+            <div className="hrow between wrap gap">
               <div><span className="muted small">استلام من</span><h3>{worker.full_name} <span className="muted small">{worker.employee_no}</span></h3></div>
-              <div className="row gap"><Link to={`/sup/workers/${worker.id}`} className="btn btn-ghost btn-sm">ملف العامل</Link><Btn kind="ghost" size="sm" onClick={reset}>تغيير العامل</Btn></div>
+              <div className="hrow gap"><Link to={`/sup/workers/${worker.id}`} className="btn btn-outline-secondary btn-sm">ملف العامل</Link><Btn kind="ghost" size="sm" onClick={reset}>تغيير العامل</Btn></div>
             </div>
           </Card>
           {!open ? <Loader /> : !open.length ? <Empty>لا توجد عهدة مفتوحة لدى هذا العامل</Empty> : (
@@ -128,11 +128,11 @@ export default function Receive() {
                 return (
                   <div key={c.id} id={`c-${c.id}`} className={`line-item ${l ? 'sel' : ''} ${alarm ? 'alarm' : ''}`}>
                     <label className="line-head check" style={{ cursor: 'pointer' }}>
-                      <span className="row gap">
+                      <span className="hrow gap">
                         <input type="checkbox" checked={!!l} onChange={() => toggle(c)} />
                         <span><b>{c.order_no}</b> <span className="muted">— {c.title}</span></span>
                       </span>
-                      <span className="row gap wrap">
+                      <span className="hrow gap wrap">
                         <Badge tone="gold">{c.stage_name}</Badge>
                         <Badge tone={c.work_state === 'finished' ? 'ok' : 'muted'}>{WORK_STATE[c.work_state]}</Badge>
                         {!c.worker_ack_at && <Badge tone={c.worker_rejected_at ? 'bad' : 'warn'}>{c.worker_rejected_at ? `رفضها العامل: ${c.worker_reject_reason}` : 'لم يقبلها العامل بعد'}</Badge>}
@@ -168,7 +168,7 @@ export default function Receive() {
                         )}
                         {alarm && (
                           <>
-                            <div className="alert alert-bad">{k.gain > 0 ? 'الوزن المرتجع أكبر من المستلم' : 'تجاوز العجز الطبيعي المسموح للمرحلة'} — سجّل السبب وستحال الحالة للاعتماد قبل إغلاق التسوية. (لا يعني ذلك تلقائياً مسؤولية العامل)</div>
+                            <div className="alert alert-danger">{k.gain > 0 ? 'الوزن المرتجع أكبر من المستلم' : 'تجاوز العجز الطبيعي المسموح للمرحلة'} — سجّل السبب وستحال الحالة للاعتماد قبل إغلاق التسوية. (لا يعني ذلك تلقائياً مسؤولية العامل)</div>
                             <Field label="سبب العجز / الملاحظة *"><Textarea value={l.reason} onChange={(e) => upd(c.id, 'reason', e.target.value)} /></Field>
                           </>
                         )}

@@ -34,14 +34,14 @@ export default function CustomerDetail() {
       {tab === 'invoices' && <div className="card"><Table rows={data.invoices} columns={[['الفاتورة', (i) => <Link className="link" to={`/admin/invoices/${i.id}`}>{i.invoice_no}</Link>], ['النوع', (i) => (i.invoice_type === 'invoice' ? 'فاتورة' : 'إشعار دائن')], ['الإجمالي', (i) => fmtMoney(i.total)], ['التاريخ', (i) => fmtDate(i.issue_date)]]} /></div>}
       {tab === 'payments' && <div className="card"><Table rows={data.payments} columns={[['الرقم', 'payment_no'], ['النوع', 'kind'], ['المبلغ', (p) => fmtMoney(p.amount)], ['الطريقة', 'method'], ['التاريخ', (p) => fmtDate(p.received_at)]]} /></div>}
       {tab === 'statement' && <div className="card"><Table rows={st?.rows || []} columns={[['التاريخ', (r) => fmtDate(r.date)], ['المرجع', 'ref'], ['البيان', 'type'], ['مدين', (r) => fmtMoney(r.debit)], ['دائن', (r) => fmtMoney(r.credit)], ['الرصيد', (r) => fmtMoney(r.balance)]]} /></div>}
-      {tab === 'rates' && <div className="card"><Table rows={data.rates} empty="لا توجد أسعار خاصة - تضاف من صفحة أجور التصنيع" columns={[['القاعدة', 'name'], ['الطريقة', (r) => METHODS[r.method]], ['الأجرة', (r) => fmtMoney(r.rate)], ['نوع المنتج', 'product_type'], ['الحالة', (r) => (r.active ? <Badge tone="ok">فعالة</Badge> : <Badge>ملغاة</Badge>)]]} /><div className="card-b"><Link className="link" to="/admin/labor">إدارة أجور التصنيع ←</Link></div></div>}
+      {tab === 'rates' && <div className="card"><Table rows={data.rates} empty="لا توجد أسعار خاصة - تضاف من صفحة أجور التصنيع" columns={[['القاعدة', 'name'], ['الطريقة', (r) => METHODS[r.method]], ['الأجرة', (r) => fmtMoney(r.rate)], ['نوع المنتج', 'product_type'], ['الحالة', (r) => (r.active ? <Badge tone="ok">فعالة</Badge> : <Badge>ملغاة</Badge>)]]} /><div className="card-body"><Link className="link" to="/admin/labor">إدارة أجور التصنيع ←</Link></div></div>}
       {edit && (
         <Card title="تعديل البيانات" className="mt">
           <div className="grid g3">
             {['shop_name', 'owner_name', 'phone', 'phone2', 'email', 'city', 'address', 'vat_number', 'cr_number', 'notes'].map((k) => <Field key={k} label={k}><Input value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} /></Field>)}
             <Field label="التصنيف"><Select value={edit.tier_id || ''} onChange={(e) => setEdit({ ...edit, tier_id: e.target.value })} placeholder="—" options={(lookups?.tiers || []).map((t) => [t.id, t.name])} /></Field>
           </div>
-          <div className="row gap end mt"><Btn kind="ghost" onClick={() => setEdit(null)}>إلغاء</Btn><Btn loading={busy} onClick={() => run(async () => { const { status, ...rest } = edit; await api.put(`/admin/customers/${id}`, rest); setEdit(null); reload(); }, 'تم الحفظ')}>حفظ</Btn></div>
+          <div className="hrow gap end mt"><Btn kind="ghost" onClick={() => setEdit(null)}>إلغاء</Btn><Btn loading={busy} onClick={() => run(async () => { const { status, ...rest } = edit; await api.put(`/admin/customers/${id}`, rest); setEdit(null); reload(); }, 'تم الحفظ')}>حفظ</Btn></div>
         </Card>
       )}
     </Page>

@@ -26,13 +26,13 @@ export default function Stages() {
       <Tabs value={tab} onChange={setTab} tabs={[['stages', 'المراحل ونسب العجز'], ['routes', 'مسارات الإنتاج']]} />
       {tab === 'stages' && (
         <>
-          {can('stages.manage') && <div className="row end mb"><Btn onClick={() => setS({ name: '', kind: 'normal', handles_gold: true, requires_weight: true, requires_approval: false, required_fields: [], customer_visible: true, worker_ids: [] })}>إضافة مرحلة</Btn></div>}
+          {can('stages.manage') && <div className="hrow end mb"><Btn onClick={() => setS({ name: '', kind: 'normal', handles_gold: true, requires_weight: true, requires_approval: false, required_fields: [], customer_visible: true, worker_ids: [] })}>إضافة مرحلة</Btn></div>}
           <div className="card"><Table rows={data} rowClass={(x) => (x.active ? '' : 'row-warn')} columns={[
             ['#', (x) => (x.active ? active.findIndex((a) => a.id === x.id) + 1 : '—')], ['المرحلة', (x) => <b>{x.name}</b>], ['النوع', (x) => KINDS.find((k) => k[0] === x.kind)?.[1]],
-            ['نسبة العجز الطبيعي', (x) => <span className="row gap"><b dir="ltr">{fmtPct(x.loss_rate)}</b>{can('loss_rates.manage') && <button className="link small" onClick={() => setRate({ stage: x, rate_percent: x.loss_rate, note: '' })}>تعديل</button>}<button className="link small" onClick={() => run(async () => setHist({ stage: x, rows: await api.get(`/admin/stages/${x.id}/rates`) }))}>السجل</button></span>],
+            ['نسبة العجز الطبيعي', (x) => <span className="hrow gap"><b dir="ltr">{fmtPct(x.loss_rate)}</b>{can('loss_rates.manage') && <button className="link small" onClick={() => setRate({ stage: x, rate_percent: x.loss_rate, note: '' })}>تعديل</button>}<button className="link small" onClick={() => run(async () => setHist({ stage: x, rows: await api.get(`/admin/stages/${x.id}/rates`) }))}>السجل</button></span>],
             ['عهدة ذهب', (x) => (x.handles_gold ? '✓' : '')], ['وزن إلزامي', (x) => (x.requires_weight ? '✓' : '')], ['اعتماد المشرف', (x) => (x.requires_approval ? '✓' : '')],
             ['المدة المتوقعة', (x) => (x.expected_hours ? `${x.expected_hours} س` : '—')], ['العمال', (x) => x.worker_ids?.length || 0], ['الحالة', (x) => (x.active ? <Badge tone="ok">فعالة</Badge> : <Badge>محذوفة</Badge>)],
-            ['', (x) => can('stages.manage') && x.active && <div className="row gap">
+            ['', (x) => can('stages.manage') && x.active && <div className="hrow gap">
               {active.findIndex((a) => a.id === x.id) > 0 && <Btn size="sm" kind="ghost" onClick={() => move(active.findIndex((a) => a.id === x.id), -1)}>↑</Btn>}
               {active.findIndex((a) => a.id === x.id) < active.length - 1 && <Btn size="sm" kind="ghost" onClick={() => move(active.findIndex((a) => a.id === x.id), 1)}>↓</Btn>}
               <Btn size="sm" kind="ghost" onClick={() => setS({ ...x })}>تعديل</Btn>
@@ -43,7 +43,7 @@ export default function Stages() {
       )}
       {tab === 'routes' && (
         <>
-          {can('stages.manage') && <div className="row end mb"><Btn onClick={() => setRoute({ name: '', product_type: '', stage_ids: active.map((x) => x.id), is_default: false })}>مسار جديد</Btn></div>}
+          {can('stages.manage') && <div className="hrow end mb"><Btn onClick={() => setRoute({ name: '', product_type: '', stage_ids: active.map((x) => x.id), is_default: false })}>مسار جديد</Btn></div>}
           <div className="grid">
             {(routes || []).map((r) => (
               <Card key={r.id} title={<span>{r.name} {r.is_default && <Badge tone="gold">افتراضي</Badge>} {r.product_type && <Badge>{r.product_type === '__stock__' ? 'بيع من المخزون' : r.product_type}</Badge>}</span>}
@@ -61,7 +61,7 @@ export default function Stages() {
             <Field label="نوع المرحلة"><Select value={s.kind} onChange={(e) => setS({ ...s, kind: e.target.value })} options={KINDS} /></Field>
             <Field label="مدة الإنجاز المتوقعة (ساعات)"><Input inputMode="decimal" value={s.expected_hours ?? ''} onChange={(e) => setS({ ...s, expected_hours: e.target.value })} /></Field>
           </div>
-          <div className="row gap wrap">
+          <div className="hrow gap wrap">
             {[['handles_gold', 'تتضمن تسليم/استلام ذهب'], ['requires_weight', 'وزن إلزامي'], ['requires_approval', 'تحتاج اعتماد المشرف'], ['customer_visible', 'تظهر للعميل في المتابعة']].map(([k, l]) => <label key={k} className="check"><input type="checkbox" checked={!!s[k]} onChange={(e) => setS({ ...s, [k]: e.target.checked })} />{l}</label>)}
           </div>
           <Field label="حقول مطلوبة من العامل">{FIELDS.map(([k, l]) => <label key={k} className="check"><input type="checkbox" checked={(s.required_fields || []).includes(k)} onChange={(e) => setS({ ...s, required_fields: e.target.checked ? [...(s.required_fields || []), k] : s.required_fields.filter((x) => x !== k) })} />{l}</label>)}</Field>
@@ -69,7 +69,7 @@ export default function Stages() {
             <div className="chips">{(lookups?.workers || []).map((w) => { const on = (s.worker_ids || []).includes(w.id); return <button type="button" key={w.id} className={`chip ${on ? 'on' : ''}`} onClick={() => setS({ ...s, worker_ids: on ? s.worker_ids.filter((x) => x !== w.id) : [...(s.worker_ids || []), w.id] })}>{w.full_name}</button>; })}</div>
           </Field>
           <p className="small muted">نسبة العجز تُعدّل من زر "تعديل" في عمود النسبة لتسجيل التاريخ واسم المدير.</p>
-          <div className="row end"><Btn loading={busy} onClick={saveStage}>حفظ</Btn></div>
+          <div className="hrow end"><Btn loading={busy} onClick={saveStage}>حفظ</Btn></div>
         </>}
       </Modal>
       <Modal open={!!rate} onClose={() => setRate(null)} title={`نسبة العجز الطبيعي - ${rate?.stage.name}`}>
@@ -93,7 +93,7 @@ export default function Stages() {
           <Field label="المراحل بالترتيب (اضغط للإضافة/الإزالة)">
             <div className="chips">{active.map((x) => { const i = route.stage_ids.indexOf(x.id); return <button type="button" key={x.id} className={`chip ${i >= 0 ? 'on' : ''}`} onClick={() => setRoute({ ...route, stage_ids: i >= 0 ? route.stage_ids.filter((y) => y !== x.id) : [...route.stage_ids, x.id] })}>{i >= 0 ? `${i + 1}. ` : ''}{x.name}</button>; })}</div>
           </Field>
-          <div className="row end"><Btn loading={busy} onClick={() => run(async () => { if (route.id) await api.put(`/admin/routes/${route.id}`, route); else await api.post('/admin/routes', route); setRoute(null); reloadRoutes(); }, 'تم الحفظ')}>حفظ</Btn></div>
+          <div className="hrow end"><Btn loading={busy} onClick={() => run(async () => { if (route.id) await api.put(`/admin/routes/${route.id}`, route); else await api.post('/admin/routes', route); setRoute(null); reloadRoutes(); }, 'تم الحفظ')}>حفظ</Btn></div>
         </>}
       </Modal>
     </Page>

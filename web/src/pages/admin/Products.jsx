@@ -51,7 +51,7 @@ export default function Products() {
           <Field label="الصور والفيديو"><input type="file" multiple accept="image/*,video/*" onChange={(e) => setF({ ...f, files: e.target.files })} /></Field>
           {f.media?.length > 0 && <div className="files">{f.media.map((m) => <span key={m.id}><img src={fileUrl(m.path)} alt="" /><button className="link small" onClick={() => setF({ ...f, remove_media: [...(f.remove_media || []), m.id], media: f.media.filter((x) => x.id !== m.id) })}>حذف</button></span>)}</div>}
           <label className="check"><input type="checkbox" checked={f.active !== false} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ظاهر في المتجر</label>
-          <div className="row end"><Btn loading={busy} onClick={save}>حفظ</Btn></div>
+          <div className="hrow end"><Btn loading={busy} onClick={save}>حفظ</Btn></div>
         </>}
       </Modal>
     </Page>

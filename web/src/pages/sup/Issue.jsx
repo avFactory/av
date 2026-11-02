@@ -30,7 +30,7 @@ function checkOrder(o, toast) {
 
 function OrderBadges({ o }) {
   return (
-    <div className="row gap wrap small" style={{ marginTop: 4 }}>
+    <div className="hrow gap wrap small" style={{ marginTop: 4 }}>
       <Badge tone="gold">{o.stage_name}</Badge><Badge>{o.material_name}</Badge><Badge>الكمية {o.quantity}</Badge>
       {Number(o.order_balance) > 0 && <Badge tone="info">رصيد الطلب {fmtW(o.order_balance)} جم</Badge>}
       {o.open_custodies?.length > 0 && <Badge tone="warn">لدى: {o.open_custodies.map((c) => c.full_name).join('، ')}</Badge>}
@@ -81,12 +81,12 @@ function SingleIssue({ sp }) {
   if (done) {
     return (
       <Card>
-        <div className="alert alert-ok mb">سُجلت {done.custodies?.length || ''} عهدة في الجلسة {done.batch_no} للعامل {worker.full_name}{done.duplicate ? ' (مسجلة مسبقاً)' : ''}. أُرسل للعامل إشعار لقبول الاستلام.</div>
-        <div className="row gap wrap">
+        <div className="alert alert-success mb">سُجلت {done.custodies?.length || ''} عهدة في الجلسة {done.batch_no} للعامل {worker.full_name}{done.duplicate ? ' (مسجلة مسبقاً)' : ''}. أُرسل للعامل إشعار لقبول الاستلام.</div>
+        <div className="hrow gap wrap">
           <a className="btn btn-dark btn-lg" href={`/print/batch/${done.batch_id}`} target="_blank" rel="noreferrer">طباعة كشف التسليم</a>
           <Btn size="lg" onClick={() => reset(false)}>تسليم جديد</Btn>
           <Btn size="lg" kind="ghost" onClick={() => reset(true)}>تسليم آخر لنفس العامل</Btn>
-          <Link className="btn btn-ghost btn-lg" to={`/sup/workers/${worker.id}`}>ملف العامل</Link>
+          <Link className="btn btn-outline-secondary btn-lg" to={`/sup/workers/${worker.id}`}>ملف العامل</Link>
         </div>
       </Card>
     );
@@ -98,7 +98,7 @@ function SingleIssue({ sp }) {
       {!worker ? <WorkerPicker onPick={setWorker} /> : (
         <div className="grid">
           <Card>
-            <div className="row between wrap gap">
+            <div className="hrow between wrap gap">
               <div><span className="muted small">المستلم</span><h3>{worker.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{worker.full_name} <span className="muted small">{worker.employee_no}</span></h3></div>
               <Btn kind="ghost" size="sm" onClick={() => setWorker(null)}>تغيير</Btn>
             </div>
@@ -122,7 +122,7 @@ function SingleIssue({ sp }) {
           ))}
           {!items.length && (
             <Card title="أو اختر من الطلبات بانتظار التسليم" pad={false}>
-              <div className="card-b pick-grid">
+              <div className="card-body pick-grid">
                 {(waiting || []).map((o) => (
                   <button key={o.id} className="pick" onClick={() => scan(o.order_no)}>
                     <b>{o.order_no}</b><span className="muted">{o.title}</span><span className="small">{o.stage_name} · {o.material_name}</span>
@@ -136,7 +136,7 @@ function SingleIssue({ sp }) {
           {items.length > 0 && (
             <>
               {(waiting || []).filter((o) => !items.some((i) => i.order.id === o.id)).length > 0 && (
-                <div className="row gap wrap"><span className="muted small">إضافة سريعة:</span>
+                <div className="hrow gap wrap"><span className="muted small">إضافة سريعة:</span>
                   {(waiting || []).filter((o) => !items.some((i) => i.order.id === o.id)).slice(0, 8).map((o) => <button key={o.id} className="chip" onClick={() => scan(o.order_no)}>+ {o.order_no}</button>)}
                 </div>
               )}
@@ -203,19 +203,19 @@ function SplitIssue({ sp }) {
   if (done) {
     return (
       <Card title={`تم تقسيم الطلب ${order.order_no} على ${done.parts.length} عمال`}>
-        <div className="alert alert-ok mb">لكل عامل عهدة مستقلة، وأُرسل لكل منهم إشعار لقبول الاستلام.</div>
+        <div className="alert alert-success mb">لكل عامل عهدة مستقلة، وأُرسل لكل منهم إشعار لقبول الاستلام.</div>
         <div className="grid" style={{ gap: 8 }}>
           {done.parts.map((p) => {
             const w = workers.find((x) => x.id === Number(p.worker_id));
             return (
-              <div key={p.batch_id} className="row between wrap gap line-item">
+              <div key={p.batch_id} className="hrow between wrap gap line-item">
                 <span><b>{w?.full_name}</b> — <span dir="ltr">{fmtW(p.custodies?.[0]?.weight_issued)} جم</span> · {p.custodies?.[0]?.pieces} قطعة</span>
-                <a className="btn btn-ghost btn-sm" href={`/print/batch/${p.batch_id}`} target="_blank" rel="noreferrer">طباعة الكشف</a>
+                <a className="btn btn-outline-secondary btn-sm" href={`/print/batch/${p.batch_id}`} target="_blank" rel="noreferrer">طباعة الكشف</a>
               </div>
             );
           })}
         </div>
-        <div className="row gap wrap mt"><Btn size="lg" onClick={() => { setOrder(null); setParts([]); setDone(null); key.current = newKey(); }}>تقسيم طلب آخر</Btn><Link className="btn btn-ghost btn-lg" to={`/orders/${order.id}`}>فتح الطلب</Link></div>
+        <div className="hrow gap wrap mt"><Btn size="lg" onClick={() => { setOrder(null); setParts([]); setDone(null); key.current = newKey(); }}>تقسيم طلب آخر</Btn><Link className="btn btn-outline-secondary btn-lg" to={`/orders/${order.id}`}>فتح الطلب</Link></div>
       </Card>
     );
   }
@@ -225,7 +225,7 @@ function SplitIssue({ sp }) {
       <div className="grid">
         <ScanInput onScan={(code) => pick({ code })} placeholder="امسح QR الطلب المراد تقسيمه أو اكتب رقمه" />
         <Card title="أو اختر من الطلبات بانتظار التسليم" pad={false}>
-          <div className="card-b pick-grid">
+          <div className="card-body pick-grid">
             {(waiting || []).map((o) => (
               <button key={o.id} className="pick" onClick={() => pick({ id: o.id })}>
                 <b>{o.order_no}</b><span className="muted">{o.title}</span><span className="small">{o.stage_name} · الكمية {o.quantity}</span>
@@ -242,7 +242,7 @@ function SplitIssue({ sp }) {
   return (
     <div className="grid">
       <Card>
-        <div className="row between wrap gap">
+        <div className="hrow between wrap gap">
           <div><b>{order.order_no}</b> <span className="muted">— {order.title}</span><OrderBadges o={order} /></div>
           <Btn kind="ghost" size="sm" onClick={() => setOrder(null)}>تغيير الطلب</Btn>
         </div>
@@ -256,17 +256,17 @@ function SplitIssue({ sp }) {
             </Field>
             <Field label="الوزن (جم)"><WeightInput big value={p.weight} onChange={(v) => upd(i, 'weight', v)} /></Field>
             <Field label="عدد القطع"><Input inputMode="numeric" value={p.pieces} onChange={(e) => upd(i, 'pieces', e.target.value.replace(/\D/g, ''))} /></Field>
-            <div className="row gap"><Input placeholder="ملاحظة" value={p.notes || ''} onChange={(e) => upd(i, 'notes', e.target.value)} />{parts.length > 1 && <Btn kind="ghost" size="sm" onClick={() => setParts(parts.filter((_, j) => j !== i))}>حذف</Btn>}</div>
+            <div className="hrow gap"><Input placeholder="ملاحظة" value={p.notes || ''} onChange={(e) => upd(i, 'notes', e.target.value)} />{parts.length > 1 && <Btn kind="ghost" size="sm" onClick={() => setParts(parts.filter((_, j) => j !== i))}>حذف</Btn>}</div>
           </div>
         </div>
       ))}
-      <div className="row gap wrap">
+      <div className="hrow gap wrap">
         <Btn kind="ghost" onClick={() => setParts([...parts, { worker_id: '', weight: '', pieces: '' }])}>+ إضافة عامل</Btn>
         {balance > 0 && <Btn kind="ghost" onClick={evenSplit}>توزيع رصيد الطلب بالتساوي</Btn>}
       </div>
       <Field label="ملاحظة (اختياري)"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-      {balance > 0 && remaining < 0 && <div className="alert alert-warn small">المجموع يزيد عن رصيد الطلب بـ {fmtW(-remaining, 4)} جم — سيُصرف الفرق تلقائياً من الخزنة.</div>}
-      {totalP > order.quantity && <div className="alert alert-warn small">مجموع القطع ({totalP}) أكبر من كمية الطلب ({order.quantity}).</div>}
+      {balance > 0 && remaining < 0 && <div className="alert alert-warning small">المجموع يزيد عن رصيد الطلب بـ {fmtW(-remaining, 4)} جم — سيُصرف الفرق تلقائياً من الخزنة.</div>}
+      {totalP > order.quantity && <div className="alert alert-warning small">مجموع القطع ({totalP}) أكبر من كمية الطلب ({order.quantity}).</div>}
       <AcceptNote />
       <div className="sticky-foot">
         <Kv items={[['عدد العمال', parts.length], ['المجموع', <span dir="ltr">{fmtW(parts.reduce((s, p) => s + Number(p.weight || 0), 0), 4)} جم</span>],
@@ -304,11 +304,11 @@ function GeneralIssue({ sp }) {
     <div className="grid">
       {done ? (
         <Card>
-          <div className="alert alert-ok mb">سُجلت العهدة العامة {done.custody_no} للعامل {worker.full_name}: {fmtW(f.weight)} جم. أُرسل له إشعار لقبول الاستلام.</div>
-          <div className="row gap wrap">
+          <div className="alert alert-success mb">سُجلت العهدة العامة {done.custody_no} للعامل {worker.full_name}: {fmtW(f.weight)} جم. أُرسل له إشعار لقبول الاستلام.</div>
+          <div className="hrow gap wrap">
             <a className="btn btn-dark btn-lg" href={`/print/batch/${done.batch_id}`} target="_blank" rel="noreferrer">طباعة الكشف</a>
             <Btn size="lg" onClick={reset}>عهدة عامة جديدة</Btn>
-            <Link className="btn btn-ghost btn-lg" to={`/sup/workers/${worker.id}`}>ملف العامل</Link>
+            <Link className="btn btn-outline-secondary btn-lg" to={`/sup/workers/${worker.id}`}>ملف العامل</Link>
           </div>
         </Card>
       ) : !worker ? (
@@ -319,7 +319,7 @@ function GeneralIssue({ sp }) {
       ) : (
         <>
           <Card>
-            <div className="row between wrap gap">
+            <div className="hrow between wrap gap">
               <div><span className="muted small">المستلم</span><h3>{worker.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{worker.full_name} <span className="muted small">{worker.employee_no}</span></h3></div>
               <Btn kind="ghost" size="sm" onClick={() => setWorker(null)}>تغيير</Btn>
             </div>

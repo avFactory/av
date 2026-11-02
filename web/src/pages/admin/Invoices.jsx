@@ -26,7 +26,7 @@ export default function Invoices() {
   const sub = preview?.lines.reduce((s, l) => s + Number(l.amount), 0) || 0;
   return (
     <Page title="الفواتير" subtitle="فواتير أجور التصنيع فقط مع ضريبة القيمة المضافة" actions={<>
-      <a className="btn btn-ghost" href="/api/finance/reports/revenue.xlsx">تصدير Excel</a>
+      <a className="btn btn-outline-secondary" href="/api/finance/reports/revenue.xlsx">تصدير Excel</a>
       {can('invoices.manage') && <Btn onClick={() => setF({ customer_id: '', order_ids: [], extra_lines: [] })}>فاتورة جديدة</Btn>}
     </>}>
       {!data ? <Loader /> : <div className="card"><Table rows={data} onRow={(i) => nav(`/admin/invoices/${i.id}`)} columns={[
@@ -42,7 +42,7 @@ export default function Invoices() {
           </Field>
           <Field label="بنود مستقلة إضافية (ألماس / أحجار / خدمات) - منفصلة عن أجور التصنيع">
             {f.extra_lines.map((l, i) => (
-              <div key={i} className="row gap wrap" style={{ marginBottom: 6 }}>
+              <div key={i} className="hrow gap wrap" style={{ marginBottom: 6 }}>
                 <Select value={l.kind} onChange={(e) => updLine(i, 'kind', e.target.value)} options={[['stones', 'ألماس/أحجار'], ['service', 'خدمة'], ['other', 'أخرى']]} style={{ width: 130 }} />
                 <Input placeholder="الوصف" value={l.description} onChange={(e) => updLine(i, 'description', e.target.value)} style={{ flex: 2, minWidth: 160 }} />
                 <Input placeholder="الكمية" value={l.qty} onChange={(e) => updLine(i, 'qty', e.target.value)} style={{ width: 80 }} />
@@ -57,10 +57,10 @@ export default function Invoices() {
           {preview && (
             <div>
               <Table rows={preview.lines} columns={[['البند', 'description'], ['الكمية', 'qty'], ['الوحدة', 'unit'], ['السعر', (l) => fmtMoney(l.unit_price)], ['المبلغ', (l) => fmtMoney(l.amount)]]} />
-              <div className="row gap end mt"><span>المجموع {fmtMoney(sub)}</span><span>الضريبة {vat}% ≈ {fmtMoney(sub * vat / 100)}</span><b>الإجمالي ≈ {fmtMoney(sub * (1 + vat / 100))}</b></div>
+              <div className="hrow gap end mt"><span>المجموع {fmtMoney(sub)}</span><span>الضريبة {vat}% ≈ {fmtMoney(sub * vat / 100)}</span><b>الإجمالي ≈ {fmtMoney(sub * (1 + vat / 100))}</b></div>
             </div>
           )}
-          <div className="row gap end">
+          <div className="hrow gap end">
             <Btn kind="ghost" loading={busy} onClick={() => run(async () => setPreview(await api.post('/finance/invoices/preview', f)))}>معاينة</Btn>
             <Btn loading={busy} disabled={!preview} onClick={() => run(async () => { const inv = await api.post('/finance/invoices', f); setF(null); reload(); nav(`/admin/invoices/${inv.id}`); }, 'صدرت الفاتورة')}>إصدار الفاتورة</Btn>
           </div>

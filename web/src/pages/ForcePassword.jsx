@@ -24,7 +24,7 @@ export default function ForcePassword() {
         <img src="/logo.png" alt="AV" className="login-logo" />
         <h1>مرحباً {me.full_name}</h1>
         <p className="muted">لحماية عهدتك وتوقيعك، اختر كلمة مرور خاصة بك لا يعرفها غيرك.</p>
-        {err && <div className="alert alert-bad">{err}</div>}
+        {err && <div className="alert alert-danger">{err}</div>}
         <Field label="كلمة المرور الحالية (التي أعطتك إياها الإدارة)"><Input type="password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} dir="ltr" autoFocus autoComplete="current-password" /></Field>
         <Field label="كلمة المرور الجديدة (8 أحرف على الأقل)"><Input type="password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} dir="ltr" autoComplete="new-password" /></Field>
         <Field label="تأكيد كلمة المرور الجديدة"><Input type="password" value={f.confirm} onChange={(e) => setF({ ...f, confirm: e.target.value })} dir="ltr" autoComplete="new-password" /></Field>

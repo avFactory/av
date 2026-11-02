@@ -16,10 +16,10 @@ export default function Orders() {
   const [sel, setSel] = useState([]);
   return (
     <Page title="الطلبات وأوامر الإنتاج" actions={<>
-      {sel.length > 0 && <a className="btn btn-ghost" href={`/print/labels?auto=1&ids=${sel.join(',')}`} target="_blank" rel="noreferrer">طباعة ملصقات ({sel.length})</a>}
+      {sel.length > 0 && <a className="btn btn-outline-secondary" href={`/print/labels?auto=1&ids=${sel.join(',')}`} target="_blank" rel="noreferrer">طباعة ملصقات ({sel.length})</a>}
       {can('orders.manage') && <LinkBtn to="/orders/new" kind="primary">طلب تصنيع جديد</LinkBtn>}
     </>}>
-      <div className="row gap wrap mb">
+      <div className="hrow gap wrap mb">
         <Search value={q} onChange={setQ} placeholder="رقم الطلب، الوصف، المحل" />
         <Select value={f.status} onChange={(e) => set('status', e.target.value)} placeholder="كل الحالات" options={Object.entries(STATUS).map(([k, v]) => [k, v[0]])} style={{ width: 180 }} />
         <Select value={f.stage_id} onChange={(e) => set('stage_id', e.target.value)} placeholder="كل المراحل" options={(lookups?.stages || []).map((s) => [s.id, s.name])} style={{ width: 200 }} />

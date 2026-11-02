@@ -70,7 +70,7 @@ export default function Stones() {
     <Page title="مخزون الألماس والأحجار" subtitle="مصنّف حسب القصّة · الوزن بالقيراط · كل حركة مرتبطة بطلب وعامل ومرحلة"
       actions={<>
         {can('stones.manage') && <Btn kind="ghost" onClick={() => setImp({ step: 1 })}>استيراد من Excel</Btn>}
-        <a className="btn btn-ghost" href="/api/stones/inventory.xlsx">تصدير Excel</a>
+        <a className="btn btn-outline-secondary" href="/api/stones/inventory.xlsx">تصدير Excel</a>
         {can('stones.manage') && <Btn kind="ghost" onClick={() => setShapesOpen(true)}>التصنيفات</Btn>}
         {can('stones.manage') && <Btn onClick={() => setNewItem({ shape_id: shapes[0]?.id, stone_type: 'ألماس' })}>صنف جديد</Btn>}
       </>}>
@@ -89,7 +89,7 @@ export default function Stones() {
           </button>
         ))}
       </div>
-      <div className="row gap wrap mb">
+      <div className="hrow gap wrap mb">
         <Search value={q} onChange={setQ} placeholder="ابحث بالمقاس أو النوع أو رقم الصنف…" />
         <label className="check"><input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} /> إخفاء الأصناف المنتهية</label>
       </div>
@@ -102,7 +102,7 @@ export default function Stones() {
           return (
             <section key={g.shape.id} className="shape-group">
               <header>
-                <div className="row gap"><span className="shape-ic"><ShapeIcon icon={g.shape.icon} /></span>
+                <div className="hrow gap"><span className="shape-ic"><ShapeIcon icon={g.shape.icon} /></span>
                   <div><h3>{g.shape.name}</h3><span className="muted small">{g.items.length} صنف{g.workers ? ` · ${ct(g.workers)} قيراط لدى العمال` : ''}</span></div>
                 </div>
                 <div className="shape-total"><b dir="ltr">{ct(g.total)}</b> <span>قيراط</span><div className="share"><div style={{ width: `${share}%` }} /></div><small>{share.toFixed(1)}% من المخزون</small></div>
@@ -155,7 +155,7 @@ function LotModal({ lot, onClose, can, onMove, onEdit, onReverse }) {
         <div className="stone-stat"><span>مستخدم في الطلبات</span><b dir="ltr">{ct(l.used_carats)}</b><small>قيراط</small></div>
       </div>
       <Kv items={[['النوع', l.stone_type], ['اللون', l.color], ['النقاء', l.clarity], ['الشهادة', l.certificate_no], ['حد التنبيه', l.min_carats ? `${ct(l.min_carats)} قيراط` : '—'], ['السعر', l.unit_price ? fmtMoney(l.unit_price) : '—'], ['ملاحظات', l.notes]]} />
-      {can('stones.manage') && <div className="row gap"><Btn onClick={() => onMove(l)}>تسجيل حركة</Btn><Btn kind="ghost" onClick={() => onEdit(l)}>تعديل البيانات</Btn></div>}
+      {can('stones.manage') && <div className="hrow gap"><Btn onClick={() => onMove(l)}>تسجيل حركة</Btn><Btn kind="ghost" onClick={() => onEdit(l)}>تعديل البيانات</Btn></div>}
       {lot.media.length > 0 && <div className="files">{lot.media.map((m) => <a key={m.id} href={fileUrl(m.path)} target="_blank" rel="noreferrer"><img src={fileUrl(m.path)} alt="" /></a>)}</div>}
       <Table rows={lot.movements} empty="لا توجد حركات" rowClass={(m) => (m.reversed ? 'row-warn' : '')} columns={[['الحركة', (m) => MK[m.kind]], ['قيراط', (m) => <span className="n">{ct(m.carats)}</span>], ['العدد', 'count'], ['الطلب', 'order_no'], ['العامل', 'worker_name'], ['ملاحظة', 'note'], ['بواسطة', 'user_name'], ['التاريخ', (m) => fmtDT(m.created_at)],
         ['', (m) => can('stones.manage') && m.kind !== 'reversal' && !m.reversed && <Btn size="sm" kind="ghost" onClick={() => onReverse(m)}>عكس</Btn>]]} />
@@ -204,7 +204,7 @@ function ItemModal({ title, item, setItem, shapes, busy, onSave, isNew }) {
       {isNew && <Field label="الصور والشهادة"><input type="file" multiple onChange={(e) => setItem({ ...item, files: e.target.files })} /></Field>}
       <Field label="ملاحظات"><Textarea value={item.notes || ''} onChange={set('notes')} /></Field>
       {!isNew && <p className="small muted">تعديل البيانات لا يغير الرصيد. الرصيد يتغير بالحركات فقط (إضافة، تسليم، تسوية جرد...).</p>}
-      <div className="row end"><Btn loading={busy} onClick={onSave}>حفظ</Btn></div>
+      <div className="hrow end"><Btn loading={busy} onClick={onSave}>حفظ</Btn></div>
     </Modal>
   );
 }
@@ -236,7 +236,7 @@ function ImportModal({ imp, setImp, shapes, busy, run, onDone }) {
           <div className="stone-stat"><span>أصناف جديدة</span><b>{totals.create}</b><small>ستُنشأ</small></div>
           <div className="stone-stat"><span>أصناف موجودة بفرق</span><b>{totals.adjust}</b><small>تسوية جرد</small></div>
         </div>
-        <div className="alert alert-warn small">راجع الأرقام مقابل ملفك الأصلي. إن صُنِّف صنف خطأً غيّر تصنيفه من القائمة.</div>
+        <div className="alert alert-warning small">راجع الأرقام مقابل ملفك الأصلي. إن صُنِّف صنف خطأً غيّر تصنيفه من القائمة.</div>
         <Table rows={imp.plan.map((p, i) => ({ ...p, i }))} columns={[
           ['الاسم في الملف', 'name'], ['التصنيف', (p) => <Select value={p.shape} onChange={(e) => changeShape(p.i, e.target.value)} options={shapes.map((s) => [s.name, s.name])} style={{ minWidth: 110 }} />],
           ['المقاس', (p) => <span dir="ltr">{p.size_label || '—'}</span>], ['الحالي', (p) => <span className="n">{ct(p.current)}</span>], ['الرصيد الجديد', (p) => <b className="n">{ct(p.target)}</b>],
@@ -244,7 +244,7 @@ function ImportModal({ imp, setImp, shapes, busy, run, onDone }) {
           ['الإجراء', (p) => <Badge tone={p.action === 'create' ? 'info' : p.action === 'adjust' ? 'warn' : 'muted'}>{{ create: 'صنف جديد', adjust: 'تسوية', none: 'بدون تغيير' }[p.action]}</Badge>],
         ]} />
         <Field label="البيان (يسجل على الحركات)"><Input value={imp.note} onChange={(e) => setImp({ ...imp, note: e.target.value })} /></Field>
-        <div className="row gap end">
+        <div className="hrow gap end">
           <Btn kind="ghost" onClick={() => setImp({ step: 1 })}>ملف آخر</Btn>
           <Btn loading={busy} onClick={() => run(async () => { const r = await api.post('/stones/import/commit', { rows: imp.rows, note: imp.note }); setImp(null); onDone(); return r; }, 'تم اعتماد المخزون')}>اعتماد الاستيراد</Btn>
         </div>
@@ -268,8 +268,8 @@ function ShapesModal({ open, onClose, shapes, busy, run, reload }) {
         ['الترتيب', (s) => <Input style={{ width: 70 }} inputMode="numeric" value={s.sort_order} onChange={(e) => upd(list.indexOf(s), 'sort_order', e.target.value)} />],
         ['الأصناف', 'items'], ['فعال', (s) => <input type="checkbox" checked={s.active} onChange={(e) => upd(list.indexOf(s), 'active', e.target.checked)} />],
       ]} />
-      <div className="row gap end"><Btn loading={busy} disabled={!list.some((s) => s.dirty)} onClick={() => run(async () => { for (const s of list.filter((x) => x.dirty)) await api.put(`/stones/shapes/${s.id}`, s); setRows(null); reload(); }, 'تم الحفظ')}>حفظ التعديلات</Btn></div>
-      <div className="row gap wrap" style={{ alignItems: 'flex-end' }}>
+      <div className="hrow gap end"><Btn loading={busy} disabled={!list.some((s) => s.dirty)} onClick={() => run(async () => { for (const s of list.filter((x) => x.dirty)) await api.put(`/stones/shapes/${s.id}`, s); setRows(null); reload(); }, 'تم الحفظ')}>حفظ التعديلات</Btn></div>
+      <div className="hrow gap wrap" style={{ alignItems: 'flex-end' }}>
         <Field label="تصنيف جديد"><Input value={nw.name} onChange={(e) => setNw({ ...nw, name: e.target.value })} placeholder="مثال: برنسيس" /></Field>
         <Field label="الشكل"><Select value={nw.icon} onChange={(e) => setNw({ ...nw, icon: e.target.value })} options={ICONS} /></Field>
         <Btn kind="ghost" disabled={!nw.name} onClick={() => run(async () => { await api.post('/stones/shapes', nw); setNw({ name: '', icon: 'round' }); setRows(null); reload(); }, 'تمت الإضافة')}>إضافة</Btn>

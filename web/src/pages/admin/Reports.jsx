@@ -17,7 +17,7 @@ export default function Reports() {
       <Field label="من"><Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} /></Field>
       <Field label="إلى"><Input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} /></Field>
       {isLoss && <a className="btn btn-dark" style={{ alignSelf: 'end' }} href={`/api/reports/losses/${tab}.xlsx${qs(range)}`}>Excel</a>}
-      <button className="btn btn-ghost" style={{ alignSelf: 'end' }} onClick={() => window.print()}>طباعة</button>
+      <button className="btn btn-outline-secondary" style={{ alignSelf: 'end' }} onClick={() => window.print()}>طباعة</button>
     </>}>
       <Tabs value={tab} onChange={setTab} tabs={tabs} />
       {!data ? <Loader /> : isLoss ? (
@@ -26,7 +26,7 @@ export default function Reports() {
           ['البقايا', (r) => <span className="n">{fmtW(r.scrap)}</span>], ['العجز الفعلي', (r) => <span className="n">{fmtW(r.actual_loss)}</span>], ['طبيعي', (r) => <span className="n">{fmtW(r.normal_loss)}</span>],
           ['غير طبيعي', (r) => <b className="n" style={{ color: Number(r.abnormal_loss) ? 'var(--bad)' : undefined }}>{fmtW(r.abnormal_loss)}</b>], ['مسترد', (r) => <span className="n">{fmtW(r.recovered)}</span>],
           ['نسبة العجز', (r) => fmtPct(r.loss_pct)], ['حالات مفتوحة', 'open_cases'], ['مسؤولية العامل (بعد تحقيق)', 'worker_responsible'],
-        ]} /><div className="card-b small muted">العجز غير الطبيعي لا يعني تلقائياً مسؤولية العامل؛ المسؤولية تحدد فقط بنتيجة التحقيق.</div></div>
+        ]} /><div className="card-body small muted">العجز غير الطبيعي لا يعني تلقائياً مسؤولية العامل؛ المسؤولية تحدد فقط بنتيجة التحقيق.</div></div>
       ) : tab === 'perf' ? (
         <div className="card"><Table rows={data} columns={[['العامل', (r) => <b>{r.full_name}</b>], ['الرقم', 'employee_no'], ['القسم', 'department'], ['مراحل منجزة', 'completed'], ['جارية', 'open'], ['وزن معالج', (r) => fmtW(r.weight_processed)], ['عجز غير طبيعي', (r) => fmtW(r.abnormal_loss)], ['نسبة العجز', (r) => fmtPct(r.loss_pct)], ['متوسط المدة (س)', 'avg_hours'], ['متأخرة', 'late_count']]} /></div>
       ) : (

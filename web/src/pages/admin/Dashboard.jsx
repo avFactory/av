@@ -39,7 +39,7 @@ export default function Dashboard() {
       <div className="grid g2">
         <Card title="الطلبات حسب المرحلة">
           {s.byStage.map((x) => (
-            <div key={x.name} className="row gap small" style={{ marginBottom: 6 }}>
+            <div key={x.name} className="hrow gap small" style={{ marginBottom: 6 }}>
               <span style={{ width: 160 }}>{x.name}</span>
               <div className="progress grow"><div style={{ width: `${(100 * x.n) / maxStage}%` }} /></div>
               <b style={{ width: 30, textAlign: 'left' }}>{x.n}</b>
@@ -48,7 +48,7 @@ export default function Dashboard() {
         </Card>
         <Card title="توزيع الذهب حسب المادة والموقع" pad={false}>
           <Table rows={Object.entries(mats).map(([name, v]) => ({ name, ...v }))} columns={[['المادة', 'name'], ...['vault', 'order', 'worker', 'scrap', 'finished', 'loss_suspense'].map((k) => [LOCS[k], (r) => <span className="n">{fmtW(r[k] || 0)}</span>])]} />
-          <div className="card-b"><Link to="/admin/inventory?tab=rec" className="link">مطابقة الأرصدة ←</Link></div>
+          <div className="card-body"><Link to="/admin/inventory?tab=rec" className="link">مطابقة الأرصدة ←</Link></div>
         </Card>
       </div>
     </div>

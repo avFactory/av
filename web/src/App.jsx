@@ -61,7 +61,7 @@ function Guard({ perms, children }) {
   const loc = useLocation();
   if (me === undefined) return <Loader />;
   if (!me) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
-  if (perms && !can(...perms)) return <div className="page"><div className="alert alert-bad">ليست لديك صلاحية لعرض هذه الصفحة</div></div>;
+  if (perms && !can(...perms)) return <div className="page"><div className="alert alert-danger">ليست لديك صلاحية لعرض هذه الصفحة</div></div>;
   return children;
 }
 

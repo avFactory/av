@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#111111" />
+    <script>
+      // الوضع الليلي يتبع إعداد الجهاز (Bootstrap data-bs-theme)
+      (function () {
+        var m = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+        var set = function () { document.documentElement.setAttribute('data-bs-theme', m && m.matches ? 'dark' : 'light'); };
+        set(); if (m && m.addEventListener) m.addEventListener('change', set);
+      })();
+    </script>
     <title>مصنع AV للمجوهرات</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

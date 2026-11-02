@@ -42,7 +42,7 @@ export default function Inventory() {
       {tab === 'rec' && <Reconciliation />}
       {tab === 'items' && <Items />}
       {tab === 'products' && <ProductsStock />}
-      {tab === 'moves' && <div className="card card-b"><Link className="link" to="/sup/log">فتح سجل حركات الذهب الكامل مع التصفية والتصدير ←</Link></div>}
+      {tab === 'moves' && <div className="card card-body"><Link className="link" to="/sup/log">فتح سجل حركات الذهب الكامل مع التصفية والتصدير ←</Link></div>}
 
       <Modal open={m?.type === 'worker'} onClose={() => setM(null)} title="تحويل ذهب من الخزنة إلى عامل (عهدة عامة)">
         {m?.type === 'worker' && <>
@@ -106,7 +106,7 @@ function Counts({ mats }) {
     <div className="grid">
       {can('inventory.manage') && (
         <Card title="جرد جديد">
-          <div className="row gap wrap" style={{ alignItems: 'flex-end' }}>
+          <div className="hrow gap wrap" style={{ alignItems: 'flex-end' }}>
             <Field label="النوع"><Select value={f.target} onChange={(e) => setF({ target: e.target.value })} options={[['gold', 'ذهب الخزنة'], ['item', 'صنف مخزون']]} /></Field>
             {f.target === 'gold' ? <Field label="المادة"><Select value={f.material_id || ''} onChange={(e) => setF({ ...f, material_id: e.target.value })} placeholder="—" options={mats.map((x) => [x.id, x.name])} /></Field>
               : <Field label="الصنف"><Select value={f.item_id || ''} onChange={(e) => setF({ ...f, item_id: e.target.value })} placeholder="—" options={(items || []).map((x) => [x.id, x.name])} /></Field>}
@@ -119,7 +119,7 @@ function Counts({ mats }) {
       <div className="card"><Table rows={data} columns={[['الرقم', 'count_no'], ['البند', (c) => c.material_name || c.item_name], ['رصيد النظام', (c) => <span className="n">{fmtW(c.system_qty)}</span>], ['الفعلي', (c) => <span className="n">{fmtW(c.counted_qty)}</span>],
         ['الفرق', (c) => <b className="n" style={{ color: Number(c.difference) ? 'var(--bad)' : 'var(--ok)' }}>{fmtW(c.difference)}</b>], ['الحالة', (c) => <Badge tone={c.status === 'approved' ? 'ok' : c.status === 'pending' ? 'warn' : 'bad'}>{{ approved: 'معتمد', pending: 'بانتظار الاعتماد', rejected: 'مرفوض' }[c.status]}</Badge>],
         ['بواسطة', 'counted_by_name'], ['التاريخ', (c) => fmtDT(c.created_at)],
-        ['', (c) => c.status === 'pending' && can('stocktake.approve') && <div className="row gap"><Btn size="sm" kind="ok" onClick={() => run(async () => { await api.post(`/inventory/counts/${c.id}/approve`, {}); reload(); }, 'اعتمدت التسوية')}>اعتماد</Btn><Btn size="sm" kind="ghost" onClick={() => run(async () => { await api.post(`/inventory/counts/${c.id}/reject`, {}); reload(); })}>رفض</Btn></div>]]} /></div>
+        ['', (c) => c.status === 'pending' && can('stocktake.approve') && <div className="hrow gap"><Btn size="sm" kind="ok" onClick={() => run(async () => { await api.post(`/inventory/counts/${c.id}/approve`, {}); reload(); }, 'اعتمدت التسوية')}>اعتماد</Btn><Btn size="sm" kind="ghost" onClick={() => run(async () => { await api.post(`/inventory/counts/${c.id}/reject`, {}); reload(); })}>رفض</Btn></div>]]} /></div>
     </div>
   );
 }
@@ -131,7 +131,7 @@ function Reconciliation() {
   const L = { vault: 'الخزنة', orders: 'تحت التشغيل', workers: 'لدى العمال', scrap: 'بقايا', finished: 'جاهز', loss_normal: 'عجز طبيعي', loss_abnormal: 'عجز غير طبيعي', loss_suspense: 'معلق', delivered: 'مسلم', variance: 'فروقات' };
   return (
     <div className="grid">
-      <div className={`alert ${data.ok ? 'alert-ok' : 'alert-bad'}`}>{data.ok ? 'الأرصدة متطابقة: كل جرام له موقع معروف، وعهد العمال تطابق دفتر الحركات.' : 'يوجد عدم تطابق - راجع التفاصيل أدناه'}</div>
+      <div className={`alert ${data.ok ? 'alert-success' : 'alert-danger'}`}>{data.ok ? 'الأرصدة متطابقة: كل جرام له موقع معروف، وعهد العمال تطابق دفتر الحركات.' : 'يوجد عدم تطابق - راجع التفاصيل أدناه'}</div>
       <Card title="المعادلة لكل مادة: صافي الوارد = الخزنة + تحت التشغيل + لدى العمال + البقايا + الجاهز + الفقد + المسلم ± الفروقات" pad={false}>
         <Table rows={data.perMaterial.filter((m) => Number(m.net_in) || Number(m.vault))} columns={[['المادة', 'name'], ['صافي الوارد', (m) => <b className="n">{fmtW(m.net_in)}</b>], ...cols.map((k) => [L[k], (m) => <span className="n">{fmtW(m[k])}</span>]),
           ['التطابق', (m) => (Number(m.ledger_sum) === 0 ? <Badge tone="ok">✓</Badge> : <Badge tone="bad">✗</Badge>)]]} />
@@ -139,7 +139,7 @@ function Reconciliation() {
       <Card title="عهد العمال: رصيد الدفتر مقابل العهد المفتوحة" pad={false}>
         <Table rows={data.workerCheck} empty="لا توجد عهد مفتوحة" columns={[['العامل', 'full_name'], ['المادة', 'material'], ['رصيد الدفتر', (w) => <span className="n">{fmtW(w.ledger)}</span>], ['مجموع العهد', (w) => <span className="n">{fmtW(w.custodies)}</span>], ['', (w) => (w.ok ? <Badge tone="ok">متطابق</Badge> : <Badge tone="bad">غير متطابق</Badge>)]]} />
       </Card>
-      {data.negatives.length > 0 && <div className="alert alert-bad">أرصدة سالبة: {data.negatives.map((n) => `${n.loc_type} ${n.name} ${n.balance}`).join('، ')}</div>}
+      {data.negatives.length > 0 && <div className="alert alert-danger">أرصدة سالبة: {data.negatives.map((n) => `${n.loc_type} ${n.name} ${n.balance}`).join('، ')}</div>}
     </div>
   );
 }
@@ -153,9 +153,9 @@ function Items() {
   const [run, busy] = useAction();
   return (
     <>
-      {can('inventory.manage') && <div className="row end mb"><Btn onClick={() => setF({ category: 'raw', unit: 'قطعة' })}>صنف جديد</Btn></div>}
+      {can('inventory.manage') && <div className="hrow end mb"><Btn onClick={() => setF({ category: 'raw', unit: 'قطعة' })}>صنف جديد</Btn></div>}
       <div className="card"><Table rows={data} empty="لا توجد أصناف" rowClass={(i) => (i.low ? 'row-warn' : '')} columns={[['الرمز', 'sku'], ['الصنف', (i) => <b>{i.name}</b>], ['التصنيف', (i) => CATS.find((c) => c[0] === i.category)?.[1]], ['الرصيد', (i) => <span className="n">{i.qty} {i.unit}</span>], ['حد الطلب', 'min_qty'],
-        ['', (i) => <div className="row gap">{can('inventory.manage') && <Btn size="sm" kind="ghost" onClick={() => setMv({ item: i, kind: 'in' })}>حركة</Btn>}<Btn size="sm" kind="ghost" onClick={() => run(async () => setHist({ item: i, rows: await api.get(`/inventory/items/${i.id}/movements`) }))}>السجل</Btn></div>]]} /></div>
+        ['', (i) => <div className="hrow gap">{can('inventory.manage') && <Btn size="sm" kind="ghost" onClick={() => setMv({ item: i, kind: 'in' })}>حركة</Btn>}<Btn size="sm" kind="ghost" onClick={() => run(async () => setHist({ item: i, rows: await api.get(`/inventory/items/${i.id}/movements`) }))}>السجل</Btn></div>]]} /></div>
       <Modal open={!!f} onClose={() => setF(null)} title="صنف جديد">
         {f && <>
           <Field label="الاسم"><Input value={f.name || ''} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>

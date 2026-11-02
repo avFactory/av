@@ -40,7 +40,7 @@ export default function NewOrder() {
           </div>
           <p className="small muted mt">قيمة الذهب خارج حسابات المصنع - تُحتسب أجور التصنيع فقط.</p>
         </Card>
-        <div className="row end"><Btn size="lg" type="submit" loading={busy}>إنشاء وتحويل لأمر إنتاج</Btn></div>
+        <div className="hrow end"><Btn size="lg" type="submit" loading={busy}>إنشاء وتحويل لأمر إنتاج</Btn></div>
       </form>
     </Page>
   );

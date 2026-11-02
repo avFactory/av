@@ -59,9 +59,9 @@ export default function WorkerProfile() {
       {tab === 'open' && (
         <div className="grid">
           <div className="card"><Table rows={open} empty="لا توجد عهدة مفتوحة" rowClass={(c) => (c.late ? 'row-warn' : '')} columns={[...cols,
-            ['', (c) => <div className="row gap">
+            ['', (c) => <div className="hrow gap">
               {can('custody.receive') && <LinkBtn size="sm" kind="dark" to={`/sup/receive?worker=${w.id}`}>استلام</LinkBtn>}
-              {can('custody.reverse') && <button className="btn btn-ghost btn-sm" onClick={() => setRev(c.id)}>إلغاء تسليم خاطئ</button>}
+              {can('custody.reverse') && <button className="btn btn-outline-secondary btn-sm" onClick={() => setRev(c.id)}>إلغاء تسليم خاطئ</button>}
             </div>]]} /></div>
           {assigned.length > 0 && <Card title="مسندة إليه بدون ذهب بعد" pad={false}><Table rows={assigned} columns={[['الطلب', (o) => <Link className="link" to={`/orders/${o.id}`}>{o.order_no}</Link>], ['الوصف', 'title'], ['المرحلة', 'stage_name'],
             ['', (o) => can('custody.issue') && <LinkBtn size="sm" kind="primary" to={`/sup/issue?worker=${w.id}&order=${o.id}`}>تسليم</LinkBtn>]]} /></Card>}

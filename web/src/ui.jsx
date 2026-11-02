@@ -69,8 +69,12 @@ export function ToastProvider({ children }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="toasts" role="status" aria-live="polite">
-        {items.map((t) => <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>)}
+      <div className="toast-container position-fixed bottom-0 end-0 p-3 toasts" role="status" aria-live="polite">
+        {items.map((t) => (
+          <div key={t.id} className={`toast show border-0 shadow ${t.type === 'bad' ? 'text-bg-danger' : t.type === 'ok' ? 'text-bg-success' : 'text-bg-dark'}`}>
+            <div className="toast-body fw-semibold">{t.msg}</div>
+          </div>
+        ))}
       </div>
     </ToastCtx.Provider>
   );
@@ -97,20 +101,24 @@ export function useAction() {
 }
 
 // ------------------------------------------------------------- عناصر أساسية
+// تحويل أنواع الأزرار إلى أصناف Bootstrap
+const BTN = { primary: 'btn-primary', dark: 'btn-dark', ghost: 'btn-outline-secondary', danger: 'btn-danger', ok: 'btn-success' };
+const BSIZE = { sm: 'btn-sm', lg: 'btn-lg', xl: 'btn-lg btn-xl' };
+const btnCls = (kind, size) => `btn ${BTN[kind] || `btn-${kind}`} ${BSIZE[size] || ''} d-inline-flex align-items-center justify-content-center gap-2`;
 export function Btn({ kind = 'primary', size, className = '', loading, children, ...p }) {
   return (
-    <button className={`btn btn-${kind} ${size ? 'btn-' + size : ''} ${className}`} disabled={loading || p.disabled} {...p}>
-      {loading ? <span className="spin" /> : null}{children}
+    <button className={`${btnCls(kind, size)} ${className}`} disabled={loading || p.disabled} {...p}>
+      {loading ? <span className="spinner-border spinner-border-sm" /> : null}{children}
     </button>
   );
 }
-export const LinkBtn = ({ to, kind = 'ghost', size, children, className = '' }) => <Link to={to} className={`btn btn-${kind} ${size ? 'btn-' + size : ''} ${className}`}>{children}</Link>;
+export const LinkBtn = ({ to, kind = 'ghost', size, children, className = '' }) => <Link to={to} className={`${btnCls(kind, size)} ${className}`}>{children}</Link>;
 
 export function Card({ title, actions, children, className = '', pad = true }) {
   return (
-    <section className={`card ${className}`}>
-      {(title || actions) && <header className="card-h"><h3>{title}</h3><div className="row gap">{actions}</div></header>}
-      <div className={pad ? 'card-b' : ''}>{children}</div>
+    <section className={`card shadow-sm ${className}`}>
+      {(title || actions) && <header className="card-header bg-transparent d-flex flex-wrap gap-2 justify-content-between align-items-center py-3"><h3 className="h6 fw-bold mb-0">{title}</h3><div className="d-flex flex-wrap align-items-center gap-2">{actions}</div></header>}
+      <div className={pad ? 'card-body' : ''}>{children}</div>
     </section>
   );
 }
@@ -118,19 +126,19 @@ export function Card({ title, actions, children, className = '', pad = true }) {
 export function Field({ label, hint, error, children, className = '' }) {
   return (
     <label className={`field ${className}`}>
-      {label && <span className="field-l">{label}</span>}
+      {label && <span className="form-label mb-0 field-l">{label}</span>}
       {children}
-      {hint && <span className="field-h">{hint}</span>}
-      {error && <span className="field-e">{error}</span>}
+      {hint && <span className="form-text mt-0">{hint}</span>}
+      {error && <span className="invalid-feedback d-block">{error}</span>}
     </label>
   );
 }
 
-export const Input = (p) => <input className="input" {...p} />;
-export const Textarea = (p) => <textarea className="input" rows={3} {...p} />;
+export const Input = (p) => <input className="form-control" {...p} />;
+export const Textarea = (p) => <textarea className="form-control" rows={3} {...p} />;
 export function Select({ options, placeholder, ...p }) {
   return (
-    <select className="input" {...p}>
+    <select className="form-select" {...p}>
       {placeholder !== undefined && <option value="">{placeholder}</option>}
       {options.map((o) => (Array.isArray(o) ? <option key={o[0]} value={o[0]}>{o[1]}</option> : <option key={o.value} value={o.value}>{o.label}</option>))}
     </select>
@@ -140,12 +148,14 @@ export function Select({ options, placeholder, ...p }) {
 /** حقل وزن: لوحة أرقام على الجوال، يقبل الأرقام العربية */
 export function WeightInput({ value, onChange, big, ...p }) {
   return (
-    <input className={`input weight ${big ? 'weight-big' : ''}`} inputMode="decimal" autoComplete="off" dir="ltr" placeholder="0.000"
+    <input className={`form-control weight ${big ? 'weight-big' : ''}`} inputMode="decimal" autoComplete="off" dir="ltr" placeholder="0.000"
       value={value} onChange={(e) => onChange(e.target.value.replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace('٫', '.').replace(/[^\d.]/g, ''))} {...p} />
   );
 }
 
-export const Badge = ({ tone = 'muted', children }) => <span className={`badge badge-${tone}`}>{children}</span>;
+const BADGE = { ok: 'bg-success-subtle text-success-emphasis', warn: 'bg-warning-subtle text-warning-emphasis', bad: 'bg-danger-subtle text-danger-emphasis',
+  info: 'bg-info-subtle text-info-emphasis', gold: 'badge-gold', muted: 'bg-body-secondary text-body-secondary border' };
+export const Badge = ({ tone = 'muted', children }) => <span className={`badge rounded-pill fw-semibold ${BADGE[tone] || BADGE.muted}`}>{children}</span>;
 export function StatusBadge({ map, value }) {
   const [label, tone] = map[value] || [value, 'muted'];
   return <Badge tone={tone}>{label}</Badge>;
@@ -155,20 +165,20 @@ export function TierBadge({ name, color }) {
   if (!name) return <span className="muted">—</span>;
   return <span className={`tier tier-${color || 'other'}`}>{color === 'gold' ? '★ ' : color === 'silver' ? '☆ ' : ''}{name}</span>;
 }
-export const Empty = ({ children = 'لا توجد بيانات' }) => <div className="empty">{children}</div>;
-export const Loader = () => <div className="loader"><span className="spin" /> جارٍ التحميل…</div>;
-export function ErrorBox({ error }) { return error ? <div className="alert alert-bad">{error.message}</div> : null; }
+export const Empty = ({ children = 'لا توجد بيانات' }) => <div className="empty text-center text-body-secondary py-5">{children}</div>;
+export const Loader = () => <div className="loader d-flex justify-content-center align-items-center gap-2 py-5 text-body-secondary"><span className="spinner-border spinner-border-sm text-primary" /> جارٍ التحميل…</div>;
+export function ErrorBox({ error }) { return error ? <div className="alert alert-danger">{error.message}</div> : null; }
 
 export function Page({ title, subtitle, actions, children, back }) {
   return (
-    <div className="page">
+    <div className="page container-fluid">
       <div className="page-h">
         <div>
           {back && <Link to={back} className="back">→ رجوع</Link>}
           <h1>{title}</h1>
-          {subtitle && <p className="muted">{subtitle}</p>}
+          {subtitle && <p className="text-body-secondary mb-0">{subtitle}</p>}
         </div>
-        <div className="row gap wrap no-print">{actions}</div>
+        <div className="hrow gap wrap no-print">{actions}</div>
       </div>
       {children}
     </div>
@@ -184,12 +194,17 @@ export function Modal({ open, onClose, title, children, wide }) {
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="modal-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
-      <div className={`modal ${wide ? 'modal-wide' : ''}`} role="dialog" aria-modal="true">
-        <header className="modal-h"><h3>{title}</h3><button className="x" onClick={onClose} aria-label="إغلاق">×</button></header>
-        <div className="modal-b">{children}</div>
+    <>
+      <div className="modal d-block" tabIndex={-1} role="dialog" aria-modal="true" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+        <div className={`modal-dialog modal-dialog-centered modal-dialog-scrollable ${wide ? 'modal-xl' : ''}`}>
+          <div className="modal-content border-0 shadow-lg">
+            <div className="modal-header"><h5 className="modal-title fw-bold">{title}</h5><button type="button" className="btn-close ms-0 me-auto" onClick={onClose} aria-label="إغلاق" /></div>
+            <div className="modal-body d-grid gap-3">{children}</div>
+          </div>
+        </div>
       </div>
-    </div>
+      <div className="modal-backdrop fade show" />
+    </>
   );
 }
 
@@ -197,8 +212,8 @@ export function Modal({ open, onClose, title, children, wide }) {
 export function Table({ columns, rows, onRow, empty, rowClass }) {
   if (!rows?.length) return <Empty>{empty}</Empty>;
   return (
-    <div className="table-wrap">
-      <table className="table">
+    <div className="table-responsive table-wrap">
+      <table className="table table-hover align-middle mb-0">
         <thead><tr>{columns.map((c, i) => <th key={i} className={c[2]?.className}>{c[0]}</th>)}</tr></thead>
         <tbody>
           {rows.map((r, i) => (
@@ -214,8 +229,8 @@ export function Table({ columns, rows, onRow, empty, rowClass }) {
 
 export function Tabs({ tabs, value, onChange }) {
   return (
-    <div className="tabs" role="tablist">
-      {tabs.map(([k, label]) => <button key={k} role="tab" aria-selected={value === k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{label}</button>)}
+    <div className="nav nav-tabs flex-nowrap mb-3 tabs" role="tablist">
+      {tabs.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={value === k} className={`nav-link text-nowrap ${value === k ? 'active' : ''}`} onClick={() => onChange(k)}>{label}</button>)}
     </div>
   );
 }
@@ -267,9 +282,9 @@ export function ScanInput({ onScan, placeholder = 'امسح QR أو اكتب ر�
   const submit = (e) => { e?.preventDefault(); const s = v.trim(); if (s) { onScan(s); setV(''); } };
   return (
     <div>
-      <form className="scan" onSubmit={submit}>
-        <span className="scan-ic" aria-hidden>⌁</span>
-        <input className="input" value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} autoFocus={autoFocus} dir="auto" />
+      <form className="input-group input-group-lg scan" onSubmit={submit}>
+        <span className="input-group-text scan-ic" aria-hidden>⌁</span>
+        <input className="form-control" value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} autoFocus={autoFocus} dir="auto" />
         <Btn type="submit" kind="dark">بحث</Btn>
         <Btn type="button" kind="ghost" onClick={() => setCam(true)}>الكاميرا</Btn>
       </form>
@@ -318,7 +333,7 @@ function CameraScanner({ onScan, onClose }) {
   }, [onScan]);
   return (
     <Modal open onClose={onClose} title="مسح رمز QR">
-      {err ? <div className="alert alert-bad">{err}</div> : <video ref={video} className="cam" playsInline muted />}
+      {err ? <div className="alert alert-danger">{err}</div> : <video ref={video} className="cam" playsInline muted />}
     </Modal>
   );
 }
@@ -327,7 +342,7 @@ export function Confirm({ open, title, children, onConfirm, onClose, busy, dange
   return (
     <Modal open={open} onClose={onClose} title={title}>
       {children}
-      <div className="row gap end mt">
+      <div className="hrow gap end mt">
         <Btn kind="ghost" onClick={onClose}>إلغاء</Btn>
         <Btn kind={danger ? 'danger' : 'primary'} loading={busy} onClick={onConfirm}>{confirmText}</Btn>
       </div>
@@ -355,5 +370,5 @@ export function Kv({ items }) {
 }
 
 export function Search({ value, onChange, placeholder = 'بحث…' }) {
-  return <input className="input search" type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />;
+  return <input className="form-control search" type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />;
 }

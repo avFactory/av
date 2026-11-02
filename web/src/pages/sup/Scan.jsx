@@ -18,7 +18,7 @@ export default function Scan() {
         <Card className="mt" title={<span>{o.order_no} — {o.title}</span>} actions={<Badge tone="gold">{o.stage_name || o.status}</Badge>}>
           <Kv items={[['المادة', o.material_name], ['الكمية', o.quantity], ['رصيد ذهب الطلب', `${fmtW(o.order_balance)} جم`], ['حالة التصميم', DESIGN_STATUS[o.design_status]],
             ['لدى العمال', o.open_custodies.map((c) => `${c.full_name} (${fmtW(c.weight_issued)})`).join('، ') || '—']]} />
-          <div className="row gap wrap mt">
+          <div className="hrow gap wrap mt">
             {can('orders.view') && <LinkBtn to={`/orders/${o.id}`} kind="dark">فتح الطلب</LinkBtn>}
             {can('custody.issue') && o.handles_gold && !o.open_custodies.length && <LinkBtn to={`/sup/issue?order=${o.id}`} kind="primary">تسليم لعامل</LinkBtn>}
             {can('custody.receive') && o.open_custodies.map((c) => <LinkBtn key={c.id} to={`/sup/receive?worker=${c.worker_id}`}>استلام من {c.full_name}</LinkBtn>)}

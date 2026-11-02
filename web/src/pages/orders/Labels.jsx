@@ -25,7 +25,7 @@ export default function Labels() {
   return (
     <div className="labels-page" style={{ padding: 16 }}>
       {roll && <style>{'@media print { @page { size: 62mm 38mm; margin: 0; } html, body { margin: 0 !important; padding: 0 !important; } .labels-page { padding: 0 !important; } .labels { display: block !important; } .label { border: 0 !important; border-radius: 0 !important; } .label:not(:last-child) { break-after: page; page-break-after: always; } }'}</style>}
-      <div className="no-print row gap wrap mb">
+      <div className="no-print hrow gap wrap mb">
         <Btn onClick={() => window.print()}>طباعة الملصقات ({rows.length})</Btn>
         <label className="check"><input type="checkbox" checked={roll} onChange={(e) => setRoll(e.target.checked)} /> طابعة ملصقات (ملصق واحد لكل ورقة 62×38 مم)</label>
         <span className="muted small">بدون هذا الخيار تُطبع الملصقات متجاورة على ورق A4</span>

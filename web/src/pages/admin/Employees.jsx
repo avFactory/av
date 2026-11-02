@@ -32,7 +32,7 @@ export default function Employees() {
       <div className="card"><Table rows={rows} columns={[
         ['الاسم', (u) => <b>{u.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{u.full_name}</b>], ['المستخدم', 'username'], ['الرقم', 'employee_no'], ['الدور', 'role_name'], ['القسم', 'department'], ['التخصص', 'specialty'],
         ['عهد مفتوحة', 'open_custodies'], ['الحالة', (u) => (u.active ? <Badge tone="ok">نشط</Badge> : <Badge>معطل</Badge>)],
-        ['', (u) => <div className="row gap">
+        ['', (u) => <div className="hrow gap">
           <Btn size="sm" kind="ghost" onClick={() => run(async () => setPerf({ u, p: await api.get(`/admin/employees/${u.id}/performance`) }))}>الأداء</Btn>
           {can('employees.manage') && <><Btn size="sm" kind="ghost" onClick={() => setF({ ...u, password: '', stage_ids: u.stage_ids || [] })}>تعديل</Btn><Btn size="sm" kind="ghost" onClick={() => del(u)}>حذف</Btn></>}
         </div>],
@@ -65,8 +65,8 @@ export default function Employees() {
                 {roles.perms.map((p) => {
                   const st = (f.extra_perms || []).includes(p.code) ? 'add' : (f.denied_perms || []).includes(p.code) ? 'deny' : '';
                   return (
-                    <label key={p.code} className="row gap small">
-                      <select className="input" style={{ width: 110, minHeight: 32, padding: 2 }} value={st} onChange={(e) => {
+                    <label key={p.code} className="hrow gap small">
+                      <select className="form-select" style={{ width: 110, minHeight: 32, padding: 2 }} value={st} onChange={(e) => {
                         const ex = (f.extra_perms || []).filter((x) => x !== p.code); const de = (f.denied_perms || []).filter((x) => x !== p.code);
                         if (e.target.value === 'add') ex.push(p.code); if (e.target.value === 'deny') de.push(p.code);
                         setF({ ...f, extra_perms: ex, denied_perms: de });
@@ -78,7 +78,7 @@ export default function Employees() {
               </div>
             </details>
           )}
-          <div className="row end"><Btn loading={busy} onClick={save}>حفظ</Btn></div>
+          <div className="hrow end"><Btn loading={busy} onClick={save}>حفظ</Btn></div>
         </>}
       </Modal>
       <ImportModal imp={imp} setImp={setImp} roles={roles?.roles || []} busy={busy} run={run} onDone={reload} />
@@ -113,7 +113,7 @@ function ImportModal({ imp, setImp, roles, busy, run, onDone }) {
         <label className="btn btn-primary btn-lg" style={{ justifySelf: 'start' }}>{busy ? 'جارٍ القراءة…' : 'اختيار الملف'}<input type="file" accept=".xlsx,.csv" hidden onChange={(e) => e.target.files[0] && parse(e.target.files[0])} /></label>
       </>}
       {imp.step === 2 && <>
-        <div className="row gap wrap">
+        <div className="hrow gap wrap">
           <Badge tone="info">{fresh.length} جديد</Badge>{rows.some((r) => r.kind === 'machine') && <Badge tone="gold">⚙ {rows.filter((r) => r.kind === 'machine').length} مكينة</Badge>}<Badge>{rows.filter((r) => r.status === 'exists').length} موجود مسبقاً</Badge>{errors.length > 0 && <Badge tone="bad">{errors.length} به أخطاء</Badge>}
         </div>
         <Table rows={rows.map((r, i) => ({ ...r, id: i }))} rowClass={(r) => (r.status === 'error' ? 'row-bad' : '')} columns={[
@@ -124,8 +124,8 @@ function ImportModal({ imp, setImp, roles, busy, run, onDone }) {
           <Field label="الدور"><Select value={imp.role_code} onChange={(e) => setImp({ ...imp, role_code: e.target.value })} options={roles.filter((r) => !['customer', 'admin'].includes(r.code)).map((r) => [r.code, r.name])} /></Field>
           <Field label=" "><label className="check"><input type="checkbox" checked={imp.must_change_password} onChange={(e) => setImp({ ...imp, must_change_password: e.target.checked })} /> إلزام كل موظف بتغيير كلمة المرور عند أول دخول (موصى به)</label></Field>
         </div>
-        {errors.length > 0 && <div className="alert alert-bad small">صحح الصفوف المعلّمة بالأحمر في الملف ثم ارفعه مرة أخرى، أو اعتمد الصفوف السليمة فقط.</div>}
-        <div className="row gap end">
+        {errors.length > 0 && <div className="alert alert-danger small">صحح الصفوف المعلّمة بالأحمر في الملف ثم ارفعه مرة أخرى، أو اعتمد الصفوف السليمة فقط.</div>}
+        <div className="hrow gap end">
           <Btn kind="ghost" onClick={() => setImp({ ...imp, step: 1, rows: null })}>ملف آخر</Btn>
           <Btn loading={busy} disabled={!fresh.length} onClick={() => run(async () => {
             const r = await api.post('/admin/employees/import/commit', { rows: rows.filter((x) => x.status !== 'error'), role_code: imp.role_code, must_change_password: imp.must_change_password });

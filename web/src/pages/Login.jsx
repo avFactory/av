@@ -25,7 +25,7 @@ export default function Login() {
         <img src="/logo-gold.png" alt="AV" className="login-card-logo" />
         <h1>مصنع AV للمجوهرات</h1>
         <p className="login-sub">AV Jewelry Factory · تسجيل الدخول</p>
-        {err && <div className="alert alert-bad">{err}</div>}
+        {err && <div className="alert alert-danger">{err}</div>}
         <Field label="اسم المستخدم"><Input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoFocus autoComplete="username" dir="ltr" /></Field>
         <Field label="كلمة المرور"><Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="current-password" dir="ltr" /></Field>
         <Btn size="lg" loading={busy} type="submit">دخول</Btn>

@@ -43,7 +43,7 @@ export default function WCustody() {
       )}
       {c.status === 'open' && !c.worker_ack_at && (
         <Card title="قبول استلام العهدة">
-          {c.worker_rejected_at && <div className="alert alert-bad mb">رفضتَ هذا التسليم: {c.worker_reject_reason} — بانتظار تصحيح المشرف.</div>}
+          {c.worker_rejected_at && <div className="alert alert-danger mb">رفضتَ هذا التسليم: {c.worker_reject_reason} — بانتظار تصحيح المشرف.</div>}
           <p className="mb">أقر باستلام <b dir="ltr">{fmtW(c.weight_issued)} جم</b> من {c.material_name}{c.kind === 'general' ? <> كعهدة عامة: {c.purpose}</> : <> و<b>{c.pieces}</b> قطعة للطلب {c.order_no}</>}.</p>
           <p className="small muted mb">ضغطك على "قبول" يُسجَّل كتوقيعك الإلكتروني على العهدة بالتاريخ والوقت.</p>
           <div className="grid g2">
@@ -69,9 +69,9 @@ export default function WCustody() {
             <Btn className="mt" kind="dark" loading={busy} disabled={d.returned === ''} onClick={() => act('declare', d, 'تم حفظ الأوزان')}>حفظ الأوزان</Btn>
           </Card>
           {c.order_id && <Card title="صور التنفيذ والملاحظات">
-            <label className="btn btn-ghost">📷 رفع صور التنفيذ<input type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>
+            <label className="btn btn-outline-secondary">📷 رفع صور التنفيذ<input type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>
             <Field label="ملاحظة أو طلب توضيح" className="mt"><Textarea value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-            <div className="row gap mt">
+            <div className="hrow gap mt">
               <Btn kind="ghost" disabled={!note} loading={busy} onClick={() => run(async () => { await api.post(`/w/orders/${c.order_id}/note`, { note }); setNote(''); }, 'تم حفظ الملاحظة')}>حفظ ملاحظة</Btn>
               <Btn kind="dark" disabled={!note} loading={busy} onClick={() => run(async () => { await api.post(`/w/orders/${c.order_id}/note`, { note, clarification: true }); setNote(''); }, 'تم إرسال طلب التوضيح للمشرف')}>طلب توضيح من المشرف</Btn>
             </div>
@@ -79,7 +79,7 @@ export default function WCustody() {
           <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started'} onClick={() => { if (window.confirm('إنهاء المرحلة وتسليمها للمشرف؟')) act('finish', {}, 'تم إنهاء المرحلة - سلّم القطعة للمشرف'); }}>إنهاء المرحلة وتسليمها</Btn>
         </>
       )}
-      {c.work_state === 'finished' && c.status === 'open' && <div className="alert alert-ok">أنهيت المرحلة. سلّم القطعة والبقايا للمشرف ليعتمد الوزن.</div>}
+      {c.work_state === 'finished' && c.status === 'open' && <div className="alert alert-success">أنهيت المرحلة. سلّم القطعة والبقايا للمشرف ليعتمد الوزن.</div>}
       <Modal open={rejectOpen} onClose={() => setRejectOpen(false)} title="رفض استلام العهدة">
         <Field label="ما الخطأ؟ *"><Input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="مثال: الوزن الفعلي 39.5 جم" autoFocus /></Field>
         <Btn kind="danger" disabled={!rejectReason} loading={busy} onClick={() => act('reject', { reason: rejectReason }, 'أُبلغ المشرف بالرفض').then(() => { setRejectOpen(false); setRejectReason(''); })}>إرسال الرفض للمشرف</Btn>

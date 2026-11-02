@@ -25,7 +25,7 @@ export default function Roles() {
           </Card>
         ))}
         <Card title="دور جديد">
-          <div className="row gap wrap">
+          <div className="hrow gap wrap">
             <Field label="الرمز (إنجليزي)"><Input value={nr.code} onChange={(e) => setNr({ ...nr, code: e.target.value })} dir="ltr" /></Field>
             <Field label="الاسم"><Input value={nr.name} onChange={(e) => setNr({ ...nr, name: e.target.value })} /></Field>
             <Btn style={{ alignSelf: 'end' }} onClick={() => run(async () => { await api.put(`/admin/roles/${nr.code}`, { name: nr.name, perms: [] }); setNr({ code: '', name: '' }); reload(); }, 'تمت الإضافة')}>إضافة</Btn>

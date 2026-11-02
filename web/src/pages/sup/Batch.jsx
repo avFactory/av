@@ -16,7 +16,7 @@ export default function Batch({ print }) {
   const total = (k) => lines.reduce((s, l) => s + Number(l[k] || 0), 0);
   return (
     <div className={print ? '' : 'page'}>
-      <div className="row gap end no-print" style={{ padding: 12 }}><Btn onClick={() => window.print()}>طباعة / حفظ PDF</Btn></div>
+      <div className="hrow gap end no-print" style={{ padding: 12 }}><Btn onClick={() => window.print()}>طباعة / حفظ PDF</Btn></div>
       <div className="doc-sheet">
         <div className="doc-head">
           <div><img src="/logo.png" alt="AV" className="doc-logo" /><h2>{issue ? 'كشف تسليم ذهب لعامل' : 'كشف استلام ذهب من عامل'}</h2><div>{lookups?.settings?.company?.name || 'مصنع AV للمجوهرات'}</div></div>
