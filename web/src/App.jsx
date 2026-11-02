@@ -7,6 +7,7 @@ import WorkerLayout from './components/WorkerLayout.jsx';
 import StoreLayout from './components/StoreLayout.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
+import ForcePassword from './pages/ForcePassword.jsx';
 
 const L = (f) => lazy(f);
 const SupHome = L(() => import('./pages/sup/Home.jsx'));
@@ -67,6 +68,7 @@ function Guard({ perms, children }) {
 export default function App() {
   const { me } = useAuth();
   if (me === undefined) return <Loader />;
+  if (me?.must_change_password) return <ForcePassword />;
   const S = (el, perms) => <Guard perms={perms}>{el}</Guard>;
   return (
     <Suspense fallback={<Loader />}>

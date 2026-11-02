@@ -41,6 +41,12 @@ export function createApp() {
     next();
   });
   app.use('/api', sessionMiddleware);
+  // من يلزمه تغيير كلمة المرور لا يستطيع استخدام النظام قبل تغييرها
+  app.use('/api', (req, _res, next) => {
+    if (req.user?.must_change_password && !req.path.startsWith('/auth/') && req.path !== '/lookups' && req.path !== '/events')
+      throw new HttpError(403, 'يجب تغيير كلمة المرور أولاً');
+    next();
+  });
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRoutes);

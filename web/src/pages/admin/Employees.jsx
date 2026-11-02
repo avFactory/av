@@ -11,6 +11,7 @@ export default function Employees() {
   const [f, setF] = useState(null);
   const [q, setQ] = useState('');
   const [perf, setPerf] = useState(null);
+  const [imp, setImp] = useState(null);
   const [run, busy] = useAction();
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const save = () => run(async () => {
@@ -25,6 +26,7 @@ export default function Employees() {
     <Page title="الموظفون" actions={<>
       <Search value={q} onChange={setQ} />
       <label className="check"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> عرض المعطلين</label>
+      {can('employees.manage') && <Btn kind="ghost" onClick={() => setImp({ step: 1, role_code: 'worker', must_change_password: true })}>استيراد من Excel</Btn>}
       {can('employees.manage') && <Btn onClick={() => setF({ role_code: 'worker', stage_ids: [] })}>إضافة موظف</Btn>}
     </>}>
       <div className="card"><Table rows={rows} columns={[
@@ -79,6 +81,7 @@ export default function Employees() {
           <div className="row end"><Btn loading={busy} onClick={save}>حفظ</Btn></div>
         </>}
       </Modal>
+      <ImportModal imp={imp} setImp={setImp} roles={roles?.roles || []} busy={busy} run={run} onDone={reload} />
       <Modal open={!!perf} onClose={() => setPerf(null)} title={`أداء ${perf?.u.full_name}`}>
         {perf && <div className="kv">
           <div><dt>مراحل مكتملة</dt><dd>{perf.p.completed}</dd></div><div><dt>مفتوحة</dt><dd>{perf.p.open}</dd></div>
@@ -88,5 +91,49 @@ export default function Employees() {
         </div>}
       </Modal>
     </Page>
+  );
+}
+
+const ST = { new: ['جديد', 'info'], exists: ['موجود - سيُتجاوز', 'muted'], error: ['خطأ', 'bad'] };
+function ImportModal({ imp, setImp, roles, busy, run, onDone }) {
+  if (!imp) return null;
+  const parse = (file) => run(async () => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await api.post('/admin/employees/import/parse', fd);
+    setImp({ ...imp, step: 2, rows: r.rows });
+  });
+  const rows = imp.rows || [];
+  const errors = rows.filter((r) => r.status === 'error');
+  const fresh = rows.filter((r) => r.status === 'new');
+  return (
+    <Modal open onClose={() => setImp(null)} title="استيراد الموظفين من Excel" wide>
+      {imp.step === 1 && <>
+        <div className="alert alert-info small">ارفع ملف Excel فيه صف عناوين يحتوي: رقم العامل، اسم العامل، اسم المستخدم، كلمة المرور، المهمة (اختياري: الجوال). المهمة تُسجل كتخصص وقسم، ويُربط العامل تلقائياً بالمرحلة المطابقة (مثل تشبيك ← التشبيك، تركيب ← تركيب الأحجار).</div>
+        <label className="btn btn-primary btn-lg" style={{ justifySelf: 'start' }}>{busy ? 'جارٍ القراءة…' : 'اختيار الملف'}<input type="file" accept=".xlsx,.csv" hidden onChange={(e) => e.target.files[0] && parse(e.target.files[0])} /></label>
+      </>}
+      {imp.step === 2 && <>
+        <div className="row gap wrap">
+          <Badge tone="info">{fresh.length} جديد</Badge><Badge>{rows.filter((r) => r.status === 'exists').length} موجود مسبقاً</Badge>{errors.length > 0 && <Badge tone="bad">{errors.length} به أخطاء</Badge>}
+        </div>
+        <Table rows={rows.map((r, i) => ({ ...r, id: i }))} rowClass={(r) => (r.status === 'error' ? 'row-bad' : '')} columns={[
+          ['الرقم', 'employee_no'], ['الاسم', (r) => <b>{r.full_name}</b>], ['اسم المستخدم', (r) => <span dir="ltr">{r.username}</span>], ['المهمة', 'specialty'],
+          ['كلمة المرور', (r) => '•'.repeat(Math.min(10, String(r.password || '').length))], ['الحالة', (r) => <Badge tone={ST[r.status][1]}>{ST[r.status][0]}</Badge>], ['ملاحظة', (r) => <span className="small">{r.errors.join('، ')}</span>],
+        ]} />
+        <div className="grid g2">
+          <Field label="الدور"><Select value={imp.role_code} onChange={(e) => setImp({ ...imp, role_code: e.target.value })} options={roles.filter((r) => !['customer', 'admin'].includes(r.code)).map((r) => [r.code, r.name])} /></Field>
+          <Field label=" "><label className="check"><input type="checkbox" checked={imp.must_change_password} onChange={(e) => setImp({ ...imp, must_change_password: e.target.checked })} /> إلزام كل موظف بتغيير كلمة المرور عند أول دخول (موصى به)</label></Field>
+        </div>
+        {errors.length > 0 && <div className="alert alert-bad small">صحح الصفوف المعلّمة بالأحمر في الملف ثم ارفعه مرة أخرى، أو اعتمد الصفوف السليمة فقط.</div>}
+        <div className="row gap end">
+          <Btn kind="ghost" onClick={() => setImp({ ...imp, step: 1, rows: null })}>ملف آخر</Btn>
+          <Btn loading={busy} disabled={!fresh.length} onClick={() => run(async () => {
+            const r = await api.post('/admin/employees/import/commit', { rows: rows.filter((x) => x.status !== 'error'), role_code: imp.role_code, must_change_password: imp.must_change_password });
+            setImp(null); onDone();
+            return r;
+          }, `تمت إضافة ${fresh.length} موظف`)}>{errors.length ? `إضافة الصفوف السليمة (${fresh.length})` : `إضافة ${fresh.length} موظف`}</Btn>
+        </div>
+      </>}
+    </Modal>
   );
 }

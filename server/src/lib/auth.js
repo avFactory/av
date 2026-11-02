@@ -6,6 +6,7 @@ import { HttpError, forbidden } from './http.js';
 export const COOKIE = 'gf_session';
 const TTL_HOURS = Number(process.env.SESSION_HOURS || 12);
 const hash = (t) => crypto.createHash('sha256').update(t).digest('hex');
+export const currentTokenHash = (req) => (req.cookies?.[COOKIE] ? hash(req.cookies[COOKIE]) : null);
 
 export async function createSession(res, user, req) {
   const token = crypto.randomBytes(32).toString('hex');

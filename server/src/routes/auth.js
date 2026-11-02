@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { pool, tx } from '../db.js';
-import { createSession, destroySession, verifyLogin, hashPassword, loginThrottle, loginReset, requireAuth } from '../lib/auth.js';
+import { createSession, destroySession, verifyLogin, hashPassword, loginThrottle, loginReset, requireAuth, currentTokenHash } from '../lib/auth.js';
 import { bad, str } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyPerm } from '../lib/notify.js';
@@ -32,7 +32,7 @@ r.get('/me', requireAuth, async (req, res) => {
   res.json({
     id: u.id, username: u.username, full_name: u.full_name, role_code: u.role_code, employee_no: u.employee_no,
     customer_id: u.customer_id, customer_status: u.customer_status, shop_name: u.shop_name,
-    perms: [...u.perms], unread,
+    perms: [...u.perms], unread, must_change_password: u.must_change_password,
   });
 });
 
@@ -42,10 +42,11 @@ r.post('/change-password', requireAuth, async (req, res) => {
   if (next.length < 8) throw bad('كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف');
   const u = (await pool.query('select password_hash from users where id=$1', [req.user.id])).rows[0];
   if (!bcrypt.compareSync(cur, u.password_hash)) throw bad('كلمة المرور الحالية غير صحيحة');
-  await pool.query('update users set password_hash=$2 where id=$1', [req.user.id, hashPassword(next)]);
-  await pool.query('delete from sessions where user_id=$1', [req.user.id]);
+  if (cur === next) throw bad('كلمة المرور الجديدة يجب أن تختلف عن الحالية');
+  await pool.query('update users set password_hash=$2, must_change_password=false where id=$1', [req.user.id, hashPassword(next)]);
+  // إنهاء الجلسات الأخرى والإبقاء على الجلسة الحالية
+  await pool.query('delete from sessions where user_id=$1 and token_hash <> $2', [req.user.id, currentTokenHash(req) || '']);
   await audit(pool, req, 'change_password', 'user', req.user.id);
-  await destroySession(req, res);
   res.json({ ok: true });
 });
 

@@ -5,6 +5,8 @@ import { requirePerm, hashPassword } from '../lib/auth.js';
 import { bad, conflict, notFound, int, str, oneOf } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyCustomer } from '../lib/notify.js';
+import multer from 'multer';
+import ExcelJS from 'exceljs';
 import { sendXlsx } from '../lib/xlsx.js';
 
 const r = Router();
@@ -72,6 +74,100 @@ r.post('/employees', requirePerm('employees.manage'), async (req, res) => {
   }));
 });
 
+// ------------------------------------------------------------------ استيراد الموظفين من Excel
+const empUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, f, cb) => (/\.(xlsx|csv)$/i.test(f.originalname) ? cb(null, true) : cb(bad('ارفع ملف Excel (xlsx) أو CSV'))) });
+const HEADERS = [
+  ['employee_no', /رقم|الرقم الوظيفي|no/i], ['full_name', /اسم العامل|اسم الموظف|الاسم الكامل|^الاسم$/], ['username', /اسم المستخدم|username|user/i],
+  ['password', /كلمة المرور|كلمه المرور|password/i], ['specialty', /مهمة|مهمه|المهمة|التخصص|العمل/], ['phone', /جوال|هاتف|phone/i],
+];
+const cellText = (v) => { if (v && typeof v === 'object') v = v.result ?? v.text ?? (v.richText ? v.richText.map((t) => t.text).join('') : ''); return v == null ? '' : String(v).trim(); };
+
+async function checkEmployeeRows(db, rows) {
+  const names = rows.map((r) => String(r.username || '').toLowerCase());
+  const existingU = new Set((await db.query('select lower(username) u from users where lower(username) = any($1)', [names])).rows.map((x) => x.u));
+  const nos = rows.map((r) => r.employee_no).filter(Boolean);
+  const existingN = new Set((await db.query('select employee_no n from users where employee_no = any($1)', [nos])).rows.map((x) => x.n));
+  const seen = new Set();
+  return rows.map((r) => {
+    const errors = [];
+    const u = String(r.username || '').trim();
+    if (!r.full_name) errors.push('الاسم مفقود');
+    if (!u) errors.push('اسم المستخدم مفقود');
+    else if (/\s/.test(u)) errors.push('اسم المستخدم لا يقبل المسافات');
+    if (String(r.password || '').length < 8) errors.push('كلمة المرور أقل من 8 أحرف');
+    let status = errors.length ? 'error' : 'new';
+    if (!errors.length && existingU.has(u.toLowerCase())) status = 'exists';
+    else if (!errors.length && r.employee_no && existingN.has(r.employee_no)) { status = 'error'; errors.push('الرقم الوظيفي مستخدم لموظف آخر'); }
+    if (seen.has(u.toLowerCase())) { status = 'error'; errors.push('اسم مستخدم مكرر في الملف'); }
+    seen.add(u.toLowerCase());
+    return { ...r, username: u, status, errors };
+  });
+}
+
+r.post('/employees/import/parse', requirePerm('employees.manage'), empUpload.single('file'), async (req, res) => {
+  if (!req.file) throw bad('اختر الملف');
+  let table = [];
+  if (/\.csv$/i.test(req.file.originalname)) table = req.file.buffer.toString('utf8').replace(/^\uFEFF/, '').split(/\r?\n/).map((l) => l.split(/[,;\t]/).map((x) => x.trim()));
+  else {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(req.file.buffer);
+    wb.worksheets[0].eachRow({ includeEmpty: false }, (row) => { const cells = []; row.eachCell({ includeEmpty: true }, (c, i) => { cells[i - 1] = cellText(c.value); }); table.push(cells); });
+  }
+  const hIdx = table.findIndex((cells) => cells.some((c) => /اسم المستخدم|username/i.test(c || '')));
+  if (hIdx < 0) throw bad('لم يتم العثور على صف العناوين (يجب أن يحتوي عمود "اسم المستخدم")');
+  const map = {};
+  table[hIdx].forEach((h, i) => { const k = HEADERS.find(([key, re]) => !map[key] && re.test(h || '')); if (k) map[k[0]] = i; });
+  // "اسم العامل" قد يطابق نمط "رقم"؟ لا - لكن تأكد أن الاسم ليس هو اسم المستخدم
+  const rows = table.slice(hIdx + 1).map((c) => ({
+    employee_no: c[map.employee_no] || null, full_name: c[map.full_name] || '', username: c[map.username] || '',
+    password: c[map.password] || '', specialty: c[map.specialty] || null, phone: c[map.phone] || null,
+  })).filter((r) => r.full_name || r.username);
+  if (!rows.length) throw bad('لا توجد بيانات تحت صف العناوين');
+  res.json({ columns: map, rows: await checkEmployeeRows(pool, rows) });
+});
+
+/** إنشاء العمال الجدد (الموجودون مسبقاً يُتجاوزون ولا تُغيّر بياناتهم) */
+r.post('/employees/import/commit', requirePerm('employees.manage'), async (req, res) => {
+  const role = String(req.body.role_code || 'worker');
+  if (role === 'customer' || role === 'admin') throw bad('دور غير مسموح في الاستيراد');
+  const mustChange = req.body.must_change_password !== false;
+  const input = (Array.isArray(req.body.rows) ? req.body.rows : []).map((r) => ({
+    employee_no: str(r.employee_no, 'الرقم', { max: 40 }), full_name: str(r.full_name, 'الاسم', { max: 120 }) || '', username: str(r.username, 'اسم المستخدم', { max: 60 }) || '',
+    password: String(r.password || ''), specialty: str(r.specialty, 'المهمة', { max: 80 }), phone: str(r.phone, 'الجوال', { max: 30 }),
+  }));
+  if (!input.length) throw bad('لا توجد بيانات');
+  res.json(await tx(async (db) => {
+    if (!(await db.query('select 1 from roles where code=$1', [role])).rowCount) throw bad('الدور غير موجود');
+    const rows = await checkEmployeeRows(db, input);
+    const bad1 = rows.filter((r) => r.status === 'error');
+    if (bad1.length) throw bad(`يوجد ${bad1.length} صف به أخطاء - صححها في الملف أولاً`, { rows: bad1 });
+    const stages = (await db.query('select id, name from stages where active')).rows;
+    let created = 0;
+    const skipped = [];
+    for (const r of rows) {
+      if (r.status === 'exists') { skipped.push(r.username); continue; }
+      let deptId = null;
+      if (r.specialty) {
+        deptId = (await db.query('select id from departments where name=$1', [r.specialty])).rows[0]?.id
+          ?? (await db.query('insert into departments(name) values ($1) on conflict (name) do update set name=excluded.name returning id', [r.specialty])).rows[0].id;
+      }
+      const u = (await db.query(`insert into users(username, password_hash, full_name, role_code, employee_no, department_id, specialty, phone, must_change_password)
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`, [r.username, hashPassword(r.password), r.full_name, role, r.employee_no, deptId, r.specialty, r.phone, mustChange])).rows[0];
+      // ربط العامل بالمرحلة المطابقة لمهمته (مثل تشبيك ← التشبيك، تركيب ← تركيب الأحجار)
+      if (role === 'worker' && r.specialty) {
+        const sp = r.specialty.replace(/^ال/, '');
+        for (const st of stages.filter((x) => x.name.replace(/^ال/, '').startsWith(sp) || x.name.includes(r.specialty))) {
+          await db.query('insert into stage_workers values ($1,$2) on conflict do nothing', [st.id, u.id]);
+        }
+      }
+      created++;
+    }
+    await audit(db, req, 'employee.import', 'user', null, { role, created, skipped, must_change_password: mustChange });
+    return { created, skipped };
+  }));
+});
+
 r.put('/employees/:id', requirePerm('employees.manage'), async (req, res) => {
   const b = req.body;
   res.json(await tx(async (db) => {
@@ -95,7 +191,7 @@ r.put('/employees/:id', requirePerm('employees.manage'), async (req, res) => {
     );
     if (b.password) {
       if (String(b.password).length < 8) throw bad('كلمة المرور يجب ألا تقل عن 8 أحرف');
-      await db.query('update users set password_hash=$2 where id=$1', [id, hashPassword(String(b.password))]);
+      await db.query('update users set password_hash=$2, must_change_password=$3 where id=$1', [id, hashPassword(String(b.password)), id !== req.user.id && b.must_change_password !== false]);
       await db.query('delete from sessions where user_id=$1', [id]);
     }
     if (b.active === false || b.role_code !== u.role_code) await db.query('delete from sessions where user_id=$1', [id]);
