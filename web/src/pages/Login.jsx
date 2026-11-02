@@ -19,23 +19,18 @@ export default function Login() {
     catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
   return (
-    <div className="auth">
-      <div className="auth-art">
-        <img src="/logo-gold.png" alt="AV" style={{ height: 84, width: 'auto', alignSelf: 'flex-start' }} />
-        <h2>مصنع AV للمجوهرات</h2>
-        <p>العهدة والأوزان، الإنتاج، العجز، المخزون، الفواتير، ومتجر الجملة لمحلات الذهب.</p>
-      </div>
-      <div className="auth-form">
-        <form onSubmit={submit}>
-          <img src="/logo.png" alt="AV" className="login-logo" />
-          <h1>تسجيل الدخول</h1>
-          {err && <div className="alert alert-bad">{err}</div>}
-          <Field label="اسم المستخدم"><Input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoFocus autoComplete="username" dir="ltr" /></Field>
-          <Field label="كلمة المرور"><Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="current-password" dir="ltr" /></Field>
-          <Btn size="lg" loading={busy} type="submit">دخول</Btn>
-          <p className="muted small">صاحب محل ذهب؟ <Link to="/register" className="link">سجّل حساب محلك للطلب بالجملة</Link></p>
-        </form>
-      </div>
+    <div className="login-screen">
+      <div className="login-bg" aria-hidden="true" />
+      <form className="login-card" onSubmit={submit}>
+        <img src="/logo-gold.png" alt="AV" className="login-card-logo" />
+        <h1>مصنع AV للمجوهرات</h1>
+        <p className="login-sub">AV Jewelry Factory · تسجيل الدخول</p>
+        {err && <div className="alert alert-bad">{err}</div>}
+        <Field label="اسم المستخدم"><Input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoFocus autoComplete="username" dir="ltr" /></Field>
+        <Field label="كلمة المرور"><Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="current-password" dir="ltr" /></Field>
+        <Btn size="lg" loading={busy} type="submit">دخول</Btn>
+        <p className="login-foot">صاحب محل ذهب؟ <Link to="/register">سجّل حساب محلك للطلب بالجملة</Link></p>
+      </form>
     </div>
   );
 }

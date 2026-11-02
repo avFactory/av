@@ -387,3 +387,21 @@ a.stat:hover { border-color: var(--gold); }
 @media (max-width: 800px) { .stone-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stone-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); padding: 12px; } }
 
 .machine-tag { display: inline-block; font-size: .72rem; font-weight: 700; background: var(--info-soft); color: var(--info); border-radius: 999px; padding: 0 8px; margin-inline-end: 6px; vertical-align: middle; }
+
+/* شاشة الدخول: صورة المصنع ضبابية في الخلفية والنموذج في الوسط */
+.login-screen { position: relative; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; overflow: hidden; background: #0d0b08; }
+.login-bg { position: absolute; inset: -40px; background: #0d0b08 url('/login-bg-tiny.webp') center / cover no-repeat; }
+.login-bg::before { content: ''; position: absolute; inset: 0; background: url('/login-bg.webp') center / cover no-repeat; filter: blur(5px) brightness(.62) saturate(1.1); transform: scale(1.05); }
+.login-bg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(10,8,5,.25) 0%, rgba(10,8,5,.7) 75%); }
+.login-card { position: relative; z-index: 1; width: min(400px, 100%); display: grid; gap: 14px; padding: 30px 28px 24px; border-radius: 20px;
+  background: rgba(20,17,12,.62); border: 1px solid rgba(201,169,106,.35); box-shadow: 0 30px 80px rgba(0,0,0,.55);
+  backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); color: #f3ead6; }
+.login-card-logo { height: 64px; width: auto; justify-self: center; filter: drop-shadow(0 4px 18px rgba(201,169,106,.35)); }
+.login-card h1 { text-align: center; color: #e2c88f; font-size: 1.45rem; }
+.login-sub { text-align: center; color: #bfb39a; font-size: .85rem; margin-top: -8px; letter-spacing: .02em; }
+.login-card .field-l { color: #e9dfc8; }
+.login-card .input { background: rgba(255,255,255,.94); color: #141414; border-color: rgba(201,169,106,.45); }
+.login-card .btn-primary { background: linear-gradient(135deg, #c9a96a, #a8844a); color: #15110a; }
+.login-card .btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, #d9bf8a, #b8944f); }
+.login-foot { text-align: center; font-size: .85rem; color: #bfb39a; }
+.login-foot a { color: #e2c88f; }
