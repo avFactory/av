@@ -18,17 +18,15 @@ export default function Workers() {
     ['الإجمالي (العمال والمكائن)', data, `${people.length} عامل و ${machines.length} مكينة`],
   ];
   return (
-    <Page title="متابعة العمال والمكائن والعهد" subtitle={`${people.length} عامل · ${machines.length} مكينة`} back="/sup" actions={<Search value={q} onChange={setQ} placeholder="بحث باسم العامل أو رقمه" />}>
-      <div className="row g-3 mb-3">
+    <Page title="متابعة العمال والمكائن والعهد" subtitle={`${people.length} عامل · ${machines.length} مكينة`} actions={<Search value={q} onChange={setQ} placeholder="بحث باسم العامل أو رقمه" />}>
+      <div className="gold-stats mb-3">
         {cards.map(([label, list, sub], i) => (
-          <div key={label} className="col-12 col-md-4">
-            <div className={`card h-100 ${i === 2 ? 'border-warning' : ''}`}>
-              <div className="card-body py-3">
-                <div className="small text-body-secondary">إجمالي الذهب الصافي {label}</div>
-                <div className="fs-3 fw-bold"><span dir="ltr">{fmtW(sum(list, 'open_pure'))}</span> <span className="fs-6 fw-normal">جم عيار 24</span></div>
-                <div className="small text-body-secondary">الوزن القائم {fmtW(sum(list, 'open_weight'))} جم · {sub}</div>
-              </div>
+          <div key={label} className={`gold-stat${i === 2 ? ' total' : ''}`}>
+            <div className="gold-stat-top">
+              <span>الذهب الصافي {label}</span>
+              <b><span dir="ltr">{fmtW(sum(list, 'open_pure'))}</span> <small>جم عيار 24</small></b>
             </div>
+            <div className="gold-stat-sub">الوزن القائم {fmtW(sum(list, 'open_weight'))} جم · {sub}</div>
           </div>
         ))}
       </div>

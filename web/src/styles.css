@@ -454,3 +454,14 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
   .pricing-short .pricing-total { width: auto; font-size: .9rem; }
   .pricing-short th[scope=row] { white-space: normal; }
 }
+
+/* بطاقات الذهب الصافي في صفحة العمال: مدمجة بارتفاع صغير */
+.gold-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.gold-stat { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 10px; padding: 8px 12px; }
+.gold-stat.total { border-color: #c9a227; background: color-mix(in srgb, #c9a227 7%, var(--bs-body-bg)); }
+.gold-stat-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.gold-stat-top > span { font-size: .85rem; color: var(--bs-secondary-color); }
+.gold-stat-top b { font-size: 1.25rem; white-space: nowrap; }
+.gold-stat-top b small { font-size: .72rem; font-weight: 400; color: var(--bs-secondary-color); }
+.gold-stat-sub { font-size: .75rem; color: var(--bs-secondary-color); margin-top: 1px; }
+@media (max-width: 760px) { .gold-stats { grid-template-columns: 1fr; gap: 6px; } }
