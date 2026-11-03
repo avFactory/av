@@ -13,7 +13,7 @@ const arr = (v) => (Array.isArray(v) ? v : typeof v === 'string' && v ? v.split(
 r.get('/products', requirePerm('products.manage', 'orders.view'), async (_req, res) => {
   res.json(await many(`select p.*, p.approx_weight::text, p.final_weight::text, p.labor_rate::text,
       coalesce((select json_agg(json_build_object('id', m.id, 'path', m.path, 'kind', m.kind) order by m.sort, m.id) from product_media m where m.product_id=p.id), '[]') as media
-    from products p order by p.active desc, p.id desc`));
+    from products p where p.deleted_at is null order by p.active desc, p.id desc`));
 });
 
 function productVals(b) {
@@ -68,6 +68,33 @@ r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 10)
     for (const mid of arr(req.body.remove_media)) await db.query('delete from product_media where id=$1 and product_id=$2', [int(mid), id]);
     await audit(db, req, 'product.update', 'product', id, { before, after: req.body });
     return { ok: true };
+  }));
+});
+
+/**
+ * حذف منتج: يُمنع إن كان له مخزون جاهز (قطع أو ذهب)،
+ * ويُحذف نهائياً إن لم يُستخدم، وإلا يُؤرشف (يختفي من القوائم والمتجر وتبقى الطلبات والسجلات سليمة).
+ */
+r.delete('/products/:id', requirePerm('products.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const id = int(req.params.id);
+    const p = (await db.query('select * from products where id=$1 and deleted_at is null for update', [id])).rows[0];
+    if (!p) throw notFound('المنتج غير موجود');
+    const gold = (await db.query("select coalesce(sum(balance),0)::numeric as g from gold_balances where loc_type='finished' and loc_ref=$1", [id])).rows[0].g;
+    if (Number(p.stock_qty) > 0 || Number(gold) !== 0) throw bad(`لا يمكن حذف المنتج: يوجد له مخزون جاهز (${p.stock_qty} قطعة${Number(gold) ? ` / ${Number(gold).toFixed(3)} جم ذهب` : ''}) - اصرفه أو حوّله أولاً`);
+    const used = (await db.query(`select exists (select 1 from orders where product_id=$1)
+        or exists (select 1 from labor_rates where product_id=$1)
+        or exists (select 1 from inventory_items where product_id=$1)
+        or exists (select 1 from gold_ledger where (from_type='finished' and from_ref=$1) or (to_type='finished' and to_ref=$1)) as used`, [id])).rows[0].used;
+    if (used) {
+      await db.query('update products set deleted_at=now(), active=false where id=$1', [id]);
+      await audit(db, req, 'product.archive', 'product', id, { sku: p.sku, name: p.name });
+      return { ok: true, archived: true };
+    }
+    await db.query('delete from product_media where product_id=$1', [id]);
+    await db.query('delete from products where id=$1', [id]);
+    await audit(db, req, 'product.delete', 'product', id, { sku: p.sku, name: p.name });
+    return { ok: true, deleted: true };
   }));
 });
 

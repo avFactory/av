@@ -211,3 +211,16 @@ test('رقم المنتج تلقائي حسب نوع القطعة', async () => 
   for (const [t, pre] of Object.entries(exp)) assert.match((await mk(t)).data.sku, new RegExp(`^${pre}\\d{6}$`), t);
   assert.equal((await mk('خاتم', { sku: 'CUSTOM-1' })).data.sku, 'CUSTOM-1', 'الإدخال اليدوي ما زال ممكناً');
 });
+
+test('حذف المنتج: نهائي إن لم يُستخدم، وأرشفة إن ارتبط بطلب', async () => {
+  const mk = async (name) => { const f = new FormData(); for (const [k, v] of Object.entries({ name, product_type: 'حلق', karats: '21', colors: 'yellow' })) f.append(k, v); return (await call('POST', '/catalog/products', null, f)).data; };
+  const a = await mk('حلق للحذف');
+  assert.equal((await call('DELETE', `/catalog/products/${a.id}`)).data.deleted, true);
+  assert.equal((await pool.query('select count(*)::int n from products where id=$1', [a.id])).rows[0].n, 0);
+  const b = await mk('حلق مرتبط');
+  const mat = (await pool.query('select id from materials limit 1')).rows[0];
+  await call('POST', '/orders', { title: 'حلق', product_type: 'حلق', product_id: b.id, karat: 21, color: 'yellow', quantity: 1, material_id: mat.id });
+  assert.equal((await call('DELETE', `/catalog/products/${b.id}`)).data.archived, true);
+  assert.ok(!(await call('GET', '/catalog/products')).data.some((p) => p.id === b.id), 'يختفي من القائمة');
+  assert.equal((await call('DELETE', `/catalog/products/${b.id}`)).status, 404);
+});

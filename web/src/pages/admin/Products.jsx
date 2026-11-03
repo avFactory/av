@@ -29,6 +29,14 @@ export default function Products() {
     if (f.id) await api.put(`/catalog/products/${f.id}`, fd); else await api.post('/catalog/products', fd);
     setF(null); reload();
   }, 'تم حفظ المنتج');
+  const remove = (p) => {
+    if (!window.confirm(`حذف المنتج "${p.name}" (${p.sku})؟\nإذا كان مرتبطاً بطلبات سابقة سيُخفى ويُؤرشف بدل الحذف النهائي.`)) return;
+    run(async () => {
+      const r = await api.del(`/catalog/products/${p.id}`);
+      setF(null); reload();
+      return r;
+    }, 'تم حذف المنتج').catch(() => {});
+  };
   if (!data) return <Loader />;
   return (
     <Page title="منتجات المتجر" actions={<Btn onClick={() => setF({ karats: [21], colors: ['yellow'], sizes: [], availability: 'made_to_order', active: true, labor_method: 'per_gram' })}>منتج جديد</Btn>}>
@@ -37,6 +45,7 @@ export default function Products() {
         ['رقم المنتج', 'sku'], ['الاسم', (p) => <b>{p.name}</b>], ['النوع', 'product_type'], ['العيارات', (p) => p.karats.join('، ')], ['الألوان', (p) => p.colors.map((c) => COLORS[c]).join('، ')],
         ['الوزن', (p) => fmtW(p.final_weight || p.approx_weight)], ['الأجرة', (p) => (p.labor_method ? `${fmtMoney(p.labor_rate)} ${METHODS[p.labor_method]}` : 'حسب القواعد')], ['المخزون', 'stock_qty'],
         ['التوفر', (p) => AV[p.availability]], ['', (p) => (p.active ? <Badge tone="ok">ظاهر</Badge> : <Badge>مخفي</Badge>)],
+        ['', (p) => <button type="button" className="btn btn-sm btn-outline-danger" onClick={(e) => { e.stopPropagation(); remove(p); }} title="حذف المنتج">حذف</button>],
       ]} /></div>
       <Modal open={!!f} onClose={() => setF(null)} title={f?.id ? 'تعديل منتج' : 'منتج جديد'} wide>
         {f && <>
@@ -61,7 +70,10 @@ export default function Products() {
           <Field label="الصور والفيديو"><input type="file" multiple accept="image/*,video/*" onChange={(e) => setF({ ...f, files: e.target.files })} /></Field>
           {f.media?.length > 0 && <div className="files">{f.media.map((m) => <span key={m.id}><img src={fileUrl(m.path)} alt="" /><button className="link small" onClick={() => setF({ ...f, remove_media: [...(f.remove_media || []), m.id], media: f.media.filter((x) => x.id !== m.id) })}>حذف</button></span>)}</div>}
           <label className="check"><input type="checkbox" checked={f.active !== false} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ظاهر في المتجر</label>
-          <div className="hrow end"><Btn loading={busy} disabled={!f.product_type || !f.name} onClick={save}>حفظ</Btn></div>
+          <div className="hrow end gap">
+            {f.id && <Btn kind="danger" loading={busy} onClick={() => remove(f)}>حذف المنتج</Btn>}
+            <Btn loading={busy} disabled={!f.product_type || !f.name} onClick={save}>حفظ</Btn>
+          </div>
         </>}
       </Modal>
     </Page>
