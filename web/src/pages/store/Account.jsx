@@ -3,6 +3,8 @@ import { api, fileUrl } from '../../api.js';
 import { fmtMoney } from '../../format.js';
 import { Btn, Card, Field, Input, Loader, Page, useAction, useFetch } from '../../ui.jsx';
 import AccountPw from '../Account.jsx';
+import Branches from '../../components/Branches.jsx';
+import { Kv } from '../../ui.jsx';
 
 export default function SAccount() {
   const { data, reload } = useFetch('/store/account');
@@ -11,6 +13,18 @@ export default function SAccount() {
   useEffect(() => { if (data) setF(data.customer); }, [data]);
   if (!data || !f) return <Loader />;
   const locked = data.customer.status === 'approved';
+  if (!data.is_main) {
+    // حساب فرع: عرض بيانات الفرع فقط، وبيانات المنشأة يعدلها الحساب الرئيسي
+    return (
+      <>
+        <Page title={`${data.customer.shop_name} — ${data.branch.name}`} subtitle="حساب فرع">
+          <Card title="بيانات الفرع"><Kv items={[['الفرع', data.branch.name], ['المدينة', data.branch.city], ['العنوان', data.branch.address], ['الجوال', data.branch.phone], ['التصنيف', data.customer.tier_name]]} /></Card>
+          <div className="alert alert-info small mt">بيانات المنشأة والفروع يديرها الحساب الرئيسي للمحل.</div>
+        </Page>
+        <AccountPw />
+      </>
+    );
+  }
   return (
     <>
       <Page title="بيانات المنشأة" subtitle={`التصنيف: ${data.customer.tier_name || "—"} · الرصيد المستحق: ${fmtMoney(data.balance)}`}>
@@ -27,8 +41,15 @@ export default function SAccount() {
           <div className="files mb">{data.docs.map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer"><div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div><span>{d.original_name}</span></a>)}</div>
           <label className="btn btn-outline-secondary">رفع السجل التجاري / شهادة الضريبة<input type="file" multiple hidden accept="image/*,.pdf" onChange={(e) => { const fd = new FormData(); for (const x of e.target.files) fd.append('files', x); run(async () => { await api.post('/store/account/documents', fd); reload(); }, 'تم رفع المستندات'); }} /></label>
         </Card>
+        {data.customer.status === 'approved' && <div className="mt"><BranchesBox /></div>}
       </Page>
       <AccountPw />
     </>
   );
+}
+
+function BranchesBox() {
+  const { data, reload } = useFetch('/store/branches');
+  if (!data) return <Loader />;
+  return <Branches list={data} base="/store/branches" onChange={reload} hint="لكل فرع كلمة مرور خاصة. عند الدخول يكتب الفرع اسم مستخدم المحل، ثم يختار فرعه، ثم كلمة مرور الفرع. كل فرع يرى طلباته فقط، والحساب الرئيسي يرى الجميع." />;
 }

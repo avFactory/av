@@ -343,7 +343,7 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .login-card h1 { text-align: center; color: #e2c88f; font-size: 1.45rem; }
 .login-sub { text-align: center; color: #bfb39a; font-size: .85rem; margin-top: -8px; letter-spacing: .02em; }
 .login-card .field-l { color: #e9dfc8; }
-.login-card .form-control { background: rgba(255,255,255,.94); color: #141414; border-color: rgba(201,169,106,.45); }
+.login-card .form-control, .login-card .form-select { background: rgba(255,255,255,.94); color: #141414; border-color: rgba(201,169,106,.45); }
 .login-card .btn-primary { background: linear-gradient(135deg, #c9a96a, #a8844a); color: #15110a; }
 .login-card .btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, #d9bf8a, #b8944f); }
 .login-foot { text-align: center; font-size: .85rem; color: #bfb39a; }

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { pool, tx } from '../db.js';
 import { createSession, destroySession, verifyLogin, hashPassword, loginThrottle, loginReset, requireAuth, currentTokenHash } from '../lib/auth.js';
-import { bad, str } from '../lib/http.js';
+import { bad, str, int } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyPerm } from '../lib/notify.js';
 import bcrypt from 'bcryptjs';
@@ -13,12 +13,23 @@ r.post('/login', async (req, res) => {
   const password = String(req.body.password || '');
   const key = `${req.ip}:${username.toLowerCase()}`;
   loginThrottle(key);
-  const u = await verifyLogin(username, password);
+  const branchId = req.body.branch_id ? int(req.body.branch_id, 'الفرع') : null;
+  const u = await verifyLogin(username, password, branchId);
   if (!u) throw bad('اسم المستخدم أو كلمة المرور غير صحيحة');
   loginReset(key);
   await createSession(res, u, req);
   await audit(pool, { user: u, ip: req.ip }, 'login', 'user', u.id);
   res.json({ ok: true });
+});
+
+/** خيارات الدخول: إن كان للمحل فروع تُعرض لاختيار الفرع قبل كلمة المرور */
+r.post('/login-options', async (req, res) => {
+  const username = str(req.body.username, 'اسم المستخدم', { required: true, max: 100 });
+  loginThrottle(`opts:${req.ip}`, 60);
+  const branches = (await pool.query(`select b.id, b.name from users u join customer_branches b on b.customer_id=u.customer_id and b.active
+      join users bu on bu.branch_id=b.id and bu.active
+    where lower(u.username)=lower($1) and u.active and u.role_code='customer' and u.branch_id is null order by b.name`, [username])).rows;
+  res.json({ branches });
 });
 
 r.post('/logout', async (req, res) => {
@@ -31,7 +42,7 @@ r.get('/me', requireAuth, async (req, res) => {
   const unread = (await pool.query('select count(*)::int n from notifications where user_id=$1 and read_at is null', [u.id])).rows[0].n;
   res.json({
     id: u.id, username: u.username, full_name: u.full_name, role_code: u.role_code, employee_no: u.employee_no,
-    customer_id: u.customer_id, customer_status: u.customer_status, shop_name: u.shop_name,
+    customer_id: u.customer_id, customer_status: u.customer_status, shop_name: u.shop_name, branch_id: u.branch_id, branch_name: u.branch_name,
     perms: [...u.perms], unread, must_change_password: u.must_change_password,
   });
 });

@@ -28,7 +28,7 @@ export default function Orders() {
       {!data ? <Loader /> : (
         <div className="card"><Table rows={data} onRow={(o) => nav(`/orders/${o.id}`)} rowClass={(o) => (o.late ? 'row-warn' : '')} columns={[
           ['', (o) => <input type="checkbox" checked={sel.includes(o.id)} onClick={(e) => e.stopPropagation()} onChange={(e) => setSel((s) => (e.target.checked ? [...s, o.id] : s.filter((x) => x !== o.id)))} />],
-          ['رقم الطلب', (o) => <b>{o.order_no}</b>], ['الوصف', 'title'], ['العميل', (o) => o.shop_name || <span className="muted">داخلي</span>], ['المادة', 'material_name'],
+          ['رقم الطلب', (o) => <b>{o.order_no}</b>], ['الوصف', 'title'], ['العميل', (o) => (o.shop_name ? <>{o.shop_name}{o.branch_name && <div className="small text-body-secondary">{o.branch_name}</div>}</> : <span className="muted">داخلي</span>)], ['المادة', 'material_name'],
           ['الحالة', (o) => <StatusBadge map={STATUS} value={o.status} />], ['المرحلة', (o) => o.stage_name || '—'], ['العامل', 'worker_name'],
           ['التصميم', (o) => (o.design_status !== 'not_required' ? <Badge tone={o.design_status === 'approved' ? 'ok' : 'warn'}>{DESIGN_STATUS[o.design_status]}</Badge> : '—')],
           ['الوزن', (o) => <span className="n">{fmtW(o.final_weight || o.approx_weight)}</span>], ['موعد التسليم', (o) => (o.late ? <Badge tone="bad">{fmtDate(o.due_date)}</Badge> : fmtDate(o.due_date))],

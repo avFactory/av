@@ -20,7 +20,7 @@ export default function Track() {
       <div className="grid g2 mb">
         <Card title="تفاصيل الطلب" actions={<StatusBadge map={STATUS} value={o.status} />}>
           {o.product_image && <img src={fileUrl(o.product_image)} alt="" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 12, marginBottom: 10 }} />}
-          <Kv items={[['العيار', o.karat], ['اللون', COLORS[o.color] || o.color], ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن', o.final_weight ? `${fmtW(o.final_weight)} جم (نهائي)` : o.approx_weight ? `${fmtW(o.approx_weight)} جم (تقريبي)` : '—'],
+          <Kv items={[o.branch_name && ['الفرع', o.branch_name], ['العيار', o.karat], ['اللون', COLORS[o.color] || o.color], ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن', o.final_weight ? `${fmtW(o.final_weight)} جم (نهائي)` : o.approx_weight ? `${fmtW(o.approx_weight)} جم (تقريبي)` : '—'],
             ['أجور التصنيع', o.labor_rate ? `${fmtMoney(o.labor_rate)} ${METHODS[o.labor_method] || ''}` : '—'], ['التقدير', o.labor_estimate ? fmtMoney(o.labor_estimate) : '—'],
             ['المرحلة الحالية', o.stage_name], ['موعد التسليم المتوقع', fmtDate(o.due_date)], o.design_approval_required && ['التصميم', DESIGN_STATUS[o.design_status]]]} />
         </Card>

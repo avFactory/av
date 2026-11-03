@@ -38,8 +38,8 @@ export async function sessionMiddleware(req, _res, next) {
   const t = req.cookies?.[COOKIE];
   if (!t) return next();
   const r = await pool.query(
-    `select u.*, c.status as customer_status, c.shop_name
-     from sessions s join users u on u.id = s.user_id left join customers c on c.id = u.customer_id
+    `select u.*, c.status as customer_status, c.shop_name, br.name as branch_name
+     from sessions s join users u on u.id = s.user_id left join customers c on c.id = u.customer_id left join customer_branches br on br.id = u.branch_id
      where s.token_hash=$1 and s.expires_at > now() and u.active`,
     [hash(t)]
   );
@@ -66,10 +66,20 @@ export const requirePerm = (...codes) => (req, _res, next) => {
 
 export const has = (req, code) => !!req.user?.perms?.has(code);
 
-export async function verifyLogin(username, password) {
+const DUMMY_HASH = bcrypt.hashSync('timing-equalizer', 10);
+export async function verifyLogin(username, password, branchId = null) {
   const r = await pool.query('select * from users where lower(username)=lower($1) and active', [username]);
-  const u = r.rows[0];
-  if (!u || !bcrypt.compareSync(password, u.password_hash)) return null;
+  const main = r.rows[0];
+  // حسابات الفروع لا تدخل باسمها الداخلي مباشرة
+  if (!main || main.branch_id) { bcrypt.compareSync(password, DUMMY_HASH); return null; }
+  let u = main;
+  if (branchId) {
+    if (main.role_code !== 'customer') return null;
+    u = (await pool.query(`select u.* from users u join customer_branches b on b.id=u.branch_id
+      where u.branch_id=$1 and u.customer_id=$2 and u.active and b.active`, [branchId, main.customer_id])).rows[0];
+    if (!u) { bcrypt.compareSync(password, DUMMY_HASH); return null; }
+  }
+  if (!bcrypt.compareSync(password, u.password_hash)) return null;
   return u;
 }
 
@@ -77,10 +87,10 @@ export const hashPassword = (pw) => bcrypt.hashSync(pw, 10);
 
 // حماية بسيطة من محاولات التخمين
 const attempts = new Map();
-export function loginThrottle(key) {
+export function loginThrottle(key, max = 10) {
   const now = Date.now();
   const a = (attempts.get(key) || []).filter((t) => now - t < 15 * 60 * 1000);
-  if (a.length >= 10) throw new HttpError(429, 'محاولات كثيرة، حاول بعد قليل');
+  if (a.length >= max) throw new HttpError(429, 'محاولات كثيرة، حاول بعد قليل');
   a.push(now);
   attempts.set(key, a);
 }

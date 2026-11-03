@@ -11,13 +11,32 @@ export default function Login() {
   const [f, setF] = useState({ username: '', password: '' });
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  // فروع المحل: تُجلب بعد كتابة اسم المستخدم، ويختار العميل فرعه قبل كلمة المرور
+  const [branches, setBranches] = useState({ for: null, list: [] });
+  const [branch, setBranch] = useState(null);
   if (me) return <Navigate to={sp.get('next') || homeFor(me)} replace />;
+  const loadBranches = async (username) => {
+    const u = username.trim();
+    if (!u || branches.for === u.toLowerCase()) return branches.list;
+    try {
+      const r = await api.post('/auth/login-options', { username: u });
+      setBranches({ for: u.toLowerCase(), list: r.branches });
+      setBranch(null);
+      return r.branches;
+    } catch { return []; }
+  };
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setErr(null);
-    try { await api.post('/auth/login', f); await refresh(); nav(sp.get('next') || '/', { replace: true }); }
-    catch (x) { setErr(x.message); } finally { setBusy(false); }
+    try {
+      const list = await loadBranches(f.username);
+      if (list.length && branch === null) { setErr('اختر الفرع ثم اكتب كلمة مرور الفرع'); return; }
+      await api.post('/auth/login', { ...f, branch_id: branch && branch !== '0' ? branch : undefined });
+      await refresh();
+      nav(sp.get('next') || '/', { replace: true });
+    } catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
+  const hasBranches = branches.for === f.username.trim().toLowerCase() && branches.list.length > 0;
   return (
     <div className="login-screen">
       <div className="login-bg" aria-hidden="true" />
@@ -26,8 +45,17 @@ export default function Login() {
         <h1>مصنع AV للمجوهرات</h1>
         <p className="login-sub">AV Jewelry Factory · تسجيل الدخول</p>
         {err && <div className="alert alert-danger">{err}</div>}
-        <Field label="اسم المستخدم"><Input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoFocus autoComplete="username" dir="ltr" /></Field>
-        <Field label="كلمة المرور"><Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="current-password" dir="ltr" /></Field>
+        <Field label="اسم المستخدم"><Input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} onBlur={(e) => loadBranches(e.target.value)} autoFocus autoComplete="username" dir="ltr" /></Field>
+        {hasBranches && (
+          <Field label="اختر الفرع">
+            <select className="form-select" value={branch ?? ''} onChange={(e) => setBranch(e.target.value === '' ? null : e.target.value)} autoFocus>
+              <option value="" disabled>— اختر —</option>
+              <option value="0">الحساب الرئيسي للمحل</option>
+              {branches.list.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </Field>
+        )}
+        <Field label={hasBranches && branch && branch !== '0' ? 'كلمة مرور الفرع' : 'كلمة المرور'}><Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="current-password" dir="ltr" /></Field>
         <Btn size="lg" loading={busy} type="submit">دخول</Btn>
         <p className="login-foot">صاحب محل ذهب؟ <Link to="/register">سجّل حساب محلك للطلب بالجملة</Link></p>
         <p className="login-foot"><Link to="/store">تصفح المتجر بدون تسجيل ←</Link></p>

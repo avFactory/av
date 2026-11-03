@@ -12,6 +12,7 @@ import * as prod from '../lib/production.js';
 import * as ledger from '../lib/ledger.js';
 import { materialFor } from './orders.js';
 import { invoiceDetail } from './finance.js';
+import { listBranches, createBranch, updateBranch, assertMainAccount } from '../lib/branches.js';
 
 const r = Router();
 r.use(requirePerm('store.access'));
@@ -22,11 +23,13 @@ r.get('/account', async (req, res) => {
       coalesce((select sum(case when invoice_type='invoice' then total else -total end) from invoices where customer_id=$1 and status='issued'),0)::text as invoiced,
       coalesce((select sum(case when kind='refund' then -amount else amount end) from payments where customer_id=$1),0)::text as paid`, [req.user.customer_id]);
   const docs = await many('select id, path, original_name, created_at from customer_documents where customer_id=$1', [req.user.customer_id]);
-  res.json({ customer: c, balance: (Number(bal.invoiced) - Number(bal.paid)).toFixed(2), ...bal, docs });
+  const branch = req.user.branch_id ? await one('select id, name, city, address, phone from customer_branches where id=$1', [req.user.branch_id]) : null;
+  res.json({ customer: c, balance: (Number(bal.invoiced) - Number(bal.paid)).toFixed(2), ...bal, docs, branch, is_main: !req.user.branch_id });
 });
 
 /** رفع بيانات ومستندات المنشأة (سجل تجاري، شهادة ضريبية...) */
 r.post('/account/documents', upload.array('files', 5), async (req, res) => {
+  assertMainAccount(req);
   res.json(await tx(async (db) => {
     const files = await registerFiles(db, req.files, req.user.id);
     if (!files.length) throw bad('اختر الملفات');
@@ -37,6 +40,7 @@ r.post('/account/documents', upload.array('files', 5), async (req, res) => {
 });
 
 r.put('/account', async (req, res) => {
+  assertMainAccount(req);
   const b = req.body;
   const c = await one('select * from customers where id=$1', [req.user.customer_id]);
   await pool.query('update customers set owner_name=$2, phone=$3, email=$4, city=$5, address=$6, vat_number=$7, cr_number=$8 where id=$1',
@@ -44,6 +48,20 @@ r.put('/account', async (req, res) => {
      str(b.address ?? c.address, 'العنوان'), c.status === 'approved' ? c.vat_number : str(b.vat_number ?? c.vat_number, 'الرقم الضريبي'), c.status === 'approved' ? c.cr_number : str(b.cr_number ?? c.cr_number, 'السجل')]);
   await audit(pool, req, 'customer.self_update', 'customer', c.id, { before: c, after: b });
   res.json({ ok: true });
+});
+
+/** فروع المحل: يديرها الحساب الرئيسي فقط */
+r.get('/branches', async (req, res) => {
+  assertMainAccount(req);
+  res.json(await listBranches(pool, req.user.customer_id));
+});
+r.post('/branches', async (req, res) => {
+  assertMainAccount(req);
+  res.json(await tx((db) => createBranch(db, req, req.user.customer_id, req.body)));
+});
+r.put('/branches/:id', async (req, res) => {
+  assertMainAccount(req);
+  res.json(await tx((db) => updateBranch(db, req, req.user.customer_id, req.params.id, req.body)));
 });
 
 // ما بعد هذا يتطلب حساباً معتمداً
@@ -97,15 +115,15 @@ r.post('/orders', async (req, res) => {
       const labor = await resolveLabor(db, { customer_id: req.user.customer_id, product_id: p.id, product_type: p.product_type });
       const w = p.final_weight || p.approx_weight;
       const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_id, product_type, title, material_id, approx_weight, size, quantity, notes,
-          status, labor_method, labor_rate, labor_estimate, created_by, route_id)
-        values (next_doc_no('ORD'),$1,'store_catalog',$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',$11,$12,$13,$14,$15) returning *`,
+          status, labor_method, labor_rate, labor_estimate, created_by, route_id, branch_id)
+        values (next_doc_no('ORD'),$1,'store_catalog',$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',$11,$12,$13,$14,$15,$16) returning *`,
         [req.user.customer_id, cartRef, p.id, p.product_type, p.name, await materialFor(db, karat, color), w ? (await db.query('select ($1::numeric * $2)::text v', [w, qty])).rows[0].v : null,
          str(it.size, 'المقاس'), qty, str(it.notes, 'ملاحظات'), labor?.method || null, labor?.rate || null,
-         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id])).rows[0];
+         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null])).rows[0];
       await prod.logStage(db, o.id, null, 'created', req.user.id, `طلب من المتجر (${cartRef})`, true);
       created.push(o);
     }
-    await notifyPerm(db, 'orders.manage', { kind: 'order', title: `طلب جديد من ${req.user.shop_name}`, body: `${created.length} منتج - ${cartRef}`, link: '/orders?status=pending_review' });
+    await notifyPerm(db, 'orders.manage', { kind: 'order', title: `طلب جديد من ${req.user.shop_name}${req.user.branch_name ? ' - ' + req.user.branch_name : ''}`, body: `${created.length} منتج - ${cartRef}`, link: '/orders?status=pending_review' });
     await audit(db, req, 'store.order', 'cart', cartRef, { orders: created.map((o) => o.order_no) });
     return { cart_ref: cartRef, orders: created.map((o) => ({ id: o.id, order_no: o.order_no })) };
   }));
@@ -116,11 +134,11 @@ r.post('/custom', upload.array('files', 10), async (req, res) => {
   const b = req.body;
   res.json(await tx(async (db) => {
     const karat = oneOf(int(b.karat, 'العيار'), [18, 21, 22, 24], 'العيار');
-    const o = (await db.query(`insert into orders(order_no, customer_id, source, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by)
-      values (next_doc_no('ORD'),$1,'store_custom',$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10) returning *`,
+    const o = (await db.query(`insert into orders(order_no, customer_id, source, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id)
+      values (next_doc_no('ORD'),$1,'store_custom',$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11) returning *`,
       [req.user.customer_id, str(b.product_type, 'نوع القطعة', { required: true }), str(b.title, 'اسم التصميم') || `تصميم خاص - ${b.product_type}`,
        await materialFor(db, karat, b.color), b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : null, str(b.size, 'المقاس'),
-       int(b.quantity ?? 1, 'الكمية', { min: 1 }), b.due_date || null, str(b.notes, 'الملاحظات', { max: 5000 }), req.user.id])).rows[0];
+       int(b.quantity ?? 1, 'الكمية', { min: 1 }), b.due_date || null, str(b.notes, 'الملاحظات', { max: 5000 }), req.user.id, req.user.branch_id || null])).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
     for (const f of files) {
       const kind = /\.(stl|obj|3dm|step|stp|glb|gltf)$/i.test(f.path) ? 'model3d' : (b.file_kind === 'sketch' ? 'sketch' : 'reference');
@@ -136,17 +154,19 @@ r.post('/custom', upload.array('files', 10), async (req, res) => {
 async function myOrder(db, req, id, lock = false) {
   const o = (await db.query(`select * from orders where id=$1 ${lock ? 'for update' : ''}`, [int(id)])).rows[0];
   if (!o || o.customer_id !== req.user.customer_id) throw notFound('الطلب غير موجود');
+  // حساب الفرع يرى طلبات فرعه فقط، والحساب الرئيسي يرى كل الفروع
+  if (req.user.branch_id && o.branch_id !== req.user.branch_id) throw notFound('الطلب غير موجود');
   return o;
 }
 
 r.get('/orders', async (req, res) => {
   res.json(await many(`select o.id, o.order_no, o.title, o.status, o.quantity, o.due_date, o.created_at, o.design_status, o.labor_estimate::text, o.cart_ref,
-      s.name as stage_name, m.name as material_name, o.stage_seq,
+      s.name as stage_name, m.name as material_name, o.stage_seq, br.name as branch_name,
       (select count(*) from route_stages rs where rs.route_id=o.route_id)::int as total_stages,
       (select f.path from order_files f where f.order_id=o.id and f.customer_visible and f.mime like 'image/%' order by f.id desc limit 1) as image,
       (select pm.path from product_media pm where pm.product_id=o.product_id order by pm.sort, pm.id limit 1) as product_image
-    from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
-    where o.customer_id=$1 order by o.id desc`, [req.user.customer_id]));
+    from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id left join customer_branches br on br.id=o.branch_id
+    where o.customer_id=$1 and ($2::int is null or o.branch_id=$2) order by o.id desc`, [req.user.customer_id, req.user.branch_id || null]));
 });
 
 /** متابعة الطلب: بيانات العميل فقط (بدون عمال أو عهد أو نسب عجز) */
@@ -164,7 +184,7 @@ r.get('/orders/:id', async (req, res) => {
   const stageName = o.current_stage_id ? (await one('select name from stages where id=$1', [o.current_stage_id])).name : null;
   res.json({
     order: {
-      id: o.id, order_no: o.order_no, title: o.title, status: o.status, karat: m.karat, color: m.color, material: m.name, size: o.size, quantity: o.quantity,
+      id: o.id, order_no: o.order_no, title: o.title, status: o.status, branch_name: o.branch_id ? (await one('select name from customer_branches where id=$1', [o.branch_id]))?.name : null, karat: m.karat, color: m.color, material: m.name, size: o.size, quantity: o.quantity,
       approx_weight: o.approx_weight, final_weight: o.final_weight, labor_method: o.labor_method, labor_rate: o.labor_rate, labor_estimate: o.labor_estimate,
       quote_note: o.quote_note, quote_sent_at: o.quote_sent_at, customer_accepted_at: o.customer_accepted_at, due_date: o.due_date, notes: o.notes,
       design_status: o.design_status, design_approval_required: o.design_approval_required, stage_name: stageName, created_at: o.created_at,
@@ -218,12 +238,18 @@ r.post('/orders/:id/design', async (req, res) => {
 r.get('/invoices', async (req, res) => {
   res.json(await many(`select id, invoice_no, invoice_type, issue_date, subtotal::text, vat_amount::text, total::text, status,
       coalesce((select sum(case when kind='refund' then -amount else amount end) from payments p where p.invoice_id=i.id),0)::text as paid
-    from invoices i where customer_id=$1 order by id desc`, [req.user.customer_id]));
+    from invoices i where customer_id=$1
+      and ($2::int is null or exists (select 1 from invoice_lines l join orders o on o.id=l.order_id where l.invoice_id=i.id and o.branch_id=$2))
+    order by id desc`, [req.user.customer_id, req.user.branch_id || null]));
 });
 
 r.get('/invoices/:id', async (req, res) => {
   const d = await invoiceDetail(pool, int(req.params.id));
   if (!d || d.invoice.customer_id !== req.user.customer_id) throw notFound();
+  if (req.user.branch_id) {
+    const own = await one('select 1 from invoice_lines l join orders o on o.id=l.order_id where l.invoice_id=$1 and o.branch_id=$2 limit 1', [d.invoice.id, req.user.branch_id]);
+    if (!own) throw notFound();
+  }
   delete d.invoice.created_by_name;
   res.json(d);
 });

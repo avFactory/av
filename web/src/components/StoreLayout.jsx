@@ -44,7 +44,7 @@ export default function StoreLayout() {
               </>}
               {isCustomer && <>
                 <Bell to="/store/notifications" />
-                <NavLink to="/store/account" className="btn btn-outline-light btn-sm">{me.shop_name}</NavLink>
+                <NavLink to="/store/account" className="btn btn-outline-light btn-sm">{me.shop_name}{me.branch_name ? ` — ${me.branch_name}` : ''}</NavLink>
                 <button className="btn btn-outline-light btn-sm" onClick={logout}>خروج</button>
               </>}
               {me && !isCustomer && <Link to="/" className="btn btn-outline-light btn-sm">العودة للنظام</Link>}

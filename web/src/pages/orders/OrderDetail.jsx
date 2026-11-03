@@ -33,7 +33,7 @@ export default function OrderDetail() {
 
   const inProd = o.status === 'in_production';
   return (
-    <Page title={<span>{o.order_no} <StatusBadge map={STATUS} value={o.status} /></span>} subtitle={`${o.title}${o.shop_name ? ' · ' + o.shop_name : ' · طلب داخلي'}`} back="/orders"
+    <Page title={<span>{o.order_no} <StatusBadge map={STATUS} value={o.status} /></span>} subtitle={`${o.title}${o.shop_name ? ' · ' + o.shop_name + (o.branch_name ? ' — ' + o.branch_name : '') : ' · طلب داخلي'}`} back="/orders"
       actions={<>
         <a className="btn btn-outline-secondary" href={`/print/labels?auto=1&ids=${o.id}`} target="_blank" rel="noreferrer">طباعة الملصق</a>
         {o.status === 'pending_review' && can('orders.quote') && o.source === 'store_custom' && <Btn onClick={() => open('quote', { labor_method: suggestedLabor?.method || 'per_gram', labor_rate: suggestedLabor?.rate || '', approx_weight: o.approx_weight || '', due_date: o.due_date?.slice(0, 10) || '' })}>إرسال عرض أجور</Btn>}

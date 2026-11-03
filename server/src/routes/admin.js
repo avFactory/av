@@ -8,6 +8,7 @@ import { notifyCustomer } from '../lib/notify.js';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { sendXlsx } from '../lib/xlsx.js';
+import { listBranches, createBranch, updateBranch } from '../lib/branches.js';
 
 const r = Router();
 
@@ -402,13 +403,14 @@ r.get('/customers/:id', requirePerm('customers.view'), async (req, res) => {
   const id = int(req.params.id);
   const c = await one('select c.*, t.name as tier_name, t.color as tier_color from customers c left join customer_tiers t on t.id=c.tier_id where c.id=$1', [id]);
   if (!c) throw notFound();
-  const users = await many('select id, username, full_name, active from users where customer_id=$1', [id]);
+  const users = await many('select id, username, full_name, active from users where customer_id=$1 and branch_id is null', [id]);
   const docs = await many('select * from customer_documents where customer_id=$1', [id]);
-  const orders = await many(`select o.id, o.order_no, o.title, o.status, o.created_at, s.name as stage_name from orders o left join stages s on s.id=o.current_stage_id where customer_id=$1 order by id desc`, [id]);
+  const orders = await many(`select o.id, o.order_no, o.title, o.status, o.created_at, s.name as stage_name, br.name as branch_name from orders o left join stages s on s.id=o.current_stage_id left join customer_branches br on br.id=o.branch_id where o.customer_id=$1 order by o.id desc`, [id]);
   const invoices = await many('select id, invoice_no, invoice_type, total::text, status, issue_date from invoices where customer_id=$1 order by id desc', [id]);
   const payments = await many('select id, payment_no, kind, amount::text, method, received_at, invoice_id from payments where customer_id=$1 order by id desc', [id]);
   const rates = await many('select * from labor_rates where customer_id=$1 order by id desc', [id]);
-  res.json({ customer: c, users, docs, orders, invoices, payments, rates });
+  const branches = await listBranches(pool, id);
+  res.json({ customer: c, users, docs, orders, invoices, payments, rates, branches });
 });
 
 r.post('/customers', requirePerm('customers.manage'), async (req, res) => {
@@ -426,6 +428,13 @@ r.post('/customers', requirePerm('customers.manage'), async (req, res) => {
     await audit(db, req, 'customer.create', 'customer', c.id, { shop: c.shop_name });
     return c;
   }));
+});
+
+r.post('/customers/:id/branches', requirePerm('customers.manage'), async (req, res) => {
+  res.json(await tx((db) => createBranch(db, req, int(req.params.id), req.body)));
+});
+r.put('/customers/:id/branches/:bid', requirePerm('customers.manage'), async (req, res) => {
+  res.json(await tx((db) => updateBranch(db, req, int(req.params.id), req.params.bid, req.body)));
 });
 
 r.put('/customers/:id', requirePerm('customers.manage'), async (req, res) => {

@@ -77,3 +77,55 @@ test('تصنيفات العملاء: ذهبي وفضي وعادي، والعاد
   const o = (await call('POST', '/orders', { title: 'خاتم', product_type: 'خاتم', karat: 21, color: 'yellow', customer_id: c.id })).data;
   assert.equal(Number((await call('GET', `/orders/${o.id}`)).data.order.labor_rate), 11);
 });
+
+test('فروع العملاء: اختيار الفرع عند الدخول، كلمة مرور لكل فرع، وفصل الطلبات بين الفروع', async () => {
+  const mk = () => { let ck = ''; return async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { 'content-type': 'application/json', cookie: ck }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; }; };
+  const main = mk();
+  assert.equal((await main('POST', '/auth/register-customer', { username: 'brshop', password: 'Main#2026x', shop_name: 'مجوهرات الفروع', owner_name: 'م', phone: '0511111222' })).status, 200);
+  const cid = (await call('GET', '/admin/customers')).data.find((c) => c.shop_name === 'مجوهرات الفروع').id;
+  await call('PUT', `/admin/customers/${cid}`, { status: 'approved' });
+  await main('POST', '/auth/login', { username: 'brshop', password: 'Main#2026x' });
+  // لا فروع بعد
+  assert.deepEqual((await mk()('POST', '/auth/login-options', { username: 'brshop' })).data.branches, []);
+  const b1 = (await main('POST', '/store/branches', { name: 'فرع العليا', city: 'الرياض', password: 'Olaya#2026' })).data;
+  const b2 = (await main('POST', '/store/branches', { name: 'فرع جدة', city: 'جدة', password: 'Jeddah#2026' })).data;
+  assert.equal((await main('POST', '/store/branches', { name: 'فرع العليا', password: 'Other#2026' })).status, 400, 'لا يتكرر اسم الفرع');
+  const opts = (await mk()('POST', '/auth/login-options', { username: 'BRSHOP' })).data.branches.map((b) => b.name).sort();
+  assert.deepEqual(opts, ['فرع العليا', 'فرع جدة'].sort());
+  assert.deepEqual((await mk()('POST', '/auth/login-options', { username: 'nobody' })).data.branches, []);
+  // كلمة مرور كل فرع مستقلة
+  const olaya = mk();
+  assert.equal((await olaya('POST', '/auth/login', { username: 'brshop', password: 'Jeddah#2026', branch_id: b1.id })).status, 400, 'كلمة مرور فرع آخر مرفوضة');
+  assert.equal((await olaya('POST', '/auth/login', { username: 'brshop', password: 'Main#2026x', branch_id: b1.id })).status, 400, 'كلمة مرور الرئيسي لا تفتح الفرع');
+  assert.equal((await olaya('POST', '/auth/login', { username: 'brshop', password: 'Olaya#2026', branch_id: b1.id })).status, 200);
+  const me = (await olaya('GET', '/auth/me')).data;
+  assert.deepEqual([me.branch_id, me.branch_name, me.customer_id], [b1.id, 'فرع العليا', cid]);
+  const jeddah = mk();
+  assert.equal((await jeddah('POST', '/auth/login', { username: 'brshop', password: 'Jeddah#2026', branch_id: b2.id })).status, 200);
+  // اسم المستخدم الداخلي للفرع لا يدخل مباشرة
+  const internal = (await pool.query('select username from users where branch_id=$1', [b1.id])).rows[0].username;
+  assert.equal((await mk()('POST', '/auth/login', { username: internal, password: 'Olaya#2026' })).status, 400);
+  // الطلبات تُسجَّل بالفرع، والفرع لا يرى طلبات غيره، والرئيسي يرى الكل
+  const o1 = (await olaya('POST', '/store/orders', { items: [] })).status;
+  assert.equal(o1, 400, 'السلة الفارغة مرفوضة');
+  const p = (await call('POST', '/catalog/products', null, (() => { const f = new FormData(); for (const [k, v] of Object.entries({ sku: 'BR-1', name: 'خاتم فرع', product_type: 'خاتم', karats: '21', colors: 'yellow' })) f.append(k, v); return f; })())).data;
+  const oa = (await olaya('POST', '/store/orders', { items: [{ product_id: p.id, karat: 21, quantity: 1 }] })).data.orders[0];
+  const ob = (await jeddah('POST', '/store/orders', { items: [{ product_id: p.id, karat: 21, quantity: 2 }] })).data.orders[0];
+  assert.deepEqual((await olaya('GET', '/store/orders')).data.map((o) => o.id), [oa.id]);
+  assert.equal((await olaya('GET', `/store/orders/${ob.id}`)).status, 404, 'فرع العليا لا يرى طلب جدة');
+  const all = (await main('GET', '/store/orders')).data;
+  assert.deepEqual(all.map((o) => o.branch_name).sort(), ['فرع العليا', 'فرع جدة'].sort());
+  assert.equal((await call('GET', `/orders/${oa.id}`)).data.order.branch_name, 'فرع العليا', 'الإدارة ترى الفرع');
+  // بيانات المنشأة والفروع للحساب الرئيسي فقط
+  assert.equal((await olaya('PUT', '/store/account', { city: 'x' })).status, 409);
+  assert.equal((await olaya('POST', '/store/branches', { name: 'x', password: 'Xxxxxxxx1' })).status, 409);
+  // إيقاف الفرع يمنع دخوله ويُخرجه
+  await main('PUT', `/store/branches/${b2.id}`, { active: false });
+  assert.equal((await jeddah('GET', '/store/orders')).status, 401);
+  assert.equal((await mk()('POST', '/auth/login', { username: 'brshop', password: 'Jeddah#2026', branch_id: b2.id })).status, 400);
+  assert.deepEqual((await mk()('POST', '/auth/login-options', { username: 'brshop' })).data.branches.map((b) => b.name), ['فرع العليا']);
+  // الإدارة تغيّر كلمة مرور الفرع
+  await call('PUT', `/admin/customers/${cid}/branches/${b1.id}`, { password: 'NewOlaya#26' });
+  assert.equal((await mk()('POST', '/auth/login', { username: 'brshop', password: 'NewOlaya#26', branch_id: b1.id })).status, 200);
+  assert.equal((await call('GET', `/admin/customers/${cid}`)).data.branches.length, 2);
+});

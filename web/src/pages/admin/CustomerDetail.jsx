@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Branches from '../../components/Branches.jsx';
 import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
@@ -29,12 +30,13 @@ export default function CustomerDetail() {
           {data.docs.length > 0 && <><b className="small mt">مستندات المنشأة</b><div className="files">{data.docs.map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer"><div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div><span>{d.original_name}</span></a>)}</div></>}
         </Card>
       </div>
-      <Tabs value={tab} onChange={setTab} tabs={[['orders', 'الطلبات'], ['invoices', 'الفواتير'], ['payments', 'المدفوعات'], ['statement', 'كشف الحساب'], ['rates', 'أسعار المصنعية الخاصة']]} />
-      {tab === 'orders' && <div className="card"><Table rows={data.orders} columns={[['الطلب', (o) => <Link className="link" to={`/orders/${o.id}`}>{o.order_no}</Link>], ['الوصف', 'title'], ['الحالة', (o) => <StatusBadge map={STATUS} value={o.status} />], ['المرحلة', 'stage_name'], ['التاريخ', (o) => fmtDate(o.created_at)]]} /></div>}
+      <Tabs value={tab} onChange={setTab} tabs={[['orders', 'الطلبات'], ['invoices', 'الفواتير'], ['payments', 'المدفوعات'], ['statement', 'كشف الحساب'], ['rates', 'أسعار المصنعية الخاصة'], ['branches', `الفروع (${data.branches.length})`]]} />
+      {tab === 'orders' && <div className="card"><Table rows={data.orders} columns={[['الطلب', (o) => <Link className="link" to={`/orders/${o.id}`}>{o.order_no}</Link>], ['الوصف', 'title'], ['الفرع', (o) => o.branch_name || 'الرئيسي'], ['الحالة', (o) => <StatusBadge map={STATUS} value={o.status} />], ['المرحلة', 'stage_name'], ['التاريخ', (o) => fmtDate(o.created_at)]]} /></div>}
       {tab === 'invoices' && <div className="card"><Table rows={data.invoices} columns={[['الفاتورة', (i) => <Link className="link" to={`/admin/invoices/${i.id}`}>{i.invoice_no}</Link>], ['النوع', (i) => (i.invoice_type === 'invoice' ? 'فاتورة' : 'إشعار دائن')], ['الإجمالي', (i) => fmtMoney(i.total)], ['التاريخ', (i) => fmtDate(i.issue_date)]]} /></div>}
       {tab === 'payments' && <div className="card"><Table rows={data.payments} columns={[['الرقم', 'payment_no'], ['النوع', 'kind'], ['المبلغ', (p) => fmtMoney(p.amount)], ['الطريقة', 'method'], ['التاريخ', (p) => fmtDate(p.received_at)]]} /></div>}
       {tab === 'statement' && <div className="card"><Table rows={st?.rows || []} columns={[['التاريخ', (r) => fmtDate(r.date)], ['المرجع', 'ref'], ['البيان', 'type'], ['مدين', (r) => fmtMoney(r.debit)], ['دائن', (r) => fmtMoney(r.credit)], ['الرصيد', (r) => fmtMoney(r.balance)]]} /></div>}
       {tab === 'rates' && <div className="card"><Table rows={data.rates} empty="لا توجد أسعار خاصة - تضاف من صفحة أجور التصنيع" columns={[['القاعدة', 'name'], ['الطريقة', (r) => METHODS[r.method]], ['الأجرة', (r) => fmtMoney(r.rate)], ['نوع المنتج', 'product_type'], ['الحالة', (r) => (r.active ? <Badge tone="ok">فعالة</Badge> : <Badge>ملغاة</Badge>)]]} /><div className="card-body"><Link className="link" to="/admin/labor">إدارة أجور التصنيع ←</Link></div></div>}
+      {tab === 'branches' && <Branches list={data.branches} base={`/admin/customers/${id}/branches`} onChange={reload} />}
       {edit && (
         <Card title="تعديل البيانات" className="mt">
           <div className="grid g3">
