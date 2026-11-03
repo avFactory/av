@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl, qrUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
+import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
 import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS } from '../../format.js';
 import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal } from '../../ui.jsx';
 
@@ -35,7 +36,7 @@ export default function OrderDetail() {
   return (
     <Page title={<span>{o.order_no} <StatusBadge map={STATUS} value={o.status} /></span>} subtitle={`${o.title}${o.shop_name ? ' · ' + o.shop_name + (o.branch_name ? ' — ' + o.branch_name : '') : ' · طلب داخلي'}`} back="/orders"
       actions={<>
-        <a className="btn btn-outline-secondary" href={`/print/labels?auto=1&ids=${o.id}`} target="_blank" rel="noreferrer">طباعة الملصق</a>
+        <PrintLabelsBtn ids={[o.id]} />
         {o.status === 'pending_review' && can('orders.quote') && o.source === 'store_custom' && <Btn onClick={() => open('quote', { labor_method: suggestedLabor?.method || 'per_gram', labor_rate: suggestedLabor?.rate || '', approx_weight: o.approx_weight || '', due_date: o.due_date?.slice(0, 10) || '' })}>إرسال عرض أجور</Btn>}
         {['pending_review', 'approved'].includes(o.status) && can('orders.manage') && <Btn onClick={() => act('start', {}, 'تم تحويل الطلب لأمر إنتاج')} loading={busy}>بدء الإنتاج</Btn>}
         {['pending_review', 'approved'].includes(o.status) && o.product_id && can('orders.manage') && <Btn kind="ghost" onClick={() => act('from-stock', {}, 'تمت التلبية من المخزون الجاهز')}>تلبية من المخزون الجاهز</Btn>}

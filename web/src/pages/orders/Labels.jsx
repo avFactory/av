@@ -59,7 +59,12 @@ export default function Labels() {
   useEffect(() => {
     if (!rows?.length || sp.get('auto') !== '1' || autoDone.current) return;
     autoDone.current = true;
-    if (zebra && cfg.device) {
+    const embed = sp.get('embed') === '1';
+    if (embed) {
+      const notify = () => window.parent.postMessage('labels-printed', location.origin);
+      window.addEventListener('afterprint', notify, { once: true });
+    }
+    if (zebra && cfg.device && !embed) {
       run(() => printZebra(), `أُرسلت ${rows.length} ملصق للطابعة`).catch(() => {});
       return;
     }

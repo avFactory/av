@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { qs } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
+import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
 import { fmtW, fmtDate, STATUS, DESIGN_STATUS } from '../../format.js';
 import { LinkBtn, Loader, Page, Search, Select, StatusBadge, Table, useFetch, Badge } from '../../ui.jsx';
 
@@ -16,7 +17,7 @@ export default function Orders() {
   const [sel, setSel] = useState([]);
   return (
     <Page title="الطلبات وأوامر الإنتاج" actions={<>
-      {sel.length > 0 && <a className="btn btn-outline-secondary" href={`/print/labels?auto=1&ids=${sel.join(',')}`} target="_blank" rel="noreferrer">طباعة ملصقات ({sel.length})</a>}
+      {sel.length > 0 && <PrintLabelsBtn ids={sel}>طباعة ملصقات ({sel.length})</PrintLabelsBtn>}
       {can('orders.manage') && <LinkBtn to="/orders/new" kind="primary">طلب تصنيع جديد</LinkBtn>}
     </>}>
       <div className="hrow gap wrap mb">
