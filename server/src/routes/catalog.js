@@ -5,6 +5,7 @@ import { requirePerm } from '../lib/auth.js';
 import { bad, notFound, int, str, oneOf, weight as W, money } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { upload, registerFiles } from '../lib/uploads.js';
+import { nextSku, PRODUCT_TYPES } from '../lib/sku.js';
 
 const r = Router();
 const arr = (v) => (Array.isArray(v) ? v : typeof v === 'string' && v ? v.split(',').map((x) => x.trim()).filter(Boolean) : []);
@@ -21,7 +22,7 @@ function productVals(b) {
   const colors = arr(b.colors);
   for (const c of colors) oneOf(c, ['yellow', 'white', 'rose'], 'اللون');
   return [
-    str(b.sku, 'رقم المنتج', { required: true }), str(b.name, 'اسم المنتج', { required: true }), str(b.product_type, 'نوع القطعة', { required: true }),
+    str(b.sku, 'رقم المنتج'), str(b.name, 'اسم المنتج', { required: true }), str(b.product_type, 'نوع القطعة', { required: true }),
     str(b.description, 'الوصف'), karats.length ? karats : [21], colors.length ? colors : ['yellow'],
     b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : null, b.final_weight ? W(b.final_weight, 'الوزن النهائي') : null, arr(b.sizes),
     b.labor_method ? oneOf(b.labor_method, ['per_gram', 'per_piece', 'fixed'], 'طريقة الأجرة') : null,
@@ -31,10 +32,21 @@ function productVals(b) {
   ];
 }
 
+/** أنواع القطع وبادئاتها، ومعاينة رقم المنتج التالي لنوع معيّن */
+r.get('/product-types', requirePerm('products.manage', 'orders.view'), async (_req, res) => {
+  res.json(PRODUCT_TYPES.map(([name, prefix]) => ({ name, prefix })));
+});
+r.get('/next-sku', requirePerm('products.manage'), async (req, res) => {
+  res.json({ sku: await nextSku(pool, req.query.type) });
+});
+
 r.post('/products', requirePerm('products.manage'), upload.array('files', 10), async (req, res) => {
   res.json(await tx(async (db) => {
+    const vals = productVals(req.body);
+    // رقم المنتج يُولَّد تلقائياً من نوع القطعة (RIN، SW، NK...) إذا لم يُدخل يدوياً
+    if (!vals[0]) vals[0] = await nextSku(db, vals[2], { lock: true });
     const p = (await db.query(`insert into products(sku, name, product_type, description, karats, colors, approx_weight, final_weight, sizes, labor_method, labor_rate, availability, route_id, active)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning *`, productVals(req.body)).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; })).rows[0];
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning *`, vals).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; })).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
     for (const [i, f] of files.entries()) await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,$4)', [p.id, f.path, f.mime?.startsWith('video') ? 'video' : 'image', i]);
     await audit(db, req, 'product.create', 'product', p.id, { sku: p.sku });
@@ -47,8 +59,10 @@ r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 10)
     const id = int(req.params.id);
     const before = (await db.query('select * from products where id=$1', [id])).rows[0];
     if (!before) throw notFound();
+    const vals = productVals(req.body);
+    if (!vals[0]) vals[0] = before.sku;
     await db.query(`update products set sku=$2, name=$3, product_type=$4, description=$5, karats=$6, colors=$7, approx_weight=$8, final_weight=$9, sizes=$10,
-      labor_method=$11, labor_rate=$12, availability=$13, route_id=$14, active=$15 where id=$1`, [id, ...productVals(req.body)]);
+      labor_method=$11, labor_rate=$12, availability=$13, route_id=$14, active=$15 where id=$1`, [id, ...vals]).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; });
     const files = await registerFiles(db, req.files, req.user.id);
     for (const f of files) await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,99)', [id, f.path, f.mime?.startsWith('video') ? 'video' : 'image']);
     for (const mid of arr(req.body.remove_media)) await db.query('delete from product_media where id=$1 and product_id=$2', [int(mid), id]);

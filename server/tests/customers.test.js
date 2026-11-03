@@ -197,3 +197,17 @@ test('الاسم المختصر على الملصق، ورمز QR رقمي يُ�
   assert.equal((await call('GET', `/sup/lookup?code=${lab.qr_code}`)).data.id, o.data.id, 'المسح بالأرقام');
   assert.equal((await call('GET', `/sup/lookup?code=${encodeURIComponent(lab.qr_code.replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]))}`)).data.id, o.data.id, 'أرقام عربية');
 });
+
+test('رقم المنتج تلقائي حسب نوع القطعة', async () => {
+  const mk = async (type, extra = {}) => {
+    const f = new FormData();
+    for (const [k, v] of Object.entries({ name: `منتج ${type}`, product_type: type, karats: '21', colors: 'yellow', ...extra })) f.append(k, v);
+    return call('POST', '/catalog/products', null, f);
+  };
+  assert.equal((await call('GET', '/catalog/next-sku?type=خاتم')).data.sku, 'RIN000001');
+  assert.equal((await mk('خاتم')).data.sku, 'RIN000001');
+  const second = await mk('خاتم'); assert.equal(second.data.sku, 'RIN000002', JSON.stringify(second.data));
+  const exp = { 'أسورة': 'SW', 'اسوارة': 'SW', 'عقد': 'NK', 'كف': 'HAN', 'حلق': 'EAR', 'سبحة': 'SP', 'تعليقة': 'PR', 'خلخال': 'KHL' };
+  for (const [t, pre] of Object.entries(exp)) assert.match((await mk(t)).data.sku, new RegExp(`^${pre}\\d{6}$`), t);
+  assert.equal((await mk('خاتم', { sku: 'CUSTOM-1' })).data.sku, 'CUSTOM-1', 'الإدخال اليدوي ما زال ممكناً');
+});

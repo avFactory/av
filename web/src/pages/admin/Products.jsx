@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { COLORS, METHODS, fmtW, fmtMoney } from '../../format.js';
@@ -11,6 +11,13 @@ export default function Products() {
   const { data, reload } = useFetch('/catalog/products');
   const [f, setF] = useState(null);
   const [run, busy] = useAction();
+  const { data: types } = useFetch('/catalog/product-types');
+  // معاينة رقم المنتج التالي عند اختيار نوع القطعة لمنتج جديد
+  const [nextSku, setNextSku] = useState('');
+  useEffect(() => {
+    if (!f || f.id || !f.product_type) { setNextSku(''); return; }
+    api.get(`/catalog/next-sku?type=${encodeURIComponent(f.product_type)}`).then((r) => setNextSku(r.sku)).catch(() => setNextSku(''));
+  }, [f?.id, f?.product_type, !!f]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = (k, v) => { const a = f[k] || []; setF({ ...f, [k]: a.includes(v) ? a.filter((x) => x !== v) : [...a, v] }); };
   const save = () => run(async () => {
     const fd = new FormData();
@@ -34,9 +41,12 @@ export default function Products() {
       <Modal open={!!f} onClose={() => setF(null)} title={f?.id ? 'تعديل منتج' : 'منتج جديد'} wide>
         {f && <>
           <div className="grid g3">
-            <Field label="رقم المنتج *"><Input value={f.sku || ''} onChange={(e) => setF({ ...f, sku: e.target.value })} dir="ltr" /></Field>
+            <Field label="نوع القطعة *"><Select value={f.product_type || ''} onChange={(e) => setF({ ...f, product_type: e.target.value })} placeholder="اختر نوع القطعة"
+              options={[...(types || []).map((t) => [t.name, `${t.name} (${t.prefix})`]), ...(f.product_type && !(types || []).some((t) => t.name === f.product_type) ? [[f.product_type, f.product_type]] : [])]} /></Field>
+            {f.id
+              ? <Field label="رقم المنتج *"><Input value={f.sku || ''} onChange={(e) => setF({ ...f, sku: e.target.value })} dir="ltr" /></Field>
+              : <Field label="رقم المنتج" hint="يُولَّد تلقائياً عند الحفظ حسب نوع القطعة"><Input value={nextSku || ''} readOnly dir="ltr" placeholder="اختر نوع القطعة أولاً" className="form-control bg-body-tertiary" /></Field>}
             <Field label="اسم المنتج *"><Input value={f.name || ''} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-            <Field label="نوع القطعة *"><Input value={f.product_type || ''} onChange={(e) => setF({ ...f, product_type: e.target.value })} /></Field>
             <Field label="الوزن التقريبي (جم)"><Input dir="ltr" value={f.approx_weight || ''} onChange={(e) => setF({ ...f, approx_weight: e.target.value })} /></Field>
             <Field label="الوزن النهائي (جم)"><Input dir="ltr" value={f.final_weight || ''} onChange={(e) => setF({ ...f, final_weight: e.target.value })} /></Field>
             <Field label="المقاسات (مفصولة بفاصلة)"><Input value={(f.sizes || []).join(',')} onChange={(e) => setF({ ...f, sizes: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} /></Field>
@@ -51,7 +61,7 @@ export default function Products() {
           <Field label="الصور والفيديو"><input type="file" multiple accept="image/*,video/*" onChange={(e) => setF({ ...f, files: e.target.files })} /></Field>
           {f.media?.length > 0 && <div className="files">{f.media.map((m) => <span key={m.id}><img src={fileUrl(m.path)} alt="" /><button className="link small" onClick={() => setF({ ...f, remove_media: [...(f.remove_media || []), m.id], media: f.media.filter((x) => x.id !== m.id) })}>حذف</button></span>)}</div>}
           <label className="check"><input type="checkbox" checked={f.active !== false} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ظاهر في المتجر</label>
-          <div className="hrow end"><Btn loading={busy} onClick={save}>حفظ</Btn></div>
+          <div className="hrow end"><Btn loading={busy} disabled={!f.product_type || !f.name} onClick={save}>حفظ</Btn></div>
         </>}
       </Modal>
     </Page>
