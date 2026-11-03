@@ -1,7 +1,7 @@
 // المتجر العام: تصفح المنتجات بدون تسجيل دخول. لا أسعار مصنعية ولا إرسال طلبات للزوار.
 import { Router } from 'express';
 import { many, one, pool } from '../db.js';
-import { routeStages } from '../lib/production.js';
+import { routeStages, hasDiamonds } from '../lib/production.js';
 import { getPricing, checkToken } from '../lib/pricingSheet.js';
 import { notFound, int } from '../lib/http.js';
 
@@ -38,7 +38,8 @@ r.get('/track/:token', async (req, res) => {
       m.karat, m.color, s.name as stage_name
     from orders o join materials m on m.id=o.material_id left join stages s on s.id=o.current_stage_id where o.qr_token=$1`, [token]);
   if (!o) throw notFound('رابط التتبع غير صحيح أو الطلب غير موجود');
-  const all = o.route_id ? await routeStages(pool, o.route_id) : [];
+  const diamond = await hasDiamonds(pool, o.id);
+  const all = (o.route_id ? await routeStages(pool, o.route_id) : []).filter((s) => diamond || s.code !== 'lab');
   const delivered = o.status === 'delivered';
   const stages = all.filter((s) => s.customer_visible).map((s) => ({ name: s.name, state: delivered || s.seq < o.stage_seq ? 'done' : s.seq === o.stage_seq ? 'current' : 'next' }));
   const entered = await many(`select s.name as stage_name, min(l.created_at) as at from order_stage_log l join stages s on s.id=l.stage_id

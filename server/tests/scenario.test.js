@@ -105,7 +105,7 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
   // 1) طلب تصنيع جديد من المتجر (اطلب تصميمك)
   const fd = new FormData();
   fd.append('product_type', 'خاتم');
-  fd.append('title', 'خاتم بتصميم خاص');
+  fd.append('title', 'خاتم ألماس بتصميم خاص'); // طلب ألماس: يمر بمرحلة المختبر لإصدار الشهادة
   fd.append('karat', '21');
   fd.append('color', 'yellow');
   fd.append('approx_weight', '95');

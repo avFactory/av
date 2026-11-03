@@ -173,7 +173,8 @@ r.get('/orders', async (req, res) => {
 r.get('/orders/:id', async (req, res) => {
   const o = await myOrder(pool, req, req.params.id);
   const m = await one('select name, karat, color from materials where id=$1', [o.material_id]);
-  const stages = o.route_id ? (await prod.routeStages(pool, o.route_id)).filter((s) => s.customer_visible).map((s) => ({ seq: s.seq, name: s.name })) : [];
+  const diamond = await prod.hasDiamonds(pool, o.id);
+  const stages = o.route_id ? (await prod.routeStages(pool, o.route_id)).filter((s) => s.customer_visible && (diamond || s.code !== 'lab')).map((s) => ({ seq: s.seq, name: s.name })) : [];
   const total = o.route_id ? (await one('select count(*)::int n from route_stages where route_id=$1', [o.route_id])).n : 0;
   const history = await many(`select l.event, l.note, l.created_at, s.name as stage_name from order_stage_log l left join stages s on s.id=l.stage_id
                               where l.order_id=$1 and l.customer_visible order by l.id`, [o.id]);

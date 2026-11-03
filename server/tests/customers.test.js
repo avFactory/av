@@ -234,8 +234,16 @@ test('تتبع الطلب برابط عام بدون تسجيل دخول (عرض
   const d = await r.json();
   assert.equal(d.order_no, o.order_no);
   for (const k of ['final_weight', 'labor_rate', 'labor_estimate', 'customer_id', 'shop_name', 'notes', 'id']) assert.equal(d[k], undefined, `لا يكشف ${k}`);
-  assert.ok(d.stages.some((s) => s.name === 'المختبر لإصدار الشهادة'), 'مرحلة المختبر ضمن المسار');
-  const names = d.stages.map((s) => s.name);
+  assert.ok(!d.stages.some((s) => s.name === 'المختبر لإصدار الشهادة'), 'طلب بدون ألماس: لا مرحلة مختبر');
+  // طلب ألماس: مرحلة المختبر قبل التشييك مباشرة
+  const od = (await call('POST', '/orders', { title: 'عقد ألماس للتتبع', product_type: 'عقد', karat: 18, color: 'white', quantity: 1, material_id: mat.id })).data;
+  const tokD = (await pool.query('select qr_token from orders where id=$1', [od.id])).rows[0].qr_token;
+  const dd = await (await fetch(`${base}/api/public/track/${tokD}`)).json();
+  const names = dd.stages.map((s) => s.name);
+  assert.ok(names.includes('المختبر لإصدار الشهادة'), 'طلب الألماس يمر بالمختبر');
+  // مسار "منتج بدون أحجار" لا يحتوي مرحلة المختبر
+  const r2 = (await pool.query("select count(*)::int n from route_stages rs join stages s on s.id=rs.stage_id join routes r on r.id=rs.route_id where s.code='lab' and r.name like '%بدون أحجار%'")).rows[0].n;
+  assert.equal(r2, 0);
   assert.ok(names.indexOf('المختبر لإصدار الشهادة') === names.findIndex((n) => n.startsWith('التشييك')) - 1, 'المختبر قبل التشييك مباشرة');
   assert.equal((await fetch(`${base}/api/public/track/${'0'.repeat(20)}`)).status, 404);
   assert.equal((await fetch(`${base}/api/public/track/${o.order_no}`)).status, 404, 'رقم الطلب وحده لا يكفي');

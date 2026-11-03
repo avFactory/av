@@ -28,6 +28,16 @@ export async function pickRoute(db, productType, productRouteId) {
 }
 
 /** وزن الأحجار المركبة في الطلب بالجرام (1 قيراط = 0.2 جرام) */
+/** هل الطلب طلب ألماس؟ (ألماس صُرف/رُكّب عليه من المخزون، أو ذُكر الألماس في وصفه أو نوعه) */
+export async function hasDiamonds(db, orderId) {
+  const r = await db.query(`select exists (
+      select 1 from stone_movements m join stone_lots l on l.id=m.lot_id
+      where m.order_id=$1 and m.kind in ('issue','used') and (l.stone_type ~ '(ألماس|الماس|diamond)')
+        and not exists (select 1 from stone_movements x where x.reverses_id=m.id))
+    or exists (select 1 from orders o where o.id=$1 and concat_ws(' ', o.title, o.product_type, o.notes) ~ '(ألماس|الماس|سولتير|solitaire|diamond)') as d`, [orderId]);
+  return r.rows[0].d;
+}
+
 export async function embeddedStonesGrams(db, orderId, workerId = null) {
   const r = await db.query(
     `select coalesce(sum(carats) filter (where kind='used'), 0) * 0.2 as used_g,
@@ -81,6 +91,13 @@ async function enterStage(db, order, stage, userId) {
     await notifyPerm(db, 'custody.issue', { kind: 'issue', title: `الطلب ${order.order_no} بانتظار تسليم الذهب`, body: stage.name, link: `/sup/issue?order=${order.id}` });
     const w = await db.query('select user_id from stage_workers where stage_id=$1', [stage.id]);
     if (w.rows.length === 1) await db.query('update orders set assigned_worker_id=$2 where id=$1', [order.id, w.rows[0].user_id]);
+  }
+  // مرحلة المختبر لإصدار الشهادة لطلبات الألماس فقط: تُتخطى تلقائياً إذا لم يكن في الطلب ألماس
+  if (stage.code === 'lab' && !(await hasDiamonds(db, order.id))) {
+    await logStage(db, order.id, stage.id, 'completed', userId, 'تخطي تلقائي: الطلب بدون ألماس', false);
+    const fresh = (await db.query('select * from orders where id=$1', [order.id])).rows[0];
+    await advance(db, fresh, userId, { auto: true });
+    return;
   }
   // تخطي مرحلة اعتماد التصميم تلقائياً إذا لم تكن مطلوبة
   if (stage.kind === 'design_approval' && !order.design_approval_required) {
