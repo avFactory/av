@@ -478,3 +478,21 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
   .page-h.inline .pa-search { width: 100%; }
   .page-h.inline .steps { flex-basis: 100%; }
 }
+
+/* تسليم الألماس: شريط القصّات ثم المقاسات */
+.shape-bar { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
+.shape-chip { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 92px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); color: var(--bs-body-color); }
+.shape-chip svg { color: var(--gold, #b8902f); }
+.shape-chip b { font-size: .9rem; white-space: nowrap; }
+.shape-chip span { font-size: .72rem; color: var(--bs-secondary-color); }
+.shape-chip.on { background: #141414; color: #f3e9d2; border-color: #141414; }
+.shape-chip.on span { color: #cbbd9a; }
+.size-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.size-card { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 14px 8px; border-radius: 12px; border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); color: var(--bs-body-color); }
+.size-card b { font-size: 1.15rem; }
+.size-card .size-stock { font-weight: 700; color: var(--gold-ink, #8a6a1f); font-size: .85rem; }
+.size-card:not(:disabled):hover { border-color: #c9a227; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.size-card.empty { opacity: .5; }
+.stat-mini { display: flex; flex-direction: column; padding: 6px 12px; border: 1px solid var(--bs-border-color); border-radius: 10px; min-width: 120px; }
+.stat-mini span { font-size: .75rem; color: var(--bs-secondary-color); }
+.stat-mini b { font-size: 1.1rem; }

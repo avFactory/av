@@ -6,16 +6,19 @@ import { fmtW, sub } from '../../format.js';
 import { Btn, Card, Field, Input, Page, PageActions, ScanInput, WeightInput, useAction, useFetch, useToast, Badge, Kv, Tabs, Select, Table } from '../../ui.jsx';
 import { fmtDT } from '../../format.js';
 import WorkerPicker from '../../components/WorkerPicker.jsx';
+import DiamondIssue from './DiamondIssue.jsx';
 
 /** تسليم ذهب: (أ) لعامل واحد - طلب أو عدة طلبات، (ب) تقسيم طلب واحد على عدة عمال.
  *  لا توقيع يدوي: يصل للعامل إشعار، وقبوله من جواله هو توقيعه الإلكتروني. */
 export default function Issue() {
   const [sp] = useSearchParams();
-  const [mode, setMode] = useState(['split', 'general'].includes(sp.get('mode')) ? sp.get('mode') : 'single');
+  const { can } = useAuth();
+  const [mode, setMode] = useState(['split', 'general', 'diamond'].includes(sp.get('mode')) ? sp.get('mode') : 'single');
+  const tabs = [['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال'], ['general', 'عهدة عامة (بدون طلب)'], ...(can('stones.manage') ? [['diamond', 'تسليم الألماس']] : [])];
   return (
-    <Page title="تسليم ذهب" inline>
-      <Tabs value={mode} onChange={setMode} tabs={[['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال'], ['general', 'عهدة عامة (بدون طلب)']]} />
-      {mode === 'single' ? <SingleIssue sp={sp} /> : mode === 'split' ? <SplitIssue sp={sp} /> : <GeneralIssue sp={sp} />}
+    <Page title={mode === 'diamond' ? 'تسليم الألماس' : 'تسليم ذهب'} inline>
+      <Tabs value={mode} onChange={setMode} tabs={tabs} />
+      {mode === 'single' ? <SingleIssue sp={sp} /> : mode === 'split' ? <SplitIssue sp={sp} /> : mode === 'diamond' ? <DiamondIssue /> : <GeneralIssue sp={sp} />}
     </Page>
   );
 }
