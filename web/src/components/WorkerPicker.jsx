@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { fmtW } from '../format.js';
-import { Loader, Search, useFetch, Empty } from '../ui.jsx';
+import { Loader, Search, useFetch, Empty, PageActions } from '../ui.jsx';
 
 /** اختيار العامل بالبحث السريع (الاسم أو الرقم) - بطاقات كبيرة */
-export default function WorkerPicker({ onPick, mode }) {
+export default function WorkerPicker({ onPick, mode, searchInHeader }) {
   const { data } = useFetch('/sup/workers', { live: ['custodies'] });
   const [q, setQ] = useState('');
   const list = useMemo(() => {
@@ -16,7 +16,9 @@ export default function WorkerPicker({ onPick, mode }) {
   if (!data) return <Loader />;
   return (
     <div className="grid">
-      <Search value={q} onChange={setQ} placeholder="ابحث باسم العامل أو رقمه…" />
+      {searchInHeader
+        ? <PageActions><div className="pa-search"><Search value={q} onChange={setQ} placeholder="ابحث باسم العامل أو رقمه…" /></div></PageActions>
+        : <Search value={q} onChange={setQ} placeholder="ابحث باسم العامل أو رقمه…" />}
       {!list.length && <Empty>لا يوجد عامل مطابق</Empty>}
       <div className="pick-grid">
         {list.map((w) => (

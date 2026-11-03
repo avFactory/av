@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api, newKey } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, sub } from '../../format.js';
-import { Btn, Card, Field, Input, Page, ScanInput, WeightInput, useAction, useFetch, useToast, Badge, Kv, Tabs, Select, Table } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Page, PageActions, ScanInput, WeightInput, useAction, useFetch, useToast, Badge, Kv, Tabs, Select, Table } from '../../ui.jsx';
 import { fmtDT } from '../../format.js';
 import WorkerPicker from '../../components/WorkerPicker.jsx';
 
@@ -13,7 +13,7 @@ export default function Issue() {
   const [sp] = useSearchParams();
   const [mode, setMode] = useState(['split', 'general'].includes(sp.get('mode')) ? sp.get('mode') : 'single');
   return (
-    <Page title="تسليم ذهب" back="/sup">
+    <Page title="تسليم ذهب" inline>
       <Tabs value={mode} onChange={setMode} tabs={[['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال'], ['general', 'عهدة عامة (بدون طلب)']]} />
       {mode === 'single' ? <SingleIssue sp={sp} /> : mode === 'split' ? <SplitIssue sp={sp} /> : <GeneralIssue sp={sp} />}
     </Page>
@@ -94,8 +94,8 @@ function SingleIssue({ sp }) {
   const step = !worker ? 1 : !items.length ? 2 : 3;
   return (
     <>
-      <div className="steps"><span className={step === 1 ? 'on' : 'done'}>1. العامل</span><span className={step === 2 ? 'on' : step > 2 ? 'done' : ''}>2. الطلبات</span><span className={step === 3 ? 'on' : ''}>3. الوزن والتأكيد</span></div>
-      {!worker ? <WorkerPicker onPick={setWorker} /> : (
+      <PageActions><div className="steps"><span className={step === 1 ? 'on' : 'done'}>1. العامل</span><span className={step === 2 ? 'on' : step > 2 ? 'done' : ''}>2. الطلبات</span><span className={step === 3 ? 'on' : ''}>3. الوزن والتأكيد</span></div></PageActions>
+      {!worker ? <WorkerPicker onPick={setWorker} searchInHeader /> : (
         <div className="grid">
           <Card>
             <div className="hrow between wrap gap">
@@ -314,7 +314,7 @@ function GeneralIssue({ sp }) {
       ) : !worker ? (
         <>
           <div className="alert alert-info small">يُصرف الذهب من الخزنة إلى العامل كرصيد في عهدته بدون طلب تصنيع (مثل: رصيد لحام، تصليحات، تجهيز). يستلمه منه المشرف لاحقاً من شاشة "استلام ذهب" فيعود للخزنة مع حساب العجز.</div>
-          <WorkerPicker onPick={setWorker} />
+          <WorkerPicker onPick={setWorker} searchInHeader />
         </>
       ) : (
         <>

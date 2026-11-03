@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, newKey } from '../../api.js';
 import { calcLoss, fmtW, fmtPct, sub, WORK_STATE, SETTLEMENT_STATUS } from '../../format.js';
-import { Btn, Card, Field, Input, Page, ScanInput, WeightInput, useAction, useToast, Badge, Kv, Loader, Empty, StatusBadge, Textarea } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Page, PageActions, ScanInput, WeightInput, useAction, useToast, Badge, Kv, Loader, Empty, StatusBadge, Textarea } from '../../ui.jsx';
 import WorkerPicker from '../../components/WorkerPicker.jsx';
 
 /** استلام ذهب من العامل: كل العهد في شاشة واحدة، وزن مستقل لكل طلب، حساب العجز تلقائياً */
@@ -108,9 +108,9 @@ export default function Receive() {
   }
 
   return (
-    <Page title="استلام ذهب من العامل" back="/sup">
-      <div className="steps"><span className={!worker ? 'on' : 'done'}>1. العامل</span><span className={worker && !selected.length ? 'on' : selected.length ? 'done' : ''}>2. اختيار الطلبات</span><span className={selected.length ? 'on' : ''}>3. الوزن والتأكيد</span></div>
-      {!worker ? <WorkerPicker onPick={setWorker} mode="receive" /> : (
+    <Page title="استلام ذهب من العامل" inline>
+      <PageActions><div className="steps"><span className={!worker ? 'on' : 'done'}>1. العامل</span><span className={worker && !selected.length ? 'on' : selected.length ? 'done' : ''}>2. اختيار الطلبات</span><span className={selected.length ? 'on' : ''}>3. الوزن والتأكيد</span></div></PageActions>
+      {!worker ? <WorkerPicker onPick={setWorker} mode="receive" searchInHeader /> : (
         <div className="grid">
           <Card>
             <div className="hrow between wrap gap">

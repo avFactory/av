@@ -465,3 +465,16 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .gold-stat-top b small { font-size: .72rem; font-weight: 400; color: var(--bs-secondary-color); }
 .gold-stat-sub { font-size: .75rem; color: var(--bs-secondary-color); margin-top: 1px; }
 @media (max-width: 760px) { .gold-stats { grid-template-columns: 1fr; gap: 6px; } }
+
+/* رأس صفحة في صف واحد: اسم الصفحة ثم البحث ثم الخطوات */
+.page-h.inline { justify-content: flex-start; align-items: center; }
+.page-h.inline h1 { margin: 0; white-space: nowrap; }
+.page-h.inline .page-actions { flex: 1; align-items: center; flex-wrap: nowrap; }
+.page-h.inline .pa-search { order: 1; width: 300px; flex: none; }
+.page-h.inline .steps { order: 2; flex: 1; margin: 0; }
+.page-h.inline .steps span { padding: 7px 8px; }
+@media (max-width: 900px) {
+  .page-h.inline .page-actions { flex-wrap: wrap; flex-basis: 100%; }
+  .page-h.inline .pa-search { width: 100%; }
+  .page-h.inline .steps { flex-basis: 100%; }
+}

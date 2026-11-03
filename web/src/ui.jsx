@@ -1,6 +1,7 @@
 // مكونات الواجهة المشتركة
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import jsQR from 'jsqr';
 import { api } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -169,20 +170,31 @@ export const Empty = ({ children = 'لا توجد بيانات' }) => <div class
 export const Loader = () => <div className="loader d-flex justify-content-center align-items-center gap-2 py-5 text-body-secondary"><span className="spinner-border spinner-border-sm text-primary" /> جارٍ التحميل…</div>;
 export function ErrorBox({ error }) { return error ? <div className="alert alert-danger">{error.message}</div> : null; }
 
-export function Page({ title, subtitle, actions, children, back }) {
+const PageSlotCtx = createContext(null);
+/**
+ * رأس الصفحة. inline: العنوان ثم أدوات الصفحة (البحث، الخطوات...) في نفس الصف.
+ * يمكن لأي مكوّن داخل الصفحة وضع عناصر في صف العنوان عبر <PageActions>.
+ */
+export function Page({ title, subtitle, actions, children, back, inline }) {
+  const [slot, setSlot] = useState(null);
   return (
     <div className="page container-fluid">
-      <div className="page-h">
+      <div className={`page-h${inline ? ' inline' : ''}`}>
         <div>
           {back && <Link to={back} className="back">→ رجوع</Link>}
           <h1>{title}</h1>
           {subtitle && <p className="text-body-secondary mb-0">{subtitle}</p>}
         </div>
-        <div className="hrow gap wrap no-print">{actions}</div>
+        <div className="hrow gap wrap no-print page-actions" ref={setSlot}>{actions}</div>
       </div>
-      {children}
+      <PageSlotCtx.Provider value={slot}>{children}</PageSlotCtx.Provider>
     </div>
   );
+}
+/** وضع عناصر في صف عنوان الصفحة (بجانب اسم الصفحة) */
+export function PageActions({ children }) {
+  const slot = useContext(PageSlotCtx);
+  return slot ? createPortal(children, slot) : null;
 }
 
 export function Modal({ open, onClose, title, children, wide }) {
