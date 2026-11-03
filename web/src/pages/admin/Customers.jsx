@@ -62,60 +62,104 @@ export default function Customers() {
           <div className="grid g3">
             {[['shop_name', 'اسم المحل *'], ['owner_name', 'اسم المالك'], ['phone', 'الجوال'], ['phone2', 'جوال آخر'], ['email', 'البريد'], ['city', 'المدينة'], ['address', 'العنوان'], ['vat_number', 'الرقم الضريبي'], ['cr_number', 'السجل التجاري']].map(([k, l]) => <Field key={k} label={l}><Input value={f[k] || ''} onChange={set(k)} /></Field>)}
             <Field label="التصنيف"><Select value={f.tier_id || ''} onChange={set('tier_id')} placeholder="عميل عادي (افتراضي)" options={(tiers || []).map((t) => [t.id, t.name])} /></Field>
-            <Field label="اسم مستخدم للمتجر (اختياري)"><Input value={f.username || ''} onChange={set('username')} dir="ltr" /></Field>
-            <Field label="كلمة المرور"><Input type="password" value={f.password || ''} onChange={set('password')} dir="ltr" /></Field>
+            <Field label="اسم المستخدم للمتجر" hint="واحد للمحل وكل فروعه"><Input value={f.username || ''} onChange={set('username')} dir="ltr" /></Field>
+            <Field label="كلمة مرور الحساب الرئيسي"><Input type="password" value={f.password || ''} onChange={set('password')} dir="ltr" autoComplete="new-password" /></Field>
           </div>
-          <div className="hrow end"><Btn loading={busy} onClick={() => run(async () => { await api.post('/admin/customers', f); setF(null); reload(); }, 'تمت الإضافة')}>حفظ</Btn></div>
+          <div className="card">
+            <div className="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+              <b>الفروع <span className="text-body-secondary small fw-normal">(اختياري) — نفس اسم المستخدم، وكلمة مرور مختلفة لكل فرع</span></b>
+              <Btn size="sm" kind="ghost" onClick={() => setF({ ...f, branches: [...(f.branches || []), { name: '', city: '', phone: '', password: '' }] })}>+ إضافة فرع</Btn>
+            </div>
+            <div className="card-body d-grid gap-2">
+              {!(f.branches || []).length && <span className="text-body-secondary small">لا فروع — الحساب الرئيسي فقط</span>}
+              {(f.branches || []).map((b, i) => {
+                const upd = (k) => (e) => setF({ ...f, branches: f.branches.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)) });
+                return (
+                  <div key={i} className="grid g4 align-items-end">
+                    <Field label={`اسم الفرع ${i + 1} *`}><Input value={b.name} onChange={upd('name')} placeholder="مثال: فرع العليا" /></Field>
+                    <Field label="المدينة"><Input value={b.city} onChange={upd('city')} /></Field>
+                    <Field label="جوال الفرع"><Input value={b.phone} onChange={upd('phone')} dir="ltr" /></Field>
+                    <div className="d-flex gap-2 align-items-end">
+                      <Field label="كلمة مرور الفرع *" className="flex-grow-1"><Input type="password" value={b.password} onChange={upd('password')} dir="ltr" autoComplete="new-password" /></Field>
+                      <Btn size="sm" kind="ghost" onClick={() => setF({ ...f, branches: f.branches.filter((_, j) => j !== i) })}>حذف</Btn>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {(f.branches || []).length > 0 && (!f.username || !f.password) && <div className="alert alert-warning small">الفروع تحتاج اسم مستخدم وكلمة مرور للحساب الرئيسي.</div>}
+          <div className="hrow end"><Btn loading={busy} disabled={!f.shop_name || ((f.branches || []).length > 0 && (!f.username || !f.password || f.branches.some((b) => !b.name || (b.password || '').length < 8)))}
+            onClick={() => run(async () => { await api.post('/admin/customers', f); setF(null); reload(); }, 'تمت الإضافة')}>حفظ</Btn></div>
         </>}
       </Modal>
     </Page>
   );
 }
 
-const IST = { new: ['جديد', 'info'], exists: ['موجود - سيُتجاوز', 'muted'], error: ['خطأ', 'bad'] };
+const IST = { new: ['جديد', 'info'], update: ['موجود - إضافة فروع', 'gold'], exists: ['موجود - سيُتجاوز', 'muted'], error: ['خطأ', 'bad'] };
 function ImportModal({ imp, setImp, busy, run, onDone }) {
   if (!imp) return null;
   const parse = (file) => run(async () => {
     const fd = new FormData();
     fd.append('file', file);
     const r = await api.post('/admin/customers/import/parse', fd);
-    setImp({ step: 2, rows: r.rows });
+    setImp({ step: 2, rows: r.rows, plans: r.plans });
   });
-  const rows = imp.rows || [];
-  const fresh = rows.filter((r) => r.status === 'new');
-  const errors = rows.filter((r) => r.status === 'error');
+  const plans = imp.plans || [];
+  const fresh = plans.filter((p) => p.status === 'new');
+  const upd = plans.filter((p) => p.status === 'update');
+  const errors = plans.filter((p) => p.status === 'error');
+  const newBranches = plans.filter((p) => p.status !== 'error').reduce((s, p) => s + p.branches.filter((b) => !b.exists).length, 0);
+  const actionable = fresh.length + upd.length;
   return (
     <Modal open onClose={() => setImp(null)} title="استيراد العملاء من Excel" wide>
       {imp.step === 1 && <>
         <div className="alert alert-info small">
           ارفع ملف Excel أو CSV فيه صف عناوين. الأعمدة بأي ترتيب، والمطلوب فقط <b>اسم المحل</b>.
-          الأعمدة المدعومة: اسم المحل، اسم المالك، الجوال، جوال 2، البريد، المدينة، العنوان، الرقم الضريبي، السجل التجاري، الفئة، ملاحظات،
-          و(اختياري) اسم المستخدم وكلمة المرور لإنشاء حساب دخول للمتجر.
+          الأعمدة المدعومة: اسم المحل، اسم المالك، الجوال، جوال 2، البريد، المدينة، العنوان، الرقم الضريبي، السجل التجاري، الفئة، ملاحظات، اسم المستخدم، كلمة المرور، <b>الفرع</b>.
         </div>
-        <div className="small muted">العملاء المضافون يكونون <b>معتمدين</b> مباشرة. العميل الموجود مسبقاً (نفس الاسم أو الجوال أو الرقم الضريبي أو السجل) يُتجاوز ولا تُغيَّر بياناته.</div>
+        <div className="card"><div className="card-body small">
+          <b>الفروع:</b> اسم المستخدم <b>واحد</b> للمحل وكل فروعه، وكلمة المرور تختلف:
+          <ul className="mb-0 mt-1">
+            <li>صف <b>بدون</b> عمود "الفرع" = الحساب الرئيسي للمحل (بياناته وكلمة مروره).</li>
+            <li>كل صف <b>فيه</b> "الفرع" = فرع بكلمة مرور خاصة (المدينة والجوال والعنوان في الصف تخص الفرع).</li>
+            <li>صفوف الفروع تحت المحل يمكن أن تترك اسم المحل واسم المستخدم فارغين.</li>
+          </ul>
+          <table className="table table-sm table-bordered mt-2 mb-0 keep" style={{ maxWidth: 560 }}>
+            <thead><tr><th>اسم المحل</th><th>اسم المستخدم</th><th>الفرع</th><th>كلمة المرور</th></tr></thead>
+            <tbody><tr><td>ذهب الشرق</td><td dir="ltr">sharq</td><td></td><td dir="ltr">Main#2026</td></tr>
+              <tr><td>ذهب الشرق</td><td dir="ltr">sharq</td><td>فرع الخبر</td><td dir="ltr">Khobar#2026</td></tr>
+              <tr><td></td><td></td><td>فرع الظهران</td><td dir="ltr">Dhahran#2026</td></tr></tbody>
+          </table>
+        </div></div>
+        <div className="small muted">العملاء المضافون يكونون <b>معتمدين</b> مباشرة. العميل الموجود مسبقاً لا تُغيَّر بياناته، وتُضاف له فروعه الجديدة فقط.</div>
         <label className="btn btn-primary btn-lg" style={{ justifySelf: 'start' }}>{busy ? 'جارٍ القراءة…' : 'اختيار الملف'}<input type="file" accept=".xlsx,.csv" hidden onChange={(e) => e.target.files[0] && parse(e.target.files[0])} /></label>
       </>}
       {imp.step === 2 && <>
         <div className="hrow gap wrap">
-          <Badge tone="info">{fresh.length} جديد</Badge><Badge>{rows.filter((r) => r.status === 'exists').length} موجود مسبقاً</Badge>
+          <Badge tone="info">{fresh.length} محل جديد</Badge>
+          {upd.length > 0 && <Badge tone="gold">{upd.length} محل موجود تُضاف له فروع</Badge>}
+          <Badge>{plans.filter((p) => p.status === 'exists').length} موجود مسبقاً</Badge>
+          {newBranches > 0 && <Badge tone="ok">{newBranches} فرع جديد</Badge>}
           {errors.length > 0 && <Badge tone="bad">{errors.length} به أخطاء</Badge>}
-          {fresh.some((r) => r.username) && <Badge tone="gold">{fresh.filter((r) => r.username).length} حساب متجر</Badge>}
         </div>
-        <Table rows={rows.map((r, i) => ({ ...r, id: i }))} rowClass={(r) => (r.status === 'error' ? 'row-bad' : '')} columns={[
-          ['المحل', (r) => <b>{r.shop_name || '—'}</b>], ['المالك', 'owner_name'], ['الجوال', (r) => <span dir="ltr">{r.phone || ''}</span>], ['المدينة', 'city'],
-          ['الرقم الضريبي', (r) => <span dir="ltr">{r.vat_number || ''}</span>], ['الفئة', 'tier'], ['حساب المتجر', (r) => (r.username ? <span dir="ltr">{r.username}</span> : '—')],
-          ['الحالة', (r) => <Badge tone={IST[r.status][1]}>{IST[r.status][0]}</Badge>],
-          ['ملاحظة', (r) => <span className="small">{r.errors.join('، ')}{r.status === 'exists' ? `مطابق لـ: ${r.existing_name}` : ''}</span>],
+        <Table rows={plans.map((p, i) => ({ ...p, id: i }))} rowClass={(p) => (p.status === 'error' ? 'row-bad' : '')} columns={[
+          ['المحل', (p) => <b>{p.shop_name || '—'}</b>], ['الجوال', (p) => <span dir="ltr">{p.phone || ''}</span>], ['المدينة', 'city'], ['الفئة', 'tier'],
+          ['اسم المستخدم', (p) => (p.username ? <span dir="ltr">{p.username}</span> : '—')],
+          ['الفروع', (p) => (p.branches.length ? <div className="d-flex flex-wrap gap-1">{p.branches.map((b) => <span key={b.name} className={`badge rounded-pill ${b.exists ? 'bg-body-secondary text-body-secondary' : 'bg-success-subtle text-success-emphasis'}`}>{b.name}{b.exists ? ' (موجود)' : ''}</span>)}</div> : '—')],
+          ['الحالة', (p) => <Badge tone={IST[p.status][1]}>{IST[p.status][0]}</Badge>],
+          ['ملاحظة', (p) => <span className="small">{p.errors.join('، ')}{['exists', 'update'].includes(p.status) ? `مطابق لـ: ${p.existing_name}` : ''}</span>],
         ]} />
-        {errors.length > 0 && <div className="alert alert-danger small">الصفوف الحمراء لن تُضاف. صححها في الملف وارفعه مرة أخرى، أو أضف الصفوف السليمة الآن.</div>}
-        {fresh.some((r) => r.username) && <div className="small muted">أصحاب حسابات المتجر يُطلب منهم تغيير كلمة المرور عند أول دخول.</div>}
+        {errors.length > 0 && <div className="alert alert-danger small">المحلات المعلّمة بالأحمر لن تُضاف. صححها في الملف وارفعه مرة أخرى، أو أضف السليمة الآن.</div>}
+        {plans.some((p) => p.create_main_user) && <div className="small muted">أصحاب حسابات المتجر الرئيسية يُطلب منهم تغيير كلمة المرور عند أول دخول.</div>}
         <div className="hrow gap end">
           <Btn kind="ghost" onClick={() => setImp({ step: 1 })}>ملف آخر</Btn>
-          <Btn loading={busy} disabled={!fresh.length} onClick={() => run(async () => {
-            const r = await api.post('/admin/customers/import/commit', { rows: rows.filter((x) => x.status !== 'error') });
+          <Btn loading={busy} disabled={!actionable} onClick={() => run(async () => {
+            const r = await api.post('/admin/customers/import/commit', { rows: imp.rows, skip_errors: true });
             setImp(null); onDone();
             return r;
-          }, `تمت إضافة ${fresh.length} عميل`)}>{errors.length ? `إضافة الصفوف السليمة (${fresh.length})` : `إضافة ${fresh.length} عميل`}</Btn>
+          }, 'تم الاستيراد')}>{errors.length ? `إضافة السليمة (${actionable})` : `اعتماد (${fresh.length} محل${newBranches ? ` + ${newBranches} فرع` : ''})`}</Btn>
         </div>
       </>}
     </Modal>

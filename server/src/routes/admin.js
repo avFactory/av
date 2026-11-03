@@ -299,13 +299,14 @@ r.get('/customers', requirePerm('customers.view'), async (req, res) => {
     where ($1::text is null or c.status=$1) order by (c.status='pending') desc, c.id desc`, [req.query.status || null]));
 });
 
-// ------------------------------------------------------------------ استيراد العملاء من Excel
+// ------------------------------------------------------------------ استيراد العملاء من Excel (مع الفروع)
 // الترتيب مهم: الأعمدة الأكثر تحديداً أولاً (مثل "جوال المحل" هو جوال وليس اسم المحل)
 const CUST_HEADERS = [
   ['phone2', /جوال ?2|جوال آخر|هاتف ?2|phone ?2/i], ['phone', /جوال|هاتف|رقم التواصل|موبايل|phone|mobile/i], ['email', /بريد|ايميل|إيميل|email/i],
   ['vat_number', /ضريب|vat/i], ['cr_number', /سجل|^cr\b/i], ['username', /اسم المستخدم|username/i], ['password', /كلمة المرور|كلمه المرور|password/i],
+  ['city', /مدينة|المدينة|city/i], ['address', /عنوان|address/i], ['branch', /فرع|الفرع|branch/i],
   ['shop_name', /اسم المحل|اسم العميل|المحل|اسم المنشأة|المنشأة|shop|customer/i], ['owner_name', /المالك|صاحب|owner/i],
-  ['city', /مدينة|المدينة|city/i], ['address', /عنوان|address/i], ['tier', /فئة|تصنيف|tier/i], ['notes', /ملاحظ|notes/i],
+  ['tier', /فئة|تصنيف|tier/i], ['notes', /ملاحظ|notes/i],
 ];
 const SHOP_HEADER = /اسم المحل|اسم العميل|المحل|اسم المنشأة|المنشأة|shop|customer/i;
 const digits = (v) => String(v || '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d+]/g, '');
@@ -319,27 +320,65 @@ async function readTable(file) {
   return table;
 }
 
-async function checkCustomerRows(db, rows) {
-  const existing = (await db.query('select id, shop_name, phone, vat_number, cr_number from customers')).rows;
-  const users = new Set((await db.query('select lower(username) u from users')).rows.map((x) => x.u));
-  const seen = new Set();
-  return rows.map((r) => {
+/**
+ * تجميع الصفوف حسب المحل (اسم المستخدم، وإلا اسم المحل):
+ * الصف بدون "الفرع" = الحساب الرئيسي (بياناته وكلمة مروره)، وكل صف فيه "الفرع" = فرع بكلمة مرور خاصة.
+ */
+async function planCustomers(db, rows) {
+  const existing = (await db.query(`select c.id, c.shop_name, c.phone, c.vat_number, c.cr_number,
+      (select u.username from users u where u.customer_id=c.id and u.branch_id is null and u.role_code='customer' limit 1) as username,
+      coalesce((select array_agg(b.name) from customer_branches b where b.customer_id=c.id), '{}') as branches
+    from customers c`)).rows;
+  const users = new Map((await db.query('select lower(username) u, customer_id from users')).rows.map((x) => [x.u, x.customer_id]));
+  const groups = new Map();
+  for (const r of rows) {
+    const key = r.username ? `u:${r.username.toLowerCase()}` : `s:${String(r.shop_name || '').trim()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  const plans = [];
+  for (const list of groups.values()) {
+    const mainRow = list.find((r) => !r.branch) || null;
+    const base = mainRow || list[0];
     const errors = [];
-    if (!r.shop_name) errors.push('اسم المحل مفقود');
-    if (r.vat_number && !/^\d{15}$/.test(digits(r.vat_number))) errors.push('الرقم الضريبي يجب أن يكون 15 رقماً');
-    if (r.username && !/^[A-Za-z0-9_.@-]{3,60}$/.test(r.username)) errors.push('اسم المستخدم بالإنجليزية بدون مسافات');
-    if (r.username && String(r.password || '').length < 8) errors.push('كلمة المرور أقل من 8 أحرف');
-    if (r.username && users.has(r.username.toLowerCase())) errors.push('اسم المستخدم مستخدم مسبقاً');
-    const ph = digits(r.phone).slice(-9);
-    const dup = existing.find((c) => (r.vat_number && digits(c.vat_number) === digits(r.vat_number)) || (r.cr_number && digits(c.cr_number) === digits(r.cr_number))
-      || (ph.length >= 9 && digits(c.phone).slice(-9) === ph) || c.shop_name.trim() === String(r.shop_name || '').trim());
-    const key = `${String(r.shop_name || '').trim()}|${digits(r.vat_number)}`;
-    if (seen.has(key)) errors.push('مكرر في الملف');
-    seen.add(key);
-    const status = errors.length ? 'error' : dup ? 'exists' : 'new';
-    return { ...r, status, errors, existing_id: dup?.id ?? null, existing_name: dup?.shop_name ?? null };
-  });
+    const g = { ...base, branch: undefined, username: list.find((r) => r.username)?.username || null, main_password: mainRow?.password || null, rows: list.length };
+    const branchRows = list.filter((r) => r.branch);
+    if (list.filter((r) => !r.branch).length > 1) errors.push('أكثر من صف للحساب الرئيسي لنفس المحل');
+    if (!g.shop_name) errors.push('اسم المحل مفقود');
+    if (g.vat_number && !/^\d{15}$/.test(digits(g.vat_number))) errors.push('الرقم الضريبي يجب أن يكون 15 رقماً');
+    if (g.username && !/^[A-Za-z0-9_.@-]{3,60}$/.test(g.username)) errors.push('اسم المستخدم بالإنجليزية بدون مسافات');
+    const ph = digits(g.phone).slice(-9);
+    const dup = existing.find((c) => (g.username && c.username && c.username.toLowerCase() === g.username.toLowerCase())
+      || (g.vat_number && digits(c.vat_number) === digits(g.vat_number)) || (g.cr_number && digits(c.cr_number) === digits(g.cr_number))
+      || (ph.length >= 9 && digits(c.phone).slice(-9) === ph) || c.shop_name.trim() === String(g.shop_name || '').trim());
+    const owner = g.username ? users.get(g.username.toLowerCase()) : undefined;
+    if (owner !== undefined && owner !== (dup?.id ?? -1)) errors.push('اسم المستخدم مستخدم لحساب آخر');
+    const needMainUser = g.username && !(dup && dup.username);
+    if (needMainUser && String(g.main_password || '').length < 8) errors.push(branchRows.length ? 'أضف صفاً بدون "الفرع" فيه كلمة مرور الحساب الرئيسي (8 أحرف على الأقل)' : 'كلمة المرور أقل من 8 أحرف');
+    if (branchRows.length && !g.username) errors.push('الفروع تحتاج "اسم المستخدم" للمحل');
+    const names = new Set();
+    const branches = [];
+    for (const r of branchRows) {
+      const name = r.branch.trim();
+      if (names.has(name)) { errors.push(`الفرع "${name}" مكرر`); continue; }
+      names.add(name);
+      const exists = dup ? dup.branches.includes(name) : false;
+      if (!exists && String(r.password || '').length < 8) errors.push(`كلمة مرور "${name}" أقل من 8 أحرف`);
+      branches.push({ name, city: r.city, address: r.address, phone: r.phone, password: r.password, exists });
+    }
+    const newBranches = branches.filter((x) => !x.exists);
+    const status = errors.length ? 'error' : !dup ? 'new' : newBranches.length || (needMainUser && g.username) ? 'update' : 'exists';
+    plans.push({ ...g, branches, status, errors, existing_id: dup?.id ?? null, existing_name: dup?.shop_name ?? null, create_main_user: !!(g.username && needMainUser) });
+  }
+  return plans;
 }
+
+const tierIdFor = async (db, tier) => {
+  if (!tier) return null;
+  // "ذهبي" / "فضي" / "عادي" تُطابق التصنيفات الأساسية بدلاً من إنشاء تصنيف مكرر
+  const t = /ذهب|gold/i.test(tier) ? 'عميل ذهبي' : /فض|silver/i.test(tier) ? 'عميل فضي' : /عادي|normal|regular/i.test(tier) ? 'عميل عادي' : tier;
+  return (await db.query('insert into customer_tiers(name) values ($1) on conflict (name) do update set name=excluded.name returning id', [t])).rows[0].id;
+};
 
 r.post('/customers/import/parse', requirePerm('customers.manage'), empUpload.single('file'), async (req, res) => {
   if (!req.file) throw bad('اختر الملف');
@@ -349,42 +388,43 @@ r.post('/customers/import/parse', requirePerm('customers.manage'), empUpload.sin
   const map = {};
   table[hIdx].forEach((h, i) => { const k = CUST_HEADERS.find(([key, re]) => map[key] === undefined && re.test(h || '')); if (k) map[k[0]] = i; });
   const get = (c, k) => (map[k] === undefined ? null : (c[map[k]] || '').trim() || null);
-  const rows = table.slice(hIdx + 1).map((c) => Object.fromEntries(CUST_HEADERS.map(([k]) => [k, get(c, k)]))).filter((r) => Object.values(r).some(Boolean));
+  let rows = table.slice(hIdx + 1).map((c) => Object.fromEntries(CUST_HEADERS.map(([k]) => [k, get(c, k)]))).filter((r) => Object.values(r).some(Boolean));
+  // صفوف الفروع قد تترك اسم المحل فارغاً: تأخذه من الصف الأقرب بنفس اسم المستخدم أو الصف السابق
+  let last = null;
+  rows = rows.map((r) => { if (!r.shop_name && r.branch && last) return { ...r, shop_name: last.shop_name, username: r.username || last.username }; if (!r.branch) last = r; return r; });
   if (!rows.length) throw bad('لا توجد بيانات تحت صف العناوين');
-  res.json({ columns: Object.keys(map), rows: await checkCustomerRows(pool, rows) });
+  res.json({ columns: Object.keys(map), rows, plans: await planCustomers(pool, rows) });
 });
 
-/** إضافة العملاء الجدد (معتمدين مباشرة لأن المصنع هو من أدخلهم). الموجودون مسبقاً يُتجاوزون ولا تُعدّل بياناتهم. */
+/** إضافة العملاء الجدد وفروعهم، وإضافة الفروع الجديدة لعملاء موجودين. بيانات العملاء الموجودين لا تُغيَّر. */
 r.post('/customers/import/commit', requirePerm('customers.manage'), async (req, res) => {
-  const input = (Array.isArray(req.body.rows) ? req.body.rows : []).map((r) => Object.fromEntries(CUST_HEADERS.map(([k]) => [k, str(r[k], k, { max: 300 })])));
+  const input = (Array.isArray(req.body.rows) ? req.body.rows : []).map((r) => Object.fromEntries(CUST_HEADERS.map(([k]) => [k, k === 'password' ? (r[k] == null ? null : String(r[k])) : str(r[k], k, { max: 300 })])));
   if (!input.length) throw bad('لا توجد بيانات');
   res.json(await tx(async (db) => {
-    const rows = await checkCustomerRows(db, input);
-    const errs = rows.filter((r) => r.status === 'error');
-    if (errs.length) throw bad(`يوجد ${errs.length} صف به أخطاء - صححها أو استبعدها`, { rows: errs });
-    let created = 0;
-    let logins = 0;
+    const plans = await planCustomers(db, input);
+    const errs = plans.filter((p) => p.status === 'error');
+    if (errs.length && !req.body.skip_errors) throw bad(`يوجد ${errs.length} محل به أخطاء - صححها أو استبعدها`, { plans: errs });
+    let created = 0, logins = 0, branchesAdded = 0;
     const skipped = [];
-    for (const r of rows) {
-      if (r.status === 'exists') { skipped.push(r.shop_name); continue; }
-      let tierId = null;
-      if (r.tier) {
-        // "ذهبي" / "فضي" / "عادي" تُطابق التصنيفات الأساسية بدلاً من إنشاء تصنيف مكرر
-        const t = /ذهب|gold/i.test(r.tier) ? 'عميل ذهبي' : /فض|silver/i.test(r.tier) ? 'عميل فضي' : /عادي|normal|regular/i.test(r.tier) ? 'عميل عادي' : r.tier;
-        tierId = (await db.query('insert into customer_tiers(name) values ($1) on conflict (name) do update set name=excluded.name returning id', [t])).rows[0].id;
+    for (const p of plans) {
+      if (p.status === 'error') continue;
+      if (p.status === 'exists') { skipped.push(p.shop_name); continue; }
+      let cid = p.existing_id;
+      if (!cid) {
+        cid = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, tier_id, notes, status, approved_by, approved_at)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,now()) returning id`,
+          [p.shop_name, p.owner_name, p.phone, p.phone2, p.email, p.city, p.address, p.vat_number ? digits(p.vat_number) : null, p.cr_number, await tierIdFor(db, p.tier), p.notes, req.user.id])).rows[0].id;
+        created++;
       }
-      const c = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, tier_id, notes, status, approved_by, approved_at)
-        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,now()) returning id`,
-        [r.shop_name, r.owner_name, r.phone, r.phone2, r.email, r.city, r.address, r.vat_number ? digits(r.vat_number) : null, r.cr_number, tierId, r.notes, req.user.id])).rows[0];
-      if (r.username) {
+      if (p.create_main_user) {
         await db.query("insert into users(username, password_hash, full_name, role_code, customer_id, phone, must_change_password) values ($1,$2,$3,'customer',$4,$5,true)",
-          [r.username, hashPassword(String(r.password)), r.owner_name || r.shop_name, c.id, r.phone]);
+          [p.username, hashPassword(String(p.main_password)), p.owner_name || p.shop_name, cid, p.phone]);
         logins++;
       }
-      created++;
+      for (const b of p.branches.filter((x) => !x.exists)) { await createBranch(db, req, cid, b); branchesAdded++; }
     }
-    await audit(db, req, 'customer.import', 'customer', null, { created, logins, skipped });
-    return { created, logins, skipped };
+    await audit(db, req, 'customer.import', 'customer', null, { created, logins, branches: branchesAdded, skipped });
+    return { created, logins, branches: branchesAdded, skipped };
   }));
 });
 
@@ -420,11 +460,15 @@ r.post('/customers', requirePerm('customers.manage'), async (req, res) => {
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'approved',$10,$11,$12,now()) returning *`,
       [str(b.shop_name, 'اسم المحل', { required: true }), str(b.owner_name, 'المالك'), str(b.phone, 'الجوال'), str(b.phone2, 'جوال 2'), str(b.email, 'البريد'),
        str(b.city, 'المدينة'), str(b.address, 'العنوان'), str(b.vat_number, 'الرقم الضريبي'), str(b.cr_number, 'السجل'), b.tier_id ? int(b.tier_id) : null, str(b.notes, 'ملاحظات'), req.user.id])).rows[0];
+    const branches = (Array.isArray(b.branches) ? b.branches : []).filter((x) => x && (x.name || x.password));
+    if (branches.length && !(b.username && b.password)) throw bad('الفروع تحتاج اسم مستخدم وكلمة مرور للحساب الرئيسي');
     if (b.username && b.password) {
+      if (!/^[A-Za-z0-9_.@-]{3,60}$/.test(String(b.username))) throw bad('اسم المستخدم بالإنجليزية بدون مسافات');
       if (String(b.password).length < 8) throw bad('كلمة المرور يجب ألا تقل عن 8 أحرف');
       await db.query("insert into users(username, password_hash, full_name, role_code, customer_id, phone) values ($1,$2,$3,'customer',$4,$5)",
         [String(b.username), hashPassword(String(b.password)), c.owner_name || c.shop_name, c.id, c.phone]).catch((e) => { if (e.code === '23505') throw bad('اسم المستخدم مستخدم'); throw e; });
     }
+    for (const br of branches) await createBranch(db, req, c.id, br);
     await audit(db, req, 'customer.create', 'customer', c.id, { shop: c.shop_name });
     return c;
   }));

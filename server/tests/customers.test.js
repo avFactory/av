@@ -39,14 +39,14 @@ test('استيراد العملاء: أعمدة بأي ترتيب، تجاوز �
   fd.append('file', new Blob([await wb.xlsx.writeBuffer()]), 'customers.xlsx');
   const p = await call('POST', '/admin/customers/import/parse', null, fd);
   assert.equal(p.status, 200, JSON.stringify(p.data));
-  assert.deepEqual(p.data.rows.map((r) => r.status), ['new', 'new', 'error', 'new']);
-  assert.equal(p.data.rows[0].phone, '0501111111');
-  assert.equal(p.data.rows[0].shop_name, 'مجوهرات الماسة');
-  const ok = await call('POST', '/admin/customers/import/commit', { rows: p.data.rows.filter((r) => r.status !== 'error').slice(0, 2) });
+  assert.deepEqual(p.data.plans.map((r) => r.status), ['new', 'new', 'error', 'new']);
+  assert.equal(p.data.plans[0].phone, '0501111111');
+  assert.equal(p.data.plans[0].shop_name, 'مجوهرات الماسة');
+  const ok = await call('POST', '/admin/customers/import/commit', { rows: p.data.rows.filter((r) => r.shop_name !== 'محل خطأ' && r.shop_name !== 'نفس الجوال باسم آخر') });
   assert.deepEqual([ok.data.created, ok.data.logins], [2, 1]);
   // إعادة الرفع: الموجودون يُتجاوزون، وتكرار الجوال يُكتشف
   const p2 = await call('POST', '/admin/customers/import/parse', null, fd);
-  assert.deepEqual(p2.data.rows.map((r) => r.status), ['error', 'exists', 'error', 'exists'], 'اسم المستخدم مستخدم + موجود + خطأ + نفس الجوال');
+  assert.deepEqual(p2.data.plans.map((r) => r.status), ['exists', 'exists', 'error', 'exists'], 'موجود + موجود + خطأ + نفس الجوال');
   const list = (await call('GET', '/admin/customers')).data;
   const m = list.find((c) => c.shop_name === 'مجوهرات الماسة');
   assert.equal(m.status, 'approved');
@@ -128,4 +128,43 @@ test('فروع العملاء: اختيار الفرع عند الدخول، ك�
   await call('PUT', `/admin/customers/${cid}/branches/${b1.id}`, { password: 'NewOlaya#26' });
   assert.equal((await mk()('POST', '/auth/login', { username: 'brshop', password: 'NewOlaya#26', branch_id: b1.id })).status, 200);
   assert.equal((await call('GET', `/admin/customers/${cid}`)).data.branches.length, 2);
+});
+
+test('استيراد العملاء مع الفروع: اسم مستخدم واحد للمحل وكلمة مرور لكل فرع', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('C');
+  ws.addRow(['اسم المحل', 'اسم المستخدم', 'الفرع', 'كلمة المرور', 'المدينة', 'جوال الفرع']);
+  ws.addRow(['ذهب الشرق', 'sharq', null, 'Sharq#Main1', 'الدمام', '0533000000']);
+  ws.addRow(['ذهب الشرق', 'sharq', 'فرع الخبر', 'Khobar#2026', 'الخبر', '0533000001']);
+  ws.addRow([null, null, 'فرع الظهران', 'Dhahran#2026', 'الظهران', null]);
+  ws.addRow(['محل بلا رئيسي', 'nomain', 'فرع 1', 'Branch1#2026', null, null]);
+  const fd = new FormData();
+  fd.append('file', new Blob([await wb.xlsx.writeBuffer()]), 'c.xlsx');
+  const p = await call('POST', '/admin/customers/import/parse', null, fd);
+  assert.equal(p.status, 200, JSON.stringify(p.data));
+  const sharq = p.data.plans.find((x) => x.username === 'sharq');
+  assert.equal(sharq.status, 'new');
+  assert.deepEqual(sharq.branches.map((b) => b.name), ['فرع الخبر', 'فرع الظهران'], 'صف الفرع بلا اسم محل يتبع المحل السابق');
+  assert.equal(p.data.plans.find((x) => x.username === 'nomain').status, 'error', 'الفروع تحتاج صف الحساب الرئيسي');
+  const c = await call('POST', '/admin/customers/import/commit', { rows: p.data.rows.filter((r) => r.username !== 'nomain') });
+  assert.deepEqual([c.data.created, c.data.logins, c.data.branches], [1, 1, 2]);
+  const opts = await fetch(base + '/api/auth/login-options', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'sharq' }) }).then((r) => r.json());
+  assert.deepEqual(opts.branches.map((b) => b.name).sort(), ['فرع الخبر', 'فرع الظهران'].sort());
+  const bid = opts.branches.find((b) => b.name === 'فرع الخبر').id;
+  const lg = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'sharq', password: 'Khobar#2026', branch_id: bid }) });
+  assert.equal(lg.status, 200);
+  // إعادة الرفع مع فرع جديد: يُضاف الفرع الجديد فقط للمحل الموجود
+  ws.addRow(['ذهب الشرق', 'sharq', 'فرع الجبيل', 'Jubail#2026', 'الجبيل', null]);
+  const fd2 = new FormData();
+  fd2.append('file', new Blob([await wb.xlsx.writeBuffer()]), 'c.xlsx');
+  const p2 = await call('POST', '/admin/customers/import/parse', null, fd2);
+  const s2 = p2.data.plans.find((x) => x.username === 'sharq');
+  assert.equal(s2.status, 'update');
+  const c2 = await call('POST', '/admin/customers/import/commit', { rows: p2.data.rows.filter((r) => r.username !== 'nomain') });
+  assert.deepEqual([c2.data.created, c2.data.branches], [0, 1]);
+  // عميل جديد يدوياً مع فروعه
+  const n = await call('POST', '/admin/customers', { shop_name: 'محل يدوي', username: 'manualshop', password: 'Manual#2026', branches: [{ name: 'الفرع أ', password: 'BranchA#2026' }, { name: 'الفرع ب', password: 'BranchB#2026' }] });
+  assert.equal(n.status, 200, JSON.stringify(n.data));
+  assert.equal((await call('GET', `/admin/customers/${n.data.id}`)).data.branches.length, 2);
+  assert.equal((await call('POST', '/admin/customers', { shop_name: 'بلا مستخدم', branches: [{ name: 'x', password: 'Xxxxxxxx1' }] })).status, 400);
 });
