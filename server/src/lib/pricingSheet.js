@@ -3,6 +3,7 @@
 // المعادلات نفسها في الواجهة (web/src/pricingSheet.js) وتُحسب على جهاز المستخدم.
 import crypto from 'node:crypto';
 import { bad } from './http.js';
+import { SECTIONS, COLUMNS, SHORT_COLUMNS, calc, withOverrides } from './pricingFormulas.js';
 
 const KEY = 'pricing_sheet';
 const DEFAULT = { gold24: 467, updated_at: '2026-10-15', rows: {} };
@@ -10,13 +11,15 @@ const FIELDS = ['c', 'e', 'g', 'ct', 'cost', 'profit', 'base', 'step', 'pp'];
 
 export async function getPricing(db, { withToken = false } = {}) {
   let v = (await db.query('select value from settings where key=$1', [KEY])).rows[0]?.value;
-  if (!v || !v.token) {
-    v = { ...DEFAULT, ...(v || {}), token: crypto.randomBytes(16).toString('hex') };
+  if (!v || !v.token || !v.token_short) {
+    v = { ...DEFAULT, ...(v || {}) };
+    if (!v.token) v.token = crypto.randomBytes(16).toString('hex');
+    if (!v.token_short) v.token_short = crypto.randomBytes(16).toString('hex');
     await db.query('insert into settings(key, value) values ($1,$2) on conflict (key) do update set value=$2', [KEY, JSON.stringify(v)]);
   }
   const vat = Number((await db.query("select value::text v from settings where key='vat_rate'")).rows[0]?.v ?? 15);
   const out = { gold24: v.gold24, updated_at: v.updated_at, rows: v.rows || {}, vat };
-  if (withToken) out.token = v.token;
+  if (withToken) { out.token = v.token; out.token_short = v.token_short; }
   return out;
 }
 
@@ -53,15 +56,48 @@ export async function savePricing(db, body) {
   return next;
 }
 
-export async function rotateToken(db) {
+export async function rotateToken(db, which = 'full') {
   const cur = (await db.query('select value from settings where key=$1', [KEY])).rows[0]?.value || DEFAULT;
-  const next = { ...cur, token: crypto.randomBytes(16).toString('hex') };
+  const field = which === 'short' ? 'token_short' : 'token';
+  const next = { ...cur, [field]: crypto.randomBytes(16).toString('hex') };
   await db.query('insert into settings(key, value) values ($1,$2) on conflict (key) do update set value=$2', [KEY, JSON.stringify(next)]);
-  return next.token;
+  return next[field];
 }
 
+const same = (a, b) => typeof a === 'string' && typeof b === 'string' && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+/** نوع الرابط: 'full' للتسعيرة الكاملة، 'short' للمختصرة، أو null */
 export async function checkToken(db, token) {
   const v = (await db.query('select value from settings where key=$1', [KEY])).rows[0]?.value;
-  if (!v?.token || typeof token !== 'string' || token.length !== v.token.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(v.token));
+  if (!v) return null;
+  if (same(token, v.token)) return 'full';
+  if (same(token, v.token_short)) return 'short';
+  return null;
+}
+
+/**
+ * التسعيرة المختصرة محسوبة على الخادم: يُرسل للزائر المنتج والأوزان والسعر الشامل للقطاعي فقط
+ * (وتكاليف المصنع للتصاميم الذهب كما في الملف) — بدون المصنعية أو الفائدة أو أي تكلفة أخرى.
+ */
+export function shortView(p, weights = {}) {
+  const w = (id, k, def) => {
+    const x = weights?.[id]?.[k];
+    if (x === undefined || x === null || x === '') return def;
+    const n = Number(String(x).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+    return Number.isFinite(n) && n >= 0 && n <= 100000 ? n : def;
+  };
+  return SECTIONS.map((s) => {
+    const keys = SHORT_COLUMNS[s.kind];
+    const columns = COLUMNS[s.kind].filter(([k]) => keys.includes(k)).map(([k, label, type]) => [k, label, type === 'input' ? 'input' : null]);
+    return {
+      id: s.id, title: s.title, kind: s.kind, columns,
+      rows: s.rows.map((r0) => {
+        const r = withOverrides(r0, p.rows);
+        const inputs = Object.fromEntries(columns.filter((c) => c[2] === 'input').map(([k]) => [k, w(r.id, k, Number(r[k]) || 0)]));
+        const v = calc(s.kind, { ...r, ...inputs }, p.gold24, p.vat ?? 15);
+        const values = Object.fromEntries(columns.filter(([k, , t]) => k !== 'name' && t !== 'input').map(([k]) => [k, Math.round(v[k] * 100) / 100]));
+        return { id: r.id, name: r.name, defaults: Object.fromEntries(Object.keys(inputs).map((k) => [k, Number(r[k]) || 0])), values };
+      }),
+    };
+  });
 }

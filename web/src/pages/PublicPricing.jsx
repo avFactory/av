@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { Loader } from '../ui.jsx';
 import PricingSheet from '../components/PricingSheet.jsx';
+import ShortPricing from '../components/ShortPricing.jsx';
 import { money } from '../pricingSheet.js';
 
 const THEME_KEY = 'pricing_theme';
@@ -34,12 +35,12 @@ export default function PublicPricing() {
       <header className="pricing-head">
         <div className="pricing-brand">
           <img src="/logo-gold.png" alt="AV" />
-          <div><b>مصنع AV للمجوهرات</b><div className="small">التسعيرة</div></div>
+          <div><b>مصنع AV للمجوهرات</b><div className="small">{d?.view === 'short' ? 'التسعيرة المختصرة' : 'التسعيرة'}</div></div>
         </div>
         {d && (
           <div className="pricing-head-gold">
             <div><span>سعر الذهب الصافي 24</span><b>{money(Number(d.gold24))}</b></div>
-            <div><span>سعر الذهب عيار 18</span><b>{money(Number(d.gold24) * 18 / 24)}</b></div>
+            {d.view !== 'short' && <div><span>سعر الذهب عيار 18</span><b>{money(Number(d.gold24) * 18 / 24)}</b></div>}
             <div><span>آخر تحديث</span><b>{d.updated_at || '—'}</b></div>
           </div>
         )}
@@ -50,7 +51,7 @@ export default function PublicPricing() {
       <main className="container-fluid py-3" style={{ maxWidth: 1500 }}>
         {err && <div className="alert alert-warning">{err.message || 'الرابط غير صحيح'}</div>}
         {!d && !err && <Loader />}
-        {d && <PricingSheet data={d} mode="public" hideGold />}
+        {d && (d.view === 'short' ? <ShortPricing token={token} initial={d.sections} /> : <PricingSheet data={d} mode="public" hideGold />)}
       </main>
     </div>
   );

@@ -13,11 +13,13 @@ export default function Pricing() {
   useEffect(() => { if (data) setS(data); }, [data]);
   if (!s) return <Loader />;
   const url = `${location.origin}/p/${s.token}`;
-  const copy = async () => { try { await navigator.clipboard.writeText(url); } catch { window.prompt('انسخ الرابط', url); } };
+  const shortUrl = `${location.origin}/p/${s.token_short}`;
+  const copyText = async (u) => { try { await navigator.clipboard.writeText(u); } catch { window.prompt('انسخ الرابط', u); } };
+  const copy = () => copyText(url);
   const save = () => run(async () => { setS(await api.put('/admin/pricing', { gold24: s.gold24, updated_at: s.updated_at, rows: s.rows })); }, 'تم حفظ التسعيرة');
-  const rotate = () => {
+  const rotate = (which = 'full') => {
     if (!window.confirm('إنشاء رابط جديد؟ الرابط القديم سيتوقف فوراً عن العمل لكل من لديه.')) return;
-    run(async () => { await api.post('/admin/pricing/token'); reload(); }, 'تم إنشاء رابط جديد').catch(() => {});
+    run(async () => { await api.post('/admin/pricing/token', { which }); reload(); }, 'تم إنشاء رابط جديد').catch(() => {});
   };
   return (
     <Page title="التسعيرة" subtitle="نفس ورقة التسعيرة في Excel — الزائر برابط خارجي يُدخل الأوزان فقط">
@@ -36,7 +38,17 @@ export default function Pricing() {
             <Btn onClick={copy}>نسخ الرابط</Btn>
             <a className="btn btn-success" href={`https://wa.me/?text=${encodeURIComponent(`تسعيرة منتجات AV:\n${url}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
             <a className="btn btn-outline-secondary" href={url} target="_blank" rel="noreferrer">فتح كما يراه الزائر</a>
-            {can('settings.manage') && <Btn kind="danger" loading={busy} onClick={rotate}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
+            {can('settings.manage') && <Btn kind="danger" loading={busy} onClick={() => rotate('full')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
+          </div>
+          <hr />
+          <h3 className="h6">التسعيرة المختصرة</h3>
+          <p className="small text-body-secondary">نفس التسعيرة لكن بأعمدة مختصرة فقط: المنتج، الأوزان، تكاليف المصنع (للتصاميم الذهب)، والسعر شامل الضريبة للقطاعي. التكاليف والفائدة لا تصل لجهاز الزائر إطلاقاً.</p>
+          <input className="form-control mb-2" dir="ltr" readOnly value={shortUrl} onFocus={(e) => e.target.select()} />
+          <div className="hrow gap wrap">
+            <Btn onClick={() => copyText(shortUrl)}>نسخ الرابط</Btn>
+            <a className="btn btn-success" href={`https://wa.me/?text=${encodeURIComponent(`التسعيرة المختصرة لمنتجات AV:\n${shortUrl}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
+            <a className="btn btn-outline-secondary" href={shortUrl} target="_blank" rel="noreferrer">فتح كما يراه الزائر</a>
+            {can('settings.manage') && <Btn kind="danger" loading={busy} onClick={() => rotate('short')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
           </div>
         </Card>
       </div>

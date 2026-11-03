@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { many, one, pool } from '../db.js';
 import { routeStages, hasDiamonds } from '../lib/production.js';
-import { getPricing, checkToken } from '../lib/pricingSheet.js';
+import { getPricing, checkToken, shortView } from '../lib/pricingSheet.js';
 import { notFound, int } from '../lib/http.js';
 
 const r = Router();
@@ -59,10 +59,23 @@ r.get('/track/:token', async (req, res) => {
 
 /** التسعيرة برابط خارجي: قراءة فقط (سعر الذهب والثوابت)، والأوزان تُدخل وتُحسب على جهاز الزائر ولا تُحفظ */
 r.get('/pricing/:token', async (req, res) => {
-  if (!(await checkToken(pool, String(req.params.token || '')))) throw notFound('الرابط غير صحيح أو تم إيقافه');
+  const view = await checkToken(pool, String(req.params.token || ''));
+  if (!view) throw notFound('الرابط غير صحيح أو تم إيقافه');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
-  res.json(await getPricing(pool));
+  const p = await getPricing(pool);
+  if (view === 'full') return res.json({ ...p, view });
+  // المختصرة: لا تُرسل الثوابت (المصنعية/الفائدة/التكاليف) — فقط النتائج المسموح بعرضها
+  res.json({ view, gold24: p.gold24, updated_at: p.updated_at, sections: shortView(p) });
+});
+
+/** حساب التسعيرة المختصرة للأوزان التي يكتبها الزائر (لا يُحفظ شيء) */
+r.post('/pricing/:token/calc', async (req, res) => {
+  const view = await checkToken(pool, String(req.params.token || ''));
+  if (view !== 'short') throw notFound('الرابط غير صحيح أو تم إيقافه');
+  res.setHeader('Cache-Control', 'no-store');
+  const p = await getPricing(pool);
+  res.json({ sections: shortView(p, req.body?.weights || {}) });
 });
 
 export default r;

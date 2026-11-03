@@ -271,3 +271,28 @@ test('التسعيرة برابط خارجي: قراءة فقط بدون تسج�
   assert.equal((await fetch(`${base}/api/public/pricing/${a.token}`)).status, 404, 'الرابط القديم يتوقف');
   assert.equal((await fetch(`${base}/api/public/pricing/${t2}`)).status, 200);
 });
+
+test('التسعيرة المختصرة: أعمدة مختصرة فقط، والحساب على الخادم بدون كشف التكاليف', async () => {
+  const { calc, SECTIONS } = await import('../src/lib/pricingFormulas.js');
+  const a = (await call('GET', '/admin/pricing')).data;
+  assert.match(a.token_short, /^[0-9a-f]{32}$/);
+  assert.notEqual(a.token_short, a.token);
+  const r = await fetch(`${base}/api/public/pricing/${a.token_short}`);
+  const raw = await r.text();
+  const d = JSON.parse(raw);
+  assert.equal(d.view, 'short');
+  assert.equal(d.rows, undefined, 'لا تُرسل الثوابت');
+  for (const word of ['"profit"', '"ct"', '"base"', '"step"', '"pp"']) assert.ok(!raw.includes(word), `لا يكشف ${word}`);
+  const dia = d.sections.find((s) => s.id === 'diamond');
+  assert.deepEqual(dia.columns.map((c) => c[1]), ['المنتج', 'الوزن الاجمالي', 'وزن الألماس', 'شامل الضريبة للقطاعي']);
+  assert.deepEqual(d.sections.find((s) => s.id === 'gold').columns.map((c) => c[1]), ['المنتج', 'الوزن الإجمالي', 'تكاليف المصنع', 'شامل الضريبة للقطاعي']);
+  const c = await (await fetch(`${base}/api/public/pricing/${a.token_short}/calc`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ weights: { d_0_3: { e: '1.30', g: '1.53' } } }) })).json();
+  const row = c.sections.find((s) => s.id === 'diamond').rows.find((x) => x.id === 'd_0_3');
+  const base0 = { ...SECTIONS[0].rows[0], ...(a.rows.d_0_3 || {}), e: 1.3, g: 1.53 };
+  assert.equal(row.values.m, Math.round(calc('diamond', base0, a.gold24, 15).m * 100) / 100, 'نفس نتيجة التسعيرة الكاملة');
+  assert.equal((await fetch(`${base}/api/public/pricing/${a.token}/calc`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 404, 'الحساب للمختصرة فقط');
+  const t2 = (await call('POST', '/admin/pricing/token', { which: 'short' })).data.token;
+  assert.equal((await fetch(`${base}/api/public/pricing/${a.token_short}`)).status, 404, 'المختصر القديم يتوقف');
+  assert.equal((await fetch(`${base}/api/public/pricing/${a.token}`)).status, 200, 'الرابط الكامل لا يتأثر');
+  assert.equal((await fetch(`${base}/api/public/pricing/${t2}`)).status, 200);
+});

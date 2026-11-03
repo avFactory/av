@@ -3,6 +3,8 @@ WORKDIR /app/web
 COPY web/package*.json ./
 RUN npm ci
 COPY web/ ./
+# معادلات التسعيرة مشتركة بين الخادم والواجهة
+COPY server/src/lib/pricingFormulas.js /app/server/src/lib/pricingFormulas.js
 RUN npm run build
 
 FROM node:22-alpine

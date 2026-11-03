@@ -661,8 +661,9 @@ r.put('/pricing', requirePerm('settings.manage', 'products.manage'), async (req,
 });
 r.post('/pricing/token', requirePerm('settings.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
-    const token = await rotateToken(db);
-    await audit(db, req, 'pricing.rotate_link', 'settings', 'pricing_sheet', {});
+    const which = req.body?.which === 'short' ? 'short' : 'full';
+    const token = await rotateToken(db, which);
+    await audit(db, req, 'pricing.rotate_link', 'settings', 'pricing_sheet', { which });
     return { token };
   }));
 });
