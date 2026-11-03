@@ -32,6 +32,9 @@ export default function Stones() {
   const [q, setQ] = useState('');
   const [shapeF, setShapeF] = useState('');
   const [hideEmpty, setHideEmpty] = useState(false);
+  const [opened, setOpened] = useState(() => new Set());
+  const isOpen = (id) => opened.has(id) || !!q.trim() || shapeF === String(id);
+  const toggle = (id) => setOpened((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [lot, setLot] = useState(null);
   const [newItem, setNewItem] = useState(null);
   const [mv, setMv] = useState(null);
@@ -92,6 +95,8 @@ export default function Stones() {
       <div className="hrow gap wrap mb">
         <Search value={q} onChange={setQ} placeholder="ابحث بالمقاس أو النوع أو رقم الصنف…" />
         <label className="check"><input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} /> إخفاء الأصناف المنتهية</label>
+        <Btn size="sm" kind="ghost" onClick={() => setOpened(new Set(groups.map((g) => g.shape.id)))}>فتح الكل</Btn>
+        <Btn size="sm" kind="ghost" onClick={() => setOpened(new Set())}>طي الكل</Btn>
       </div>
 
       {!data.length && <Empty><p>لا توجد أصناف بعد.</p>{can('stones.manage') && <Btn className="mt" onClick={() => setImp({ step: 1 })}>استيراد مخزونك من ملف Excel</Btn>}</Empty>}
@@ -100,14 +105,18 @@ export default function Stones() {
           const max = Math.max(...g.items.map((l) => Number(l.stock_carats)), 0.0001);
           const share = total ? (100 * g.total) / total : 0;
           return (
-            <section key={g.shape.id} className="shape-group">
-              <header>
+            <section key={g.shape.id} className={`shape-group ${isOpen(g.shape.id) ? 'open' : ''}`}>
+              <header role="button" tabIndex={0} aria-expanded={isOpen(g.shape.id)} onClick={() => toggle(g.shape.id)}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle(g.shape.id))}>
                 <div className="hrow gap"><span className="shape-ic"><ShapeIcon icon={g.shape.icon} /></span>
                   <div><h3>{g.shape.name}</h3><span className="muted small">{g.items.length} صنف{g.workers ? ` · ${ct(g.workers)} قيراط لدى العمال` : ''}</span></div>
                 </div>
-                <div className="shape-total"><b dir="ltr">{ct(g.total)}</b> <span>قيراط</span><div className="share"><div style={{ width: `${share}%` }} /></div><small>{share.toFixed(1)}% من المخزون</small></div>
+                <div className="hrow gap-l">
+                  <div className="shape-total"><b dir="ltr">{ct(g.total)}</b> <span>قيراط</span><div className="share"><div style={{ width: `${share}%` }} /></div><small>{share.toFixed(1)}% من المخزون</small></div>
+                  <span className="shape-chev" aria-hidden="true">▾</span>
+                </div>
               </header>
-              <div className="stone-grid">
+              {isOpen(g.shape.id) && <div className="stone-grid">
                 {g.list.map((l) => {
                   const stock = Number(l.stock_carats);
                   const st = stock <= 0 ? 'out' : l.min_carats && stock < Number(l.min_carats) ? 'low' : 'ok';
@@ -124,7 +133,7 @@ export default function Stones() {
                   );
                 })}
                 {!g.list.length && <span className="muted small">لا أصناف مطابقة</span>}
-              </div>
+              </div>}
             </section>
           );
         })}

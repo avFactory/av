@@ -361,3 +361,11 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .tier-card b { font-size: 1.5rem; }
 .tier-card.on { border-color: var(--gold); background: var(--gold-soft); }
 .tier-select { min-height: 32px; padding: 2px 8px; font-size: .85rem; width: auto; }
+
+/* تصنيفات الألماس قابلة للطي */
+.shape-group > header { cursor: pointer; user-select: none; }
+.shape-group > header:hover { background: linear-gradient(90deg, var(--gold-soft), var(--card)); }
+.shape-group > header:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.shape-group:not(.open) > header { border-bottom: 0; }
+.shape-chev { font-size: 1.2rem; color: var(--gold); transition: transform .2s; display: inline-block; }
+.shape-group.open .shape-chev { transform: rotate(180deg); }
