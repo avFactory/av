@@ -5,7 +5,7 @@ import { Btn, Loader, ErrorBox, Select, useAction } from '../../ui.jsx';
 import { labelsToZpl, zebraPrinters, zebraSend, downloadZpl, drawLabel } from '../../zebra.js';
 
 const CFG_KEY = 'zebra_cfg';
-const loadCfg = () => { try { return { mode: 'browser', dpi: 203, w: 62, h: 38, darkness: '', ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { mode: 'browser', dpi: 203, w: 62, h: 38, darkness: '' }; } };
+const loadCfg = () => { try { return { mode: 'browser', dpi: 203, w: 50, h: 25, darkness: '', ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { mode: 'browser', dpi: 203, w: 50, h: 25, darkness: '' }; } };
 
 /**
  * ملصقات الطلبات 62×38 مم.
@@ -26,7 +26,7 @@ export default function Labels() {
   const autoDone = useRef(false);
   const zebra = cfg.mode === 'zebra';
   const set = (k) => (e) => setCfg((c) => ({ ...c, [k]: e.target.value }));
-  const opts = { dpi: Number(cfg.dpi) || 203, w: Number(cfg.w) || 62, h: Number(cfg.h) || 38, darkness: cfg.darkness === '' ? null : Number(cfg.darkness) };
+  const opts = { dpi: Number(cfg.dpi) || 203, w: Number(cfg.w) || 50, h: Number(cfg.h) || 25, darkness: cfg.darkness === '' ? null : Number(cfg.darkness) };
 
   useEffect(() => { try { localStorage.setItem('label_roll', roll ? '1' : '0'); } catch { /* ignore */ } }, [roll]);
   useEffect(() => { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } }, [cfg]);
