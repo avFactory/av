@@ -224,3 +224,21 @@ test('حذف المنتج: نهائي إن لم يُستخدم، وأرشفة إ
   assert.ok(!(await call('GET', '/catalog/products')).data.some((p) => p.id === b.id), 'يختفي من القائمة');
   assert.equal((await call('DELETE', `/catalog/products/${b.id}`)).status, 404);
 });
+
+test('تتبع الطلب برابط عام بدون تسجيل دخول (عرض فقط)', async () => {
+  const mat = (await pool.query('select id from materials limit 1')).rows[0];
+  const o = (await call('POST', '/orders', { title: 'عقد للتتبع', product_type: 'عقد', karat: 21, color: 'yellow', quantity: 1, material_id: mat.id })).data;
+  const token = (await pool.query('select qr_token from orders where id=$1', [o.id])).rows[0].qr_token;
+  const r = await fetch(`${base}/api/public/track/${token}`);
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.equal(d.order_no, o.order_no);
+  for (const k of ['final_weight', 'labor_rate', 'labor_estimate', 'customer_id', 'shop_name', 'notes', 'id']) assert.equal(d[k], undefined, `لا يكشف ${k}`);
+  assert.ok(d.stages.some((s) => s.name === 'المختبر لإصدار الشهادة'), 'مرحلة المختبر ضمن المسار');
+  const names = d.stages.map((s) => s.name);
+  assert.ok(names.indexOf('المختبر لإصدار الشهادة') === names.findIndex((n) => n.startsWith('التشييك')) - 1, 'المختبر قبل التشييك مباشرة');
+  assert.equal((await fetch(`${base}/api/public/track/${'0'.repeat(20)}`)).status, 404);
+  assert.equal((await fetch(`${base}/api/public/track/${o.order_no}`)).status, 404, 'رقم الطلب وحده لا يكفي');
+  // لا توجد أي عملية كتابة عامة على الطلب
+  assert.equal((await fetch(`${base}/api/public/track/${token}`, { method: 'POST' })).status, 404);
+});

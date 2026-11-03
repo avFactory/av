@@ -376,3 +376,8 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .shape-group:not(.open) > header { border-bottom: 0; }
 .shape-chev { font-size: 1.2rem; color: var(--gold); transition: transform .2s; display: inline-block; }
 .shape-group.open .shape-chev { transform: rotate(180deg); }
+
+/* صفحة تتبع الطلب العامة */
+.track-page { min-height: 100vh; background: var(--bs-body-bg); }
+.track-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #141414; color: #f3e9d2; }
+.track-head img { height: 40px; width: auto; }

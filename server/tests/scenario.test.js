@@ -221,6 +221,11 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
     ['التشييك والجودة والوزن النهائي', ids.w2, w2, '0', '0'],
   ];
   for (const [stage, wid, wc, scrap, loss] of steps) {
+    if (stage.startsWith('التشييك')) {
+      // مرحلة المختبر لإصدار الشهادة قبل الجودة: بدون عهدة ذهب، ينقلها المشرف يدوياً
+      assert.equal((await orderOf(ids.order)).stage_name, 'المختبر لإصدار الشهادة');
+      await sup.post(`/api/orders/${ids.order}/advance`);
+    }
     assert.equal((await orderOf(ids.order)).stage_name, stage);
     const r1 = await sup.post('/api/sup/issue', { worker_id: wid, items: [{ order_id: ids.order, weight: String(bal) }], signature: PNG });
     const c1 = r1.custodies[0].id;

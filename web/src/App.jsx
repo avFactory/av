@@ -6,6 +6,7 @@ import StaffLayout from './components/StaffLayout.jsx';
 import WorkerLayout from './components/WorkerLayout.jsx';
 import StoreLayout from './components/StoreLayout.jsx';
 import Login from './pages/Login.jsx';
+import PublicTrack from './pages/PublicTrack.jsx';
 import Register from './pages/Register.jsx';
 import ForcePassword from './pages/ForcePassword.jsx';
 
@@ -67,6 +68,9 @@ function Guard({ perms, children }) {
 
 export default function App() {
   const { me } = useAuth();
+  const loc = useLocation();
+  // تتبع الطلب برابط عام: يعمل بدون تسجيل دخول
+  if (loc.pathname.startsWith('/t/')) return <Suspense fallback={<Loader />}><Routes><Route path="/t/:token" element={<PublicTrack />} /></Routes></Suspense>;
   if (me === undefined) return <Loader />;
   if (me?.must_change_password) return <ForcePassword />;
   const S = (el, perms) => <Guard perms={perms}>{el}</Guard>;

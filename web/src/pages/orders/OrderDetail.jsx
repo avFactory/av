@@ -6,6 +6,31 @@ import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
 import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS } from '../../format.js';
 import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal } from '../../ui.jsx';
 
+/** رابط تتبع عام للطلب (عرض فقط بدون تسجيل دخول): نسخ أو إرسال واتساب */
+function TrackLinkBtn({ o }) {
+  const [open, setOpen] = useState(false);
+  const url = `${location.origin}/t/${o.qr_token}`;
+  const phone = String(o.branch_phone || o.customer_phone || '').replace(/\D/g, '').replace(/^0/, '966');
+  const msg = `مصنع AV للمجوهرات\nتتبع طلبكم ${o.order_no} (${o.title}):\n${url}`;
+  const copy = async () => { try { await navigator.clipboard.writeText(url); } catch { window.prompt('انسخ الرابط', url); } setOpen(false); };
+  return (
+    <div className="dropdown">
+      <button type="button" className="btn btn-outline-secondary dropdown-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>رابط التتبع</button>
+      {open && (
+        <div className="dropdown-menu show p-2" style={{ minWidth: 280, position: "absolute", top: "100%", left: 0, right: "auto", zIndex: 1050 }}>
+          <div className="small text-body-secondary mb-2">رابط عرض فقط بدون تسجيل دخول — يُظهر المرحلة التي وصل لها الطلب</div>
+          <input className="form-control form-control-sm mb-2" dir="ltr" readOnly value={url} onFocus={(e) => e.target.select()} />
+          <div className="d-flex gap-2 flex-wrap">
+            <button type="button" className="btn btn-sm btn-primary" onClick={copy}>نسخ الرابط</button>
+            <a className="btn btn-sm btn-success" href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>إرسال واتساب{phone ? '' : ' (اختر الرقم)'}</a>
+            <a className="btn btn-sm btn-outline-secondary" href={url} target="_blank" rel="noreferrer">فتح</a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OrderDetail() {
   const { id } = useParams();
   const { can, lookups } = useAuth();
@@ -37,6 +62,7 @@ export default function OrderDetail() {
     <Page title={<span>{o.order_no} <StatusBadge map={STATUS} value={o.status} /></span>} subtitle={`${o.title}${o.shop_name ? ' · ' + o.shop_name + (o.branch_name ? ' — ' + o.branch_name : '') : ' · طلب داخلي'}`} back="/orders"
       actions={<>
         <PrintLabelsBtn ids={[o.id]} />
+        <TrackLinkBtn o={o} />
         {o.status === 'pending_review' && can('orders.quote') && o.source === 'store_custom' && <Btn onClick={() => open('quote', { labor_method: suggestedLabor?.method || 'per_gram', labor_rate: suggestedLabor?.rate || '', approx_weight: o.approx_weight || '', due_date: o.due_date?.slice(0, 10) || '' })}>إرسال عرض أجور</Btn>}
         {['pending_review', 'approved'].includes(o.status) && can('orders.manage') && <Btn onClick={() => act('start', {}, 'تم تحويل الطلب لأمر إنتاج')} loading={busy}>بدء الإنتاج</Btn>}
         {['pending_review', 'approved'].includes(o.status) && o.product_id && can('orders.manage') && <Btn kind="ghost" onClick={() => act('from-stock', {}, 'تمت التلبية من المخزون الجاهز')}>تلبية من المخزون الجاهز</Btn>}
