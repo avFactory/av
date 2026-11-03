@@ -22,6 +22,8 @@ export default function ShortPricing({ token, initial }) {
   const setW = (id, k, v) => setWeights((w) => ({ ...w, [id]: { ...(w[id] || {}), [k]: toNum(v) } }));
   return (
     <div className="pricing">
+      {/* شبكة 2×2: الألماس يمين أعلى، الخاصة يسار أعلى، الذهب يمين أسفل، اللؤلؤ يسار أسفل */}
+      <div className="pricing-grid">
       {sections.map((s) => (
         <section key={s.id} className="pricing-sec">
           <h2>{s.title}</h2>
@@ -49,6 +51,7 @@ export default function ShortPricing({ token, initial }) {
           </div>
         </section>
       ))}
+      </div>
       <p className="small text-body-secondary">اكتب الأوزان في الخانات الصفراء لحساب السعر. القيم لا تُحفظ ولا تؤثر على أحد.</p>
     </div>
   );

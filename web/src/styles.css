@@ -438,3 +438,19 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .pricing-admin-gold label { display: grid; gap: 2px; }
 .pricing-admin-gold label span { font-size: .78rem; color: var(--bs-secondary-color); }
 .pricing-admin-gold input { width: 150px; }
+
+/* التسعيرة المختصرة: أربعة جداول في شبكة 2×2 */
+.pricing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.pricing-grid .pricing-sec { margin: 0; }
+.pricing-short th, .pricing-short td { padding: 6px 8px; }
+.pricing-short .col-in { width: 110px; }
+.pricing-short .col-in input { min-width: 0; width: 96px; margin: auto; text-align: center; }
+.pricing-short .pricing-total { width: 130px; font-size: 1rem; }
+@media (max-width: 1000px) { .pricing-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .pricing-short th, .pricing-short td { padding: 4px 5px; font-size: .8rem; }
+  .pricing-short .col-in { width: 70px; }
+  .pricing-short .col-in input { width: 64px; padding: 2px 4px; }
+  .pricing-short .pricing-total { width: auto; font-size: .9rem; }
+  .pricing-short th[scope=row] { white-space: normal; }
+}
