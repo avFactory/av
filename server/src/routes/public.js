@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { many, one, pool } from '../db.js';
 import { routeStages } from '../lib/production.js';
+import { getPricing, checkToken } from '../lib/pricingSheet.js';
 import { notFound, int } from '../lib/http.js';
 
 const r = Router();
@@ -53,6 +54,14 @@ r.get('/track/:token', async (req, res) => {
     progress: delivered ? 100 : total && o.stage_seq ? Math.round((100 * (o.stage_seq - 1)) / total) : 0,
     due_date: o.due_date, created_at: o.created_at, ready_at: o.ready_at, delivered_at: o.delivered_at, stages,
   });
+});
+
+/** التسعيرة برابط خارجي: قراءة فقط (سعر الذهب والثوابت)، والأوزان تُدخل وتُحسب على جهاز الزائر ولا تُحفظ */
+r.get('/pricing/:token', async (req, res) => {
+  if (!(await checkToken(pool, String(req.params.token || '')))) throw notFound('الرابط غير صحيح أو تم إيقافه');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.json(await getPricing(pool));
 });
 
 export default r;

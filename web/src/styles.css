@@ -381,3 +381,21 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .track-page { min-height: 100vh; background: var(--bs-body-bg); }
 .track-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #141414; color: #f3e9d2; }
 .track-head img { height: 40px; width: auto; }
+
+/* صفحة التسعيرة */
+.pricing-gold { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.pricing-gold > div { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 12px; padding: 8px 14px; display: flex; flex-direction: column; min-width: 150px; }
+.pricing-gold span { font-size: .8rem; color: var(--bs-secondary-color); }
+.pricing-gold b { font-size: 1.15rem; direction: ltr; text-align: right; }
+.pricing-sec { margin-bottom: 18px; }
+.pricing-sec h2 { font-size: 1.05rem; font-weight: 700; background: #141414; color: #f3e9d2; border-radius: 10px 10px 0 0; padding: 8px 12px; margin: 0; }
+.pricing-table { font-size: .85rem; margin: 0; background: var(--bs-body-bg); }
+.pricing-table th { white-space: nowrap; font-weight: 600; background: var(--bs-tertiary-bg); font-size: .78rem; }
+.pricing-table td { white-space: nowrap; text-align: center; }
+.pricing-table th[scope=row] { background: var(--bs-body-bg); font-size: .85rem; }
+.pricing-table .col-in { background: #fff8e1; }
+.pricing-table .col-in input { min-width: 80px; font-weight: 700; border-color: #c9a227; }
+.pricing-table .pricing-const { min-width: 70px; background: #eef4ff; }
+.pricing-table .pricing-total { font-weight: 700; background: #f1f8ef; }
+[data-bs-theme=dark] .pricing-table .col-in { background: #3a3220; }
+[data-bs-theme=dark] .pricing-table .pricing-total { background: #1f2d1f; }

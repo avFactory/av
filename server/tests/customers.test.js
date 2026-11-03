@@ -242,3 +242,24 @@ test('تتبع الطلب برابط عام بدون تسجيل دخول (عرض
   // لا توجد أي عملية كتابة عامة على الطلب
   assert.equal((await fetch(`${base}/api/public/track/${token}`, { method: 'POST' })).status, 404);
 });
+
+test('التسعيرة برابط خارجي: قراءة فقط بدون تسجيل دخول، والتعديل للمدير فقط', async () => {
+  const a = (await call('GET', '/admin/pricing')).data;
+  assert.match(a.token, /^[0-9a-f]{32}$/);
+  const pub = await fetch(`${base}/api/public/pricing/${a.token}`);
+  assert.equal(pub.status, 200);
+  const d = await pub.json();
+  assert.equal(d.token, undefined, 'لا يكشف الرمز');
+  assert.equal(d.gold24, 467);
+  assert.equal((await fetch(`${base}/api/public/pricing/${'0'.repeat(32)}`)).status, 404);
+  assert.equal((await fetch(`${base}/api/public/pricing/${a.token}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{"gold24":1}' })).status, 404, 'لا تعديل عبر الرابط');
+  assert.equal((await fetch(`${base}/api/admin/pricing`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{"gold24":1}' })).status, 401, 'التعديل يتطلب دخول');
+  const s = (await call('PUT', '/admin/pricing', { gold24: 480, rows: { d_0_3: { c: 140 } } })).data;
+  assert.equal(s.gold24, 480);
+  assert.equal(s.rows.d_0_3.c, 140);
+  assert.equal(s.updated_at, new Date().toISOString().slice(0, 10), 'تاريخ التحديث تلقائي');
+  assert.equal((await call('GET', '/admin/settings')).data.pricing_sheet, undefined, 'الرمز لا يظهر في الإعدادات العامة');
+  const t2 = (await call('POST', '/admin/pricing/token')).data.token;
+  assert.equal((await fetch(`${base}/api/public/pricing/${a.token}`)).status, 404, 'الرابط القديم يتوقف');
+  assert.equal((await fetch(`${base}/api/public/pricing/${t2}`)).status, 200);
+});

@@ -10,6 +10,7 @@ import ExcelJS from 'exceljs';
 import { sendXlsx } from '../lib/xlsx.js';
 import { listBranches, createBranch, updateBranch, phoneKey } from '../lib/branches.js';
 import { autoShortName, cleanShortName } from '../lib/shortName.js';
+import { getPricing, savePricing, rotateToken } from '../lib/pricingSheet.js';
 
 const r = Router();
 
@@ -642,8 +643,28 @@ r.put('/routes/:id', requirePerm('stages.manage'), async (req, res) => {
 
 // ------------------------------------------------------------------ الإعدادات
 r.get('/settings', requirePerm('settings.manage', 'finance.view'), async (_req, res) => {
-  const rows = await many('select key, value from settings');
+  const rows = await many("select key, value from settings where key <> 'pricing_sheet'");
   res.json(Object.fromEntries(rows.map((x) => [x.key, x.value])));
+});
+
+// ------------------------------------------------------------------ صفحة التسعيرة (رابط خارجي)
+r.get('/pricing', requirePerm('settings.manage', 'products.manage'), async (_req, res) => {
+  res.json(await getPricing(pool, { withToken: true }));
+});
+r.put('/pricing', requirePerm('settings.manage', 'products.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const before = await getPricing(db);
+    await savePricing(db, req.body);
+    await audit(db, req, 'pricing.update', 'settings', 'pricing_sheet', { before: { gold24: before.gold24, rows: before.rows }, after: { gold24: req.body.gold24, rows: req.body.rows } });
+    return getPricing(db, { withToken: true });
+  }));
+});
+r.post('/pricing/token', requirePerm('settings.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const token = await rotateToken(db);
+    await audit(db, req, 'pricing.rotate_link', 'settings', 'pricing_sheet', {});
+    return { token };
+  }));
 });
 r.put('/settings', requirePerm('settings.manage'), async (req, res) => {
   res.json(await tx(async (db) => {

@@ -7,6 +7,7 @@ import WorkerLayout from './components/WorkerLayout.jsx';
 import StoreLayout from './components/StoreLayout.jsx';
 import Login from './pages/Login.jsx';
 import PublicTrack from './pages/PublicTrack.jsx';
+import PublicPricing from './pages/PublicPricing.jsx';
 import Register from './pages/Register.jsx';
 import ForcePassword from './pages/ForcePassword.jsx';
 
@@ -33,6 +34,7 @@ const Stages = L(() => import('./pages/admin/Stages.jsx'));
 const Inventory = L(() => import('./pages/admin/Inventory.jsx'));
 const Stones = L(() => import('./pages/admin/Stones.jsx'));
 const Products = L(() => import('./pages/admin/Products.jsx'));
+const Pricing = L(() => import('./pages/admin/Pricing.jsx'));
 const Labor = L(() => import('./pages/admin/Labor.jsx'));
 const Invoices = L(() => import('./pages/admin/Invoices.jsx'));
 const InvoiceView = L(() => import('./pages/admin/InvoiceView.jsx'));
@@ -71,6 +73,8 @@ export default function App() {
   const loc = useLocation();
   // تتبع الطلب برابط عام: يعمل بدون تسجيل دخول
   if (loc.pathname.startsWith('/t/')) return <Suspense fallback={<Loader />}><Routes><Route path="/t/:token" element={<PublicTrack />} /></Routes></Suspense>;
+  // التسعيرة برابط خارجي: بدون تسجيل دخول
+  if (loc.pathname.startsWith('/p/')) return <Suspense fallback={<Loader />}><Routes><Route path="/p/:token" element={<PublicPricing />} /></Routes></Suspense>;
   if (me === undefined) return <Loader />;
   if (me?.must_change_password) return <ForcePassword />;
   const S = (el, perms) => <Guard perms={perms}>{el}</Guard>;
@@ -106,6 +110,7 @@ export default function App() {
           <Route path="/admin/inventory" element={S(<Inventory />, ['inventory.view'])} />
           <Route path="/admin/stones" element={S(<Stones />, ['stones.view'])} />
           <Route path="/admin/products" element={S(<Products />, ['products.manage'])} />
+          <Route path="/admin/pricing" element={S(<Pricing />, ['settings.manage', 'products.manage'])} />
           <Route path="/admin/labor" element={S(<Labor />, ['labor.manage'])} />
           <Route path="/admin/invoices" element={S(<Invoices />, ['finance.view'])} />
           <Route path="/admin/invoices/:id" element={S(<InvoiceView />, ['finance.view'])} />
