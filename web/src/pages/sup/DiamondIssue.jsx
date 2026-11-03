@@ -75,7 +75,7 @@ function IssueForm({ lot, onBack, onDone }) {
   const [run, busy] = useAction();
   const { lookups } = useAuth();
   const [allWorkers, setWorkers] = useState(null);
-  // عمال صرف الألماس فقط (حسب الأرقام الوظيفية المحددة في الإعدادات، الافتراضي 16 و17 و18 و19)
+  // عمال صرف الألماس فقط (حسب الأرقام الوظيفية المحددة في الإعدادات، الافتراضي 116 و117 و118 و119)
   const key = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\D/g, '').replace(/^0+/, '');
   const allowed = (lookups?.settings?.diamond_worker_nos || []).map(key).filter(Boolean);
   const workers = allWorkers && (allowed.length ? allWorkers.filter((w) => allowed.includes(key(w.employee_no))) : allWorkers);
