@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
-import { Btn, Card, Field, Input, Loader, Page, useAction, useFetch } from '../../ui.jsx';
+import { Btn, Card, Input, Loader, Page, useAction, useFetch } from '../../ui.jsx';
 import PricingSheet from '../../components/PricingSheet.jsx';
 
 /** إدارة صفحة التسعيرة: سعر الذهب، الثوابت، والرابط الخارجي */
@@ -22,27 +22,27 @@ export default function Pricing() {
     run(async () => { await api.post('/admin/pricing/token', { which }); reload(); }, 'تم إنشاء رابط جديد').catch(() => {});
   };
   return (
-    <Page title="التسعيرة" subtitle="نفس ورقة التسعيرة في Excel — الزائر برابط خارجي يُدخل الأوزان فقط">
+    <Page title="التسعيرة" subtitle="نفس ورقة التسعيرة في Excel — الزائر برابط خارجي يُدخل الأوزان فقط"
+      actions={(
+        <div className="pricing-admin-gold">
+          <label><span>سعر الذهب الصافي عيار 24 (ر.س/جم)</span><Input dir="ltr" value={s.gold24} onChange={(e) => setS({ ...s, gold24: e.target.value })} /></label>
+          <label><span>آخر تحديث</span><Input type="date" value={s.updated_at || ''} onChange={(e) => setS({ ...s, updated_at: e.target.value })} /></label>
+          <Btn loading={busy} onClick={save}>حفظ السعر</Btn>
+        </div>
+      )}>
       <div className="grid g2 mb">
-        <Card title="سعر الذهب">
-          <div className="grid g2">
-            <Field label="سعر الذهب الصافي عيار 24 (ر.س/جم)"><Input dir="ltr" value={s.gold24} onChange={(e) => setS({ ...s, gold24: e.target.value })} /></Field>
-            <Field label="آخر تحديث" hint="يتحدث تلقائياً عند تغيير السعر"><Input type="date" value={s.updated_at || ''} onChange={(e) => setS({ ...s, updated_at: e.target.value })} /></Field>
-          </div>
-          <div className="hrow end mt"><Btn loading={busy} onClick={save}>حفظ التسعيرة</Btn></div>
-        </Card>
-        <Card title="الرابط الخارجي">
-          <p className="small text-body-secondary">أي شخص لديه هذا الرابط يفتح التسعيرة بدون تسجيل دخول، ولا يرى أي شيء آخر في النظام، ويستطيع إدخال الأوزان فقط (لا تُحفظ).</p>
+        <Card title="التسعيرة الكاملة">
+          <p className="small text-body-secondary">أي شخص لديه هذا الرابط يفتح التسعيرة بكل أعمدتها بدون تسجيل دخول، ولا يرى أي شيء آخر في النظام، ويستطيع إدخال الأوزان فقط (لا تُحفظ).</p>
           <input className="form-control mb-2" dir="ltr" readOnly value={url} onFocus={(e) => e.target.select()} />
           <div className="hrow gap wrap">
             <Btn onClick={copy}>نسخ الرابط</Btn>
-            <a className="btn btn-success" href={`https://wa.me/?text=${encodeURIComponent(`تسعيرة منتجات AV:\n${url}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
+            <a className="btn btn-success" href={`https://wa.me/?text=${encodeURIComponent(`التسعيرة الكاملة لمنتجات AV:\n${url}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
             <a className="btn btn-outline-secondary" href={url} target="_blank" rel="noreferrer">فتح كما يراه الزائر</a>
             {can('settings.manage') && <Btn kind="danger" loading={busy} onClick={() => rotate('full')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
           </div>
-          <hr />
-          <h3 className="h6">التسعيرة المختصرة</h3>
-          <p className="small text-body-secondary">نفس التسعيرة لكن بأعمدة مختصرة فقط: المنتج، الأوزان، تكاليف المصنع (للتصاميم الذهب)، والسعر شامل الضريبة للقطاعي. التكاليف والفائدة لا تصل لجهاز الزائر إطلاقاً.</p>
+        </Card>
+        <Card title="التسعيرة المختصرة">
+          <p className="small text-body-secondary">أعمدة مختصرة فقط: المنتج، الأوزان، تكاليف المصنع (للتصاميم الذهب)، والسعر شامل الضريبة للقطاعي. التكاليف والفائدة لا تصل لجهاز الزائر إطلاقاً.</p>
           <input className="form-control mb-2" dir="ltr" readOnly value={shortUrl} onFocus={(e) => e.target.select()} />
           <div className="hrow gap wrap">
             <Btn onClick={() => copyText(shortUrl)}>نسخ الرابط</Btn>
