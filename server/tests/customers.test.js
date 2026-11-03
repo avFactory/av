@@ -317,3 +317,14 @@ test('صفحة الصب: أشجار الشمع وربطها بالطلب وتس�
   assert.equal((await call('DELETE', `/casting/${t.id}`)).data.ok, true);
   assert.equal((await fetch(`${base}/api/casting`)).status, 401, 'يتطلب تسجيل دخول');
 });
+
+test('عيار 22 محذوف من النظام', async () => {
+  const lk = (await call('GET', '/meta/lookups')).data;
+  const mats = lk.materials || (await pool.query('select karat from materials where active')).rows;
+  assert.ok(!mats.some((m) => Number(m.karat) === 22), 'لا مواد عيار 22 في القوائم');
+  const f = new FormData(); for (const [k, v] of Object.entries({ name: 'منتج 22', product_type: 'خاتم', karats: '22', colors: 'yellow' })) f.append(k, v);
+  assert.equal((await call('POST', '/catalog/products', null, f)).status, 400, 'لا منتجات بعيار 22');
+  assert.notEqual((await call('POST', '/orders', { title: 'طلب 22', product_type: 'خاتم', karat: 22, color: 'yellow', quantity: 1 })).status, 200, 'لا طلبات بعيار 22');
+  const inv = (await call('GET', '/inventory/gold')).data;
+  assert.ok(!inv.materials.some((m) => m.karat === 22));
+});

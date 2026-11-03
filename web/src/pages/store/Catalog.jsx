@@ -21,7 +21,7 @@ export default function Catalog() {
           <button className={`chip ${!f.type ? 'on' : ''}`} onClick={() => setF({ ...f, type: '' })}>الكل</button>
           {(data?.types || []).map((t) => <button key={t} className={`chip ${f.type === t ? 'on' : ''}`} onClick={() => setF({ ...f, type: t })}>{t}</button>)}
         </div>
-        <div className="chips">{['', '18', '21', '22', '24'].map((k) => <button key={k} className={`chip ${f.karat === k ? 'on' : ''}`} onClick={() => setF({ ...f, karat: k })}>{k ? `عيار ${k}` : 'كل العيارات'}</button>)}</div>
+        <div className="chips">{['', '18', '21', '24'].map((k) => <button key={k} className={`chip ${f.karat === k ? 'on' : ''}`} onClick={() => setF({ ...f, karat: k })}>{k ? `عيار ${k}` : 'كل العيارات'}</button>)}</div>
       </div>
       {!data ? <Loader /> : !data.products.length ? <Empty>لا توجد منتجات مطابقة</Empty> : (
         <div className="products">

@@ -14,7 +14,7 @@ r.get('/gold', requirePerm('inventory.view', 'custody.view_all', 'dashboard.view
   const rows = await many(`select m.id as material_id, m.name, m.karat, m.color, b.loc_type, sum(b.balance)::text as balance
                            from gold_balances b join materials m on m.id=b.material_id
                            where b.loc_type <> 'external' group by m.id, b.loc_type having sum(b.balance) <> 0 order by m.id`);
-  const materials = await many('select * from materials order by id');
+  const materials = await many('select * from materials where active order by id');
   res.json({ rows, materials, labels: ledger.LOC_LABELS });
 });
 
@@ -173,7 +173,8 @@ r.get('/reconciliation', requirePerm('inventory.view', 'reports.view', 'custody.
       coalesce(sum(b.balance) filter (where b.loc_type='delivered'),0) as delivered,
       coalesce(sum(b.balance) filter (where b.loc_type='variance'),0) as variance,
       coalesce(sum(b.balance),0) as ledger_sum
-    from materials m left join gold_balances b on b.material_id=m.id group by m.id order by m.id`);
+    from materials m left join gold_balances b on b.material_id=m.id group by m.id
+    having m.active or coalesce(sum(b.balance),0) <> 0 order by m.id`);
   // فحص 1: رصيد كل عامل في الدفتر = مجموع عهده المفتوحة
   const workerCheck = await many(`
     with led as (select loc_ref as worker_id, material_id, balance from gold_balances where loc_type='worker'),

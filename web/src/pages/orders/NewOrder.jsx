@@ -22,7 +22,7 @@ export default function NewOrder() {
             <Field label="منتج من الكتالوج (اختياري)"><Select value={f.product_id} onChange={(e) => { const p = products?.find((x) => String(x.id) === e.target.value); setF({ ...f, product_id: e.target.value, title: p?.name || f.title, product_type: p?.product_type || f.product_type, approx_weight: p?.approx_weight || f.approx_weight }); }} placeholder="—" options={(products || []).map((p) => [p.id, `${p.sku} - ${p.name}`])} /></Field>
             <Field label="الوصف *"><Input value={f.title} onChange={set('title')} required /></Field>
             <Field label="نوع القطعة"><Input value={f.product_type} onChange={set('product_type')} placeholder="خاتم، سلسال، أسورة…" /></Field>
-            <Field label="العيار"><Select value={f.karat} onChange={set('karat')} options={[['18', '18'], ['21', '21'], ['22', '22'], ['24', '24']]} /></Field>
+            <Field label="العيار"><Select value={f.karat} onChange={set('karat')} options={[['18', '18'], ['21', '21'], ['24', '24']]} /></Field>
             <Field label="اللون"><Select value={f.color} onChange={set('color')} options={Object.entries(COLORS)} /></Field>
             <Field label="الكمية"><Input inputMode="numeric" value={f.quantity} onChange={set('quantity')} /></Field>
             <Field label="الوزن التقريبي (جم)"><WeightInput value={f.approx_weight} onChange={set('approx_weight')} /></Field>

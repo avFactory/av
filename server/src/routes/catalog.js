@@ -18,7 +18,7 @@ r.get('/products', requirePerm('products.manage', 'orders.view'), async (_req, r
 
 function productVals(b) {
   const karats = arr(b.karats).map((k) => int(k, 'العيار'));
-  for (const k of karats) if (![18, 21, 22, 24].includes(k)) throw bad('العيار يجب أن يكون 18 أو 21 أو 22 أو 24');
+  for (const k of karats) if (![18, 21, 24].includes(k)) throw bad('العيار يجب أن يكون 18 أو 21 أو 24');
   const colors = arr(b.colors);
   for (const c of colors) oneOf(c, ['yellow', 'white', 'rose'], 'اللون');
   return [

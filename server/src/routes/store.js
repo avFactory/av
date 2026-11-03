@@ -133,7 +133,7 @@ r.post('/orders', async (req, res) => {
 r.post('/custom', upload.array('files', 10), async (req, res) => {
   const b = req.body;
   res.json(await tx(async (db) => {
-    const karat = oneOf(int(b.karat, 'العيار'), [18, 21, 22, 24], 'العيار');
+    const karat = oneOf(int(b.karat, 'العيار'), [18, 21, 24], 'العيار');
     const o = (await db.query(`insert into orders(order_no, customer_id, source, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id)
       values (next_doc_no('ORD'),$1,'store_custom',$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11) returning *`,
       [req.user.customer_id, str(b.product_type, 'نوع القطعة', { required: true }), str(b.title, 'اسم التصميم') || `تصميم خاص - ${b.product_type}`,

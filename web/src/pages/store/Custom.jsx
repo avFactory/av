@@ -50,7 +50,7 @@ export default function Custom() {
           <div className="grid g3">
             <Field label="نوع القطعة *"><Input value={f.product_type} onChange={set('product_type')} required placeholder="خاتم، طقم، سلسال…" /></Field>
             <Field label="اسم/وصف مختصر"><Input value={f.title} onChange={set('title')} /></Field>
-            <Field label="العيار"><div className="chips">{['18', '21', '22', '24'].map((k) => <button type="button" key={k} className={`chip ${f.karat === k ? 'on' : ''}`} onClick={() => setF({ ...f, karat: k })}>{k}</button>)}</div></Field>
+            <Field label="العيار"><div className="chips">{['18', '21', '24'].map((k) => <button type="button" key={k} className={`chip ${f.karat === k ? 'on' : ''}`} onClick={() => setF({ ...f, karat: k })}>{k}</button>)}</div></Field>
             <Field label="اللون"><div className="chips">{Object.entries(COLORS).map(([k, v]) => <button type="button" key={k} className={`chip ${f.color === k ? 'on' : ''}`} onClick={() => setF({ ...f, color: k })}>{v}</button>)}</div></Field>
             <Field label="الوزن التقريبي (جم)"><WeightInput value={f.approx_weight} onChange={set('approx_weight')} /></Field>
             <Field label="المقاس"><Input value={f.size} onChange={set('size')} /></Field>
