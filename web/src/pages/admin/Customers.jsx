@@ -67,7 +67,7 @@ export default function Customers() {
           </div>
           <div className="card">
             <div className="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
-              <b>الفروع <span className="text-body-secondary small fw-normal">(اختياري) — نفس اسم المستخدم، وكلمة مرور مختلفة لكل فرع</span></b>
+              <b>الفروع <span className="text-body-secondary small fw-normal">(اختياري) — نفس اسم المستخدم، ولكل فرع كلمة مرور ورقم تواصل مختلفان</span></b>
               <Btn size="sm" kind="ghost" onClick={() => setF({ ...f, branches: [...(f.branches || []), { name: '', city: '', phone: '', password: '' }] })}>+ إضافة فرع</Btn>
             </div>
             <div className="card-body d-grid gap-2">
@@ -78,7 +78,7 @@ export default function Customers() {
                   <div key={i} className="grid g4 align-items-end">
                     <Field label={`اسم الفرع ${i + 1} *`}><Input value={b.name} onChange={upd('name')} placeholder="مثال: فرع العليا" /></Field>
                     <Field label="المدينة"><Input value={b.city} onChange={upd('city')} /></Field>
-                    <Field label="جوال الفرع"><Input value={b.phone} onChange={upd('phone')} dir="ltr" /></Field>
+                    <Field label="رقم تواصل الفرع *"><Input value={b.phone} onChange={upd('phone')} dir="ltr" placeholder="05xxxxxxxx" /></Field>
                     <div className="d-flex gap-2 align-items-end">
                       <Field label="كلمة مرور الفرع *" className="flex-grow-1"><Input type="password" value={b.password} onChange={upd('password')} dir="ltr" autoComplete="new-password" /></Field>
                       <Btn size="sm" kind="ghost" onClick={() => setF({ ...f, branches: f.branches.filter((_, j) => j !== i) })}>حذف</Btn>
@@ -89,12 +89,27 @@ export default function Customers() {
             </div>
           </div>
           {(f.branches || []).length > 0 && (!f.username || !f.password) && <div className="alert alert-warning small">الفروع تحتاج اسم مستخدم وكلمة مرور للحساب الرئيسي.</div>}
-          <div className="hrow end"><Btn loading={busy} disabled={!f.shop_name || ((f.branches || []).length > 0 && (!f.username || !f.password || f.branches.some((b) => !b.name || (b.password || '').length < 8)))}
+          {phoneIssue(f) && <div className="alert alert-warning small">{phoneIssue(f)}</div>}
+          <div className="hrow end"><Btn loading={busy} disabled={!f.shop_name || ((f.branches || []).length > 0 && (!f.username || !f.password || !!phoneIssue(f) || f.branches.some((b) => !b.name || (b.password || '').length < 8)))}
             onClick={() => run(async () => { await api.post('/admin/customers', f); setF(null); reload(); }, 'تمت الإضافة')}>حفظ</Btn></div>
         </>}
       </Modal>
     </Page>
   );
+}
+
+const pk = (v) => String(v || '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\D/g, '').slice(-9);
+/** كل فرع يحتاج رقم تواصل خاصاً به: غير مكرر بين الفروع ومختلف عن جوال المحل */
+function phoneIssue(f) {
+  const seen = new Map();
+  if (pk(f.phone).length >= 9) seen.set(pk(f.phone), 'جوال المحل');
+  for (const b of f.branches || []) {
+    const k = pk(b.phone), n = b.name || 'فرع';
+    if (k.length < 9) return `أدخل رقم تواصل "${n}" (9 أرقام على الأقل)`;
+    if (seen.has(k)) return `رقم تواصل "${n}" مكرر مع ${seen.get(k)} — لكل فرع رقم مختلف`;
+    seen.set(k, `"${n}"`);
+  }
+  return null;
 }
 
 const IST = { new: ['جديد', 'info'], update: ['موجود - إضافة فروع', 'gold'], exists: ['موجود - سيُتجاوز', 'muted'], error: ['خطأ', 'bad'] };
@@ -123,14 +138,14 @@ function ImportModal({ imp, setImp, busy, run, onDone }) {
           <b>الفروع:</b> اسم المستخدم <b>واحد</b> للمحل وكل فروعه، وكلمة المرور تختلف:
           <ul className="mb-0 mt-1">
             <li>صف <b>بدون</b> عمود "الفرع" = الحساب الرئيسي للمحل (بياناته وكلمة مروره).</li>
-            <li>كل صف <b>فيه</b> "الفرع" = فرع بكلمة مرور خاصة (المدينة والجوال والعنوان في الصف تخص الفرع).</li>
+            <li>كل صف <b>فيه</b> "الفرع" = فرع بكلمة مرور خاصة و<b>رقم تواصل خاص</b> (عمود "الجوال" في صف الفرع إلزامي ومختلف لكل فرع وعن جوال المحل).</li>
             <li>صفوف الفروع تحت المحل يمكن أن تترك اسم المحل واسم المستخدم فارغين.</li>
           </ul>
-          <table className="table table-sm table-bordered mt-2 mb-0 keep" style={{ maxWidth: 560 }}>
-            <thead><tr><th>اسم المحل</th><th>اسم المستخدم</th><th>الفرع</th><th>كلمة المرور</th></tr></thead>
-            <tbody><tr><td>ذهب الشرق</td><td dir="ltr">sharq</td><td></td><td dir="ltr">Main#2026</td></tr>
-              <tr><td>ذهب الشرق</td><td dir="ltr">sharq</td><td>فرع الخبر</td><td dir="ltr">Khobar#2026</td></tr>
-              <tr><td></td><td></td><td>فرع الظهران</td><td dir="ltr">Dhahran#2026</td></tr></tbody>
+          <table className="table table-sm table-bordered mt-2 mb-0 keep" style={{ maxWidth: 680 }}>
+            <thead><tr><th>اسم المحل</th><th>اسم المستخدم</th><th>الفرع</th><th>كلمة المرور</th><th>الجوال</th></tr></thead>
+            <tbody><tr><td>ذهب الشرق</td><td dir="ltr">sharq</td><td></td><td dir="ltr">Main#2026</td><td dir="ltr">0551000000</td></tr>
+              <tr><td>ذهب الشرق</td><td dir="ltr">sharq</td><td>فرع الخبر</td><td dir="ltr">Khobar#2026</td><td dir="ltr">0551000001</td></tr>
+              <tr><td></td><td></td><td>فرع الظهران</td><td dir="ltr">Dhahran#2026</td><td dir="ltr">0551000002</td></tr></tbody>
           </table>
         </div></div>
         <div className="small muted">العملاء المضافون يكونون <b>معتمدين</b> مباشرة. العميل الموجود مسبقاً لا تُغيَّر بياناته، وتُضاف له فروعه الجديدة فقط.</div>
@@ -147,7 +162,7 @@ function ImportModal({ imp, setImp, busy, run, onDone }) {
         <Table rows={plans.map((p, i) => ({ ...p, id: i }))} rowClass={(p) => (p.status === 'error' ? 'row-bad' : '')} columns={[
           ['المحل', (p) => <b>{p.shop_name || '—'}</b>], ['الجوال', (p) => <span dir="ltr">{p.phone || ''}</span>], ['المدينة', 'city'], ['الفئة', 'tier'],
           ['اسم المستخدم', (p) => (p.username ? <span dir="ltr">{p.username}</span> : '—')],
-          ['الفروع', (p) => (p.branches.length ? <div className="d-flex flex-wrap gap-1">{p.branches.map((b) => <span key={b.name} className={`badge rounded-pill ${b.exists ? 'bg-body-secondary text-body-secondary' : 'bg-success-subtle text-success-emphasis'}`}>{b.name}{b.exists ? ' (موجود)' : ''}</span>)}</div> : '—')],
+          ['الفروع', (p) => (p.branches.length ? <div className="d-flex flex-wrap gap-1">{p.branches.map((b) => <span key={b.name} className={`badge rounded-pill ${b.exists ? 'bg-body-secondary text-body-secondary' : 'bg-success-subtle text-success-emphasis'}`}>{b.name}{b.phone ? <> — <bdi>{b.phone}</bdi></> : ''}{b.exists ? ' (موجود)' : ''}</span>)}</div> : '—')],
           ['الحالة', (p) => <Badge tone={IST[p.status][1]}>{IST[p.status][0]}</Badge>],
           ['ملاحظة', (p) => <span className="small">{p.errors.join('، ')}{['exists', 'update'].includes(p.status) ? `مطابق لـ: ${p.existing_name}` : ''}</span>],
         ]} />

@@ -87,9 +87,13 @@ test('فروع العملاء: اختيار الفرع عند الدخول، ك�
   await main('POST', '/auth/login', { username: 'brshop', password: 'Main#2026x' });
   // لا فروع بعد
   assert.deepEqual((await mk()('POST', '/auth/login-options', { username: 'brshop' })).data.branches, []);
-  const b1 = (await main('POST', '/store/branches', { name: 'فرع العليا', city: 'الرياض', password: 'Olaya#2026' })).data;
-  const b2 = (await main('POST', '/store/branches', { name: 'فرع جدة', city: 'جدة', password: 'Jeddah#2026' })).data;
-  assert.equal((await main('POST', '/store/branches', { name: 'فرع العليا', password: 'Other#2026' })).status, 400, 'لا يتكرر اسم الفرع');
+  const b1 = (await main('POST', '/store/branches', { name: 'فرع العليا', city: 'الرياض', phone: '0511111301', password: 'Olaya#2026' })).data;
+  const b2 = (await main('POST', '/store/branches', { name: 'فرع جدة', city: 'جدة', phone: '0511111302', password: 'Jeddah#2026' })).data;
+  assert.equal((await main('POST', '/store/branches', { name: 'فرع العليا', phone: '0511111303', password: 'Other#2026' })).status, 400, 'لا يتكرر اسم الفرع');
+  // رقم تواصل مختلف لكل فرع
+  assert.equal((await main('POST', '/store/branches', { name: 'فرع بلا رقم', password: 'NoPhone#2026' })).status, 400, 'رقم التواصل مطلوب');
+  assert.equal((await main('POST', '/store/branches', { name: 'فرع مكرر', phone: '+966 51 111 1301', password: 'DupPh#2026' })).status, 400, 'رقم فرع آخر');
+  assert.equal((await main('POST', '/store/branches', { name: 'فرع الرئيسي', phone: '0511111222', password: 'MainPh#2026' })).status, 400, 'رقم المحل الرئيسي');
   const opts = (await mk()('POST', '/auth/login-options', { username: 'BRSHOP' })).data.branches.map((b) => b.name).sort();
   assert.deepEqual(opts, ['فرع العليا', 'فرع جدة'].sort());
   assert.deepEqual((await mk()('POST', '/auth/login-options', { username: 'nobody' })).data.branches, []);
@@ -136,8 +140,8 @@ test('استيراد العملاء مع الفروع: اسم مستخدم وا�
   ws.addRow(['اسم المحل', 'اسم المستخدم', 'الفرع', 'كلمة المرور', 'المدينة', 'جوال الفرع']);
   ws.addRow(['ذهب الشرق', 'sharq', null, 'Sharq#Main1', 'الدمام', '0533000000']);
   ws.addRow(['ذهب الشرق', 'sharq', 'فرع الخبر', 'Khobar#2026', 'الخبر', '0533000001']);
-  ws.addRow([null, null, 'فرع الظهران', 'Dhahran#2026', 'الظهران', null]);
-  ws.addRow(['محل بلا رئيسي', 'nomain', 'فرع 1', 'Branch1#2026', null, null]);
+  ws.addRow([null, null, 'فرع الظهران', 'Dhahran#2026', 'الظهران', '0533000002']);
+  ws.addRow(['محل بلا رئيسي', 'nomain', 'فرع 1', 'Branch1#2026', null, '0544000001']);
   const fd = new FormData();
   fd.append('file', new Blob([await wb.xlsx.writeBuffer()]), 'c.xlsx');
   const p = await call('POST', '/admin/customers/import/parse', null, fd);
@@ -146,6 +150,16 @@ test('استيراد العملاء مع الفروع: اسم مستخدم وا�
   assert.equal(sharq.status, 'new');
   assert.deepEqual(sharq.branches.map((b) => b.name), ['فرع الخبر', 'فرع الظهران'], 'صف الفرع بلا اسم محل يتبع المحل السابق');
   assert.equal(p.data.plans.find((x) => x.username === 'nomain').status, 'error', 'الفروع تحتاج صف الحساب الرئيسي');
+  // فرع بلا رقم أو برقم مكرر = خطأ
+  const wb3 = new ExcelJS.Workbook(); const w3 = wb3.addWorksheet('C');
+  w3.addRow(['اسم المحل', 'اسم المستخدم', 'الفرع', 'كلمة المرور', 'جوال']);
+  w3.addRow(['محل الأرقام', 'nums', null, 'Nums#Main1', '0577000000']);
+  w3.addRow([null, null, 'أ', 'BranchA#2026', '0577000000']);
+  w3.addRow([null, null, 'ب', 'BranchB#2026', null]);
+  const fd3 = new FormData(); fd3.append('file', new Blob([await wb3.xlsx.writeBuffer()]), 'c.xlsx');
+  const e3 = (await call('POST', '/admin/customers/import/parse', null, fd3)).data.plans[0];
+  assert.equal(e3.status, 'error');
+  assert.ok(e3.errors.some((x) => x.includes('مكرر')) && e3.errors.some((x) => x.includes('مفقود')), JSON.stringify(e3.errors));
   const c = await call('POST', '/admin/customers/import/commit', { rows: p.data.rows.filter((r) => r.username !== 'nomain') });
   assert.deepEqual([c.data.created, c.data.logins, c.data.branches], [1, 1, 2]);
   const opts = await fetch(base + '/api/auth/login-options', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'sharq' }) }).then((r) => r.json());
@@ -154,7 +168,7 @@ test('استيراد العملاء مع الفروع: اسم مستخدم وا�
   const lg = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'sharq', password: 'Khobar#2026', branch_id: bid }) });
   assert.equal(lg.status, 200);
   // إعادة الرفع مع فرع جديد: يُضاف الفرع الجديد فقط للمحل الموجود
-  ws.addRow(['ذهب الشرق', 'sharq', 'فرع الجبيل', 'Jubail#2026', 'الجبيل', null]);
+  ws.addRow(['ذهب الشرق', 'sharq', 'فرع الجبيل', 'Jubail#2026', 'الجبيل', '0533000003']);
   const fd2 = new FormData();
   fd2.append('file', new Blob([await wb.xlsx.writeBuffer()]), 'c.xlsx');
   const p2 = await call('POST', '/admin/customers/import/parse', null, fd2);
@@ -163,7 +177,7 @@ test('استيراد العملاء مع الفروع: اسم مستخدم وا�
   const c2 = await call('POST', '/admin/customers/import/commit', { rows: p2.data.rows.filter((r) => r.username !== 'nomain') });
   assert.deepEqual([c2.data.created, c2.data.branches], [0, 1]);
   // عميل جديد يدوياً مع فروعه
-  const n = await call('POST', '/admin/customers', { shop_name: 'محل يدوي', username: 'manualshop', password: 'Manual#2026', branches: [{ name: 'الفرع أ', password: 'BranchA#2026' }, { name: 'الفرع ب', password: 'BranchB#2026' }] });
+  const n = await call('POST', '/admin/customers', { shop_name: 'محل يدوي', username: 'manualshop', password: 'Manual#2026', branches: [{ name: 'الفرع أ', phone: '0566000001', password: 'BranchA#2026' }, { name: 'الفرع ب', phone: '0566000002', password: 'BranchB#2026' }] });
   assert.equal(n.status, 200, JSON.stringify(n.data));
   assert.equal((await call('GET', `/admin/customers/${n.data.id}`)).data.branches.length, 2);
   assert.equal((await call('POST', '/admin/customers', { shop_name: 'بلا مستخدم', branches: [{ name: 'x', password: 'Xxxxxxxx1' }] })).status, 400);

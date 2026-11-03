@@ -73,7 +73,7 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
 
 export async function orderDetail(db, id) {
   const o = (await db.query(`select o.*, o.approx_weight::text, o.final_weight::text, o.final_gold_weight::text, o.labor_rate::text, o.labor_estimate::text,
-      c.shop_name, c.owner_name, s.name as stage_name, s.kind as stage_kind, s.handles_gold, m.name as material_name, m.karat, m.color,
+      c.shop_name, c.owner_name, c.phone as customer_phone, s.name as stage_name, s.kind as stage_kind, s.handles_gold, m.name as material_name, m.karat, m.color,
       w.full_name as worker_name, r.name as route_name, p.name as product_name, p.sku, br.name as branch_name, br.address as branch_address, br.phone as branch_phone
     from orders o left join customers c on c.id=o.customer_id left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
     left join users w on w.id=o.assigned_worker_id left join routes r on r.id=o.route_id left join products p on p.id=o.product_id left join customer_branches br on br.id=o.branch_id where o.id=$1`, [id])).rows[0];

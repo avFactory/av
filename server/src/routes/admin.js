@@ -8,7 +8,7 @@ import { notifyCustomer } from '../lib/notify.js';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { sendXlsx } from '../lib/xlsx.js';
-import { listBranches, createBranch, updateBranch } from '../lib/branches.js';
+import { listBranches, createBranch, updateBranch, phoneKey } from '../lib/branches.js';
 
 const r = Router();
 
@@ -293,6 +293,7 @@ r.post('/tiers', requirePerm('customers.manage'), async (req, res) => {
 r.get('/customers', requirePerm('customers.view'), async (req, res) => {
   res.json(await many(`select c.*, t.name as tier_name, t.color as tier_color,
       (select count(*) from orders o where o.customer_id=c.id)::int as orders_count,
+      (select string_agg(b.name || coalesce(' (' || b.phone || ')', ''), ' ، ' order by b.name) from customer_branches b where b.customer_id=c.id and b.active) as branches_text,
       (select coalesce(sum(case when invoice_type='invoice' then total else -total end),0) from invoices i where i.customer_id=c.id and i.status='issued')
         - (select coalesce(sum(case when kind='refund' then -amount else amount end),0) from payments p where p.customer_id=c.id) as balance
     from customers c left join customer_tiers t on t.id=c.tier_id
@@ -327,7 +328,8 @@ async function readTable(file) {
 async function planCustomers(db, rows) {
   const existing = (await db.query(`select c.id, c.shop_name, c.phone, c.vat_number, c.cr_number,
       (select u.username from users u where u.customer_id=c.id and u.branch_id is null and u.role_code='customer' limit 1) as username,
-      coalesce((select array_agg(b.name) from customer_branches b where b.customer_id=c.id), '{}') as branches
+      coalesce((select array_agg(b.name) from customer_branches b where b.customer_id=c.id), '{}') as branches,
+      coalesce((select array_agg(b.phone) from customer_branches b where b.customer_id=c.id and b.phone is not null), '{}') as branch_phones
     from customers c`)).rows;
   const users = new Map((await db.query('select lower(username) u, customer_id from users')).rows.map((x) => [x.u, x.customer_id]));
   const groups = new Map();
@@ -357,6 +359,9 @@ async function planCustomers(db, rows) {
     if (needMainUser && String(g.main_password || '').length < 8) errors.push(branchRows.length ? 'أضف صفاً بدون "الفرع" فيه كلمة مرور الحساب الرئيسي (8 أحرف على الأقل)' : 'كلمة المرور أقل من 8 أحرف');
     if (branchRows.length && !g.username) errors.push('الفروع تحتاج "اسم المستخدم" للمحل');
     const names = new Set();
+    const phones = new Map();
+    if (ph.length >= 9) phones.set(ph, 'جوال المحل الرئيسي');
+    if (dup) { if (dup.phone && phoneKey(dup.phone).length >= 9) phones.set(phoneKey(dup.phone), 'جوال المحل الرئيسي'); for (const x of dup.branch_phones) phones.set(phoneKey(x), 'فرع موجود'); }
     const branches = [];
     for (const r of branchRows) {
       const name = r.branch.trim();
@@ -364,6 +369,12 @@ async function planCustomers(db, rows) {
       names.add(name);
       const exists = dup ? dup.branches.includes(name) : false;
       if (!exists && String(r.password || '').length < 8) errors.push(`كلمة مرور "${name}" أقل من 8 أحرف`);
+      if (!exists) {
+        const k = phoneKey(r.phone);
+        if (k.length < 9) errors.push(`رقم تواصل "${name}" مفقود`);
+        else if (phones.has(k)) errors.push(`رقم تواصل "${name}" مكرر مع ${phones.get(k)} - لكل فرع رقم مختلف`);
+        else phones.set(k, `"${name}"`);
+      }
       branches.push({ name, city: r.city, address: r.address, phone: r.phone, password: r.password, exists });
     }
     const newBranches = branches.filter((x) => !x.exists);
@@ -436,7 +447,7 @@ r.get('/customers.xlsx', requirePerm('customers.view'), async (_req, res) => {
     from customers c left join customer_tiers t on t.id=c.tier_id order by c.shop_name`);
   const ST = { pending: 'بانتظار الموافقة', approved: 'معتمد', rejected: 'مرفوض', suspended: 'موقوف' };
   await sendXlsx(res, 'العملاء', [['اسم المحل', 'shop_name'], ['المالك', 'owner_name'], ['الجوال', 'phone'], ['جوال 2', 'phone2'], ['البريد', 'email'], ['المدينة', 'city'], ['العنوان', 'address'],
-    ['الرقم الضريبي', 'vat_number'], ['السجل التجاري', 'cr_number'], ['الفئة', 'tier_name'], ['الحالة', (x) => ST[x.status]], ['عدد الطلبات', 'orders_count'], ['الرصيد المستحق', (x) => Number(x.balance)], ['ملاحظات', 'notes']], rows, 'customers.xlsx');
+    ['الرقم الضريبي', 'vat_number'], ['السجل التجاري', 'cr_number'], ['الفئة', 'tier_name'], ['الفروع ورقم التواصل', 'branches_text'], ['الحالة', (x) => ST[x.status]], ['عدد الطلبات', 'orders_count'], ['الرصيد المستحق', (x) => Number(x.balance)], ['ملاحظات', 'notes']], rows, 'customers.xlsx');
 });
 
 r.get('/customers/:id', requirePerm('customers.view'), async (req, res) => {

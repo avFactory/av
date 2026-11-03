@@ -44,7 +44,9 @@ export default function OrderDetail() {
       </>}>
       <div className="grid g3 mb" style={{ gridTemplateColumns: '1fr 1fr auto' }}>
         <Card title="الطلب">
-          <Kv items={[['المادة', o.material_name], ['العيار / اللون', `${o.karat} · ${COLORS[o.color] || o.color}`], ['الكمية', o.quantity], ['المقاس', o.size], ['نوع القطعة', o.product_type],
+          <Kv items={[o.shop_name && ['العميل', o.branch_name ? `${o.shop_name} — ${o.branch_name}` : o.shop_name],
+            o.shop_name && ['رقم التواصل', (o.branch_phone || o.customer_phone) ? <a href={`tel:${o.branch_phone || o.customer_phone}`} dir="ltr">{o.branch_phone || o.customer_phone}</a> : null],
+            ['المادة', o.material_name], ['العيار / اللون', `${o.karat} · ${COLORS[o.color] || o.color}`], ['الكمية', o.quantity], ['المقاس', o.size], ['نوع القطعة', o.product_type],
             ['الوزن التقريبي', fmtW(o.approx_weight)], ['الوزن النهائي', o.final_weight ? `${fmtW(o.final_weight)} (ذهب ${fmtW(o.final_gold_weight)})` : '—'], ['موعد التسليم', fmtDate(o.due_date)],
             ['المسار', o.route_name], ['تصميم', DESIGN_STATUS[o.design_status]], ['المصدر', { internal: 'داخلي', store_catalog: 'المتجر - منتج', store_custom: 'المتجر - تصميم خاص' }[o.source]], ['ملاحظات', o.notes]]} />
         </Card>

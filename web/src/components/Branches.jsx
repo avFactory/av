@@ -16,7 +16,7 @@ export default function Branches({ list, base, onChange, hint }) {
     <Card title={`الفروع (${list.length})`} actions={<Btn size="sm" onClick={() => setF({ name: '', city: '', address: '', phone: '', password: '' })}>إضافة فرع</Btn>} pad={false}>
       {hint && <div className="card-body pb-0"><div className="alert alert-info small">{hint}</div></div>}
       <Table rows={list} empty="لا توجد فروع - الحساب الرئيسي فقط" columns={[
-        ['الفرع', (b) => <b>{b.name}</b>], ['المدينة', 'city'], ['العنوان', 'address'], ['الجوال', (b) => <span dir="ltr">{b.phone || ''}</span>],
+        ['الفرع', (b) => <b>{b.name}</b>], ['المدينة', 'city'], ['العنوان', 'address'], ['رقم التواصل', (b) => (b.phone ? <a href={`tel:${b.phone}`} dir="ltr">{b.phone}</a> : <span className="text-danger small">بدون رقم</span>)],
         ['الطلبات', 'orders_count'], ['الحالة', (b) => (b.active ? <Badge tone="ok">فعّال</Badge> : <Badge>موقوف</Badge>)],
         ['', (b) => <div className="d-flex gap-2 justify-content-end">
           <Btn size="sm" kind="ghost" onClick={() => setF({ ...b, password: '' })}>تعديل / كلمة المرور</Btn>
@@ -28,13 +28,13 @@ export default function Branches({ list, base, onChange, hint }) {
           <Field label="اسم الفرع *"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="مثال: فرع العليا" autoFocus /></Field>
           <div className="grid g2">
             <Field label="المدينة"><Input value={f.city || ''} onChange={(e) => setF({ ...f, city: e.target.value })} /></Field>
-            <Field label="الجوال"><Input value={f.phone || ''} onChange={(e) => setF({ ...f, phone: e.target.value })} dir="ltr" /></Field>
+            <Field label="رقم تواصل الفرع *" hint="مختلف لكل فرع"><Input value={f.phone || ''} onChange={(e) => setF({ ...f, phone: e.target.value })} dir="ltr" /></Field>
           </div>
           <Field label="العنوان"><Input value={f.address || ''} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
           <Field label={f.id ? 'كلمة مرور جديدة للفرع (اتركها فارغة لعدم التغيير)' : 'كلمة مرور الفرع * (8 أحرف على الأقل)'} hint="يدخل الفرع باسم مستخدم المحل نفسه، ثم يختار الفرع ويكتب هذه الكلمة.">
             <Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} dir="ltr" autoComplete="new-password" />
           </Field>
-          <div className="d-flex justify-content-end"><Btn loading={busy} disabled={!f.name || (!f.id && f.password.length < 8)} onClick={save}>حفظ</Btn></div>
+          <div className="d-flex justify-content-end"><Btn loading={busy} disabled={!f.name || String(f.phone || '').replace(/\D/g, '').length < 9 || (!f.id && f.password.length < 8)} onClick={save}>حفظ</Btn></div>
         </>}
       </Modal>
     </Card>
