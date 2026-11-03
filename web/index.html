@@ -7,6 +7,9 @@
     <script>
       // الوضع الليلي يتبع إعداد الجهاز (Bootstrap data-bs-theme)
       (function () {
+        // اختيار المستخدم (زر الداكن/الفاتح) يُحفظ على الجهاز ويتقدم على إعداد الجهاز
+        var saved = null; try { saved = localStorage.getItem('av_theme'); } catch (e) {}
+        if ((saved === 'dark' || saved === 'light') && location.pathname.indexOf('/p/') !== 0) document.documentElement.dataset.themeLock = '1', document.documentElement.setAttribute('data-bs-theme', saved);
         var m = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
         var set = function () { if (document.documentElement.dataset.themeLock) return; document.documentElement.setAttribute('data-bs-theme', m && m.matches ? 'dark' : 'light'); };
         set(); if (m && m.addEventListener) m.addEventListener('change', set);

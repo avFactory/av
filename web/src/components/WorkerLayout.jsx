@@ -1,3 +1,4 @@
+import { ThemeToggle } from '../ui.jsx';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
 import Bell from './Bell.jsx';
@@ -12,6 +13,7 @@ export default function WorkerLayout() {
           <div className="lh-sm"><div className="small text-white-50">مرحباً</div><b className="text-gold">{me.full_name}</b> <span className="small text-white-50">{me.employee_no}</span></div>
         </div>
         <div className="d-flex align-items-center gap-2">
+          <ThemeToggle light />
           <Bell to="/w/notifications" />
           <NavLink to="/w/account" className="btn btn-outline-light btn-sm">حسابي</NavLink>
           <button className="btn btn-outline-light btn-sm" onClick={logout}>خروج</button>

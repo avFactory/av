@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { fmtDate, fmtDT, COLORS } from '../format.js';
-import { Loader } from '../ui.jsx';
+import { Loader, ThemeToggle } from '../ui.jsx';
 
 /** صفحة تتبع الطلب العامة (برابط خاص، بدون تسجيل دخول) — عرض فقط */
 export default function PublicTrack() {
@@ -27,6 +27,7 @@ export default function PublicTrack() {
       <header className="track-head">
         <img src="/logo-gold.png" alt="AV" />
         <div><b>مصنع AV للمجوهرات</b><div className="small">تتبع الطلب</div></div>
+        <ThemeToggle light className="ms-auto" />
       </header>
       <main className="container py-4" style={{ maxWidth: 640 }}>
         {err && <div className="alert alert-warning">{err.message || 'رابط التتبع غير صحيح'}</div>}

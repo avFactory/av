@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth, homeFor } from '../auth.jsx';
-import { Btn, Field, Input } from '../ui.jsx';
+import { Btn, Field, Input, ThemeToggle } from '../ui.jsx';
 
 export default function Login() {
   const { me, refresh } = useAuth();
@@ -40,6 +40,7 @@ export default function Login() {
   return (
     <div className="login-screen">
       <div className="login-bg" aria-hidden="true" />
+      <ThemeToggle light className="login-theme" />
       <form className="login-card" onSubmit={submit}>
         <img src="/logo-gold.png" alt="AV" className="login-card-logo" />
         <h1>مصنع AV للمجوهرات</h1>

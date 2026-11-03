@@ -384,3 +384,30 @@ export function Kv({ items }) {
 export function Search({ value, onChange, placeholder = 'بحث…' }) {
   return <input className="form-control search" type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />;
 }
+
+// ------------------------------------------------------------- الوضع الداكن / الفاتح
+/** زر تبديل الوضع الداكن والفاتح — يُحفظ الاختيار على هذا الجهاز لكل صفحات الموقع */
+export function ThemeToggle({ light = false, className = '' }) {
+  const read = () => document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light';
+  const [theme, setTheme] = useState(read);
+  useEffect(() => {
+    const sync = () => setTheme(read());
+    window.addEventListener('av-theme', sync);
+    return () => window.removeEventListener('av-theme', sync);
+  }, []);
+  const toggle = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    const root = document.documentElement;
+    root.dataset.themeLock = '1';
+    root.setAttribute('data-bs-theme', next);
+    try { localStorage.setItem('av_theme', next); } catch { /* ignore */ }
+    window.dispatchEvent(new Event('av-theme'));
+  };
+  const dark = theme === 'dark';
+  return (
+    <button type="button" className={`btn btn-sm theme-toggle ${light ? 'btn-outline-light' : 'btn-outline-secondary'} ${className}`} onClick={toggle}
+      title={dark ? 'الوضع الفاتح' : 'الوضع الداكن'} aria-label={dark ? 'التبديل للوضع الفاتح' : 'التبديل للوضع الداكن'}>
+      {dark ? '☀' : '☾'}
+    </button>
+  );
+}

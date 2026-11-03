@@ -1,3 +1,4 @@
+import { ThemeToggle } from '../ui.jsx';
 import { useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
@@ -79,6 +80,7 @@ export default function StaffLayout() {
             <span className="text-body-secondary small">{me.full_name}</span>
           </div>
           <div className="d-flex align-items-center gap-2">
+            <ThemeToggle />
             <Bell />
             <NavLink to="/account" className="btn btn-outline-secondary btn-sm">حسابي</NavLink>
             <button className="btn btn-outline-secondary btn-sm" onClick={logout}>خروج</button>

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
-import { LinkBtn } from '../ui.jsx';
+import { LinkBtn, ThemeToggle } from '../ui.jsx';
 import Bell from './Bell.jsx';
 
 const CartCtx = createContext(null);
@@ -38,6 +38,7 @@ export default function StoreLayout() {
               <NavLink to="/store/cart" className="nav-link">السلة <span className="badge rounded-pill text-bg-warning">{count}</span></NavLink>
             </nav>
             <div className="d-flex flex-wrap align-items-center gap-2 py-2 py-lg-0">
+              <ThemeToggle light />
               {!me && <>
                 <Link to={`/login?next=${next}`} className="btn btn-primary btn-sm">تسجيل الدخول</Link>
                 <Link to="/register" className="btn btn-outline-light btn-sm">إنشاء حساب محل</Link>
