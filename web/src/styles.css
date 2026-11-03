@@ -419,3 +419,16 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
   .pricing-head-gold b { font-size: .92rem; }
   .pricing-theme { margin-inline-start: auto; }
 }
+
+/* صفحة الصب (مثل ورقة Excel) */
+.casting-table { font-size: .85rem; }
+.casting-table th { white-space: nowrap; background: var(--bs-tertiary-bg); font-weight: 700; text-align: center; font-size: .8rem; }
+.casting-table td { text-align: center; white-space: nowrap; }
+.casting-table td.n { direction: ltr; font-variant-numeric: tabular-nums; }
+.casting-table .pink { background: #fbd5e5; }
+.casting-table td.pink { background: #fde7f0; }
+.casting-table .casting-in { min-width: 72px; max-width: 110px; margin: auto; text-align: center; }
+.casting-table .casting-karat { min-width: 64px; }
+.casting-table .casting-total td, .casting-table .casting-total th { font-weight: 700; background: var(--bs-secondary-bg); }
+[data-bs-theme=dark] .casting-table .pink { background: #4a2333; }
+[data-bs-theme=dark] .casting-table td.pink { background: #3a1d29; }

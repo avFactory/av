@@ -14,6 +14,7 @@ const NAV = [
     ['/sup/review', 'مراجعة العجز', ['loss.review', 'loss.investigate']],
     ['/sup/log', 'سجل العمليات', ['custody.view_all', 'inventory.view', 'reports.view']],
     ['/sup/scan', 'مسح QR', ['scan.use']],
+    ['/sup/casting', 'الصب', ['custody.issue', 'custody.receive', 'orders.advance']],
   ]],
   ['الإنتاج', [
     ['/orders', 'الطلبات', ['orders.view']],

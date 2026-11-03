@@ -21,6 +21,7 @@ const Review = L(() => import('./pages/sup/Review.jsx'));
 const Log = L(() => import('./pages/sup/Log.jsx'));
 const Batch = L(() => import('./pages/sup/Batch.jsx'));
 const Scan = L(() => import('./pages/sup/Scan.jsx'));
+const Casting = L(() => import('./pages/sup/Casting.jsx'));
 const Orders = L(() => import('./pages/orders/Orders.jsx'));
 const OrderDetail = L(() => import('./pages/orders/OrderDetail.jsx'));
 const NewOrder = L(() => import('./pages/orders/NewOrder.jsx'));
@@ -98,6 +99,7 @@ export default function App() {
           <Route path="/sup/log" element={S(<Log />, ['custody.view_all', 'inventory.view', 'reports.view'])} />
           <Route path="/sup/batch/:id" element={S(<Batch />)} />
           <Route path="/sup/scan" element={S(<Scan />, ['scan.use', 'orders.view'])} />
+          <Route path="/sup/casting" element={S(<Casting />, ['custody.issue', 'custody.receive', 'orders.advance', 'scan.use'])} />
           <Route path="/orders" element={S(<Orders />, ['orders.view'])} />
           <Route path="/orders/new" element={S(<NewOrder />, ['orders.manage'])} />
           <Route path="/orders/:id" element={S(<OrderDetail />, ['orders.view'])} />

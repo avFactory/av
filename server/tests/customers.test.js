@@ -296,3 +296,24 @@ test('التسعيرة المختصرة: أعمدة مختصرة فقط، وال
   assert.equal((await fetch(`${base}/api/public/pricing/${a.token}`)).status, 200, 'الرابط الكامل لا يتأثر');
   assert.equal((await fetch(`${base}/api/public/pricing/${t2}`)).status, 200);
 });
+
+test('صفحة الصب: أشجار الشمع وربطها بالطلب وتسجيل تاريخ التسليم والاستلام', async () => {
+  const { castingCalc } = await import('../src/lib/castingFormulas.js');
+  const c = castingCalc({ karat: 18, zircon: 0, wax: 5.26, gold_before: 88.61, gold_after: 83.06 });
+  assert.equal(c.due.toFixed(2), '84.16'); assert.equal(c.need24.toFixed(2), '31.64'); assert.equal(c.alloy.toFixed(2), '10.44');
+  assert.equal(c.need18.toFixed(2), '42.08'); assert.equal(c.loss.toFixed(2), '5.55');
+  const mat = (await pool.query('select id from materials limit 1')).rows[0];
+  const o = (await call('POST', '/orders', { title: 'خاتم للصب', product_type: 'خاتم', karat: 18, color: 'yellow', quantity: 1, material_id: mat.id })).data;
+  const t = (await call('POST', '/casting', { tree_no: '22', color: 'اصفر', karat: 18, wax: '5.26', order_ids: [o.id] })).data;
+  assert.equal(t.orders[0].id, o.id);
+  assert.equal(t.issued_at, null);
+  const t2 = (await call('PUT', `/casting/${t.id}`, { gold_before: '88.61' })).data;
+  assert.ok(t2.issued_at, 'تاريخ التسليم تلقائي');
+  const t3 = (await call('PUT', `/casting/${t.id}`, { gold_after: '٨٣٫٠٦'.replace('٫', '.') })).data;
+  assert.ok(t3.received_at && t3.issued_at === t2.issued_at, 'تاريخ الاستلام تلقائي ولا يتغير تاريخ التسليم');
+  assert.equal(Number(t3.gold_after), 83.06);
+  assert.equal((await call('GET', `/casting?order=${o.id}`)).data.length, 1);
+  assert.equal((await call('PUT', `/casting/${t.id}`, { karat: 22 })).status, 400);
+  assert.equal((await call('DELETE', `/casting/${t.id}`)).data.ok, true);
+  assert.equal((await fetch(`${base}/api/casting`)).status, 401, 'يتطلب تسجيل دخول');
+});
