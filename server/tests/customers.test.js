@@ -182,3 +182,18 @@ test('استيراد العملاء مع الفروع: اسم مستخدم وا�
   assert.equal((await call('GET', `/admin/customers/${n.data.id}`)).data.branches.length, 2);
   assert.equal((await call('POST', '/admin/customers', { shop_name: 'بلا مستخدم', branches: [{ name: 'x', password: 'Xxxxxxxx1' }] })).status, 400);
 });
+
+test('الاسم المختصر على الملصق، ورمز QR رقمي يُقرأ بأي ماسح', async () => {
+  const c = await call('POST', '/admin/customers', { shop_name: 'شركة مجوهرات اديار للذهب والمجوهرات' });
+  assert.equal(c.data.short_name, 'اديار', 'يُستنتج تلقائياً');
+  assert.equal((await call('POST', '/admin/customers', { shop_name: 'محل', short_name: 'كلمة كلمة كلمة كلمة' })).status, 400, 'حتى 3 كلمات');
+  await call('PUT', `/admin/customers/${c.data.id}`, { short_name: 'أديار الرياض' });
+  const mat = (await call('GET', '/meta/lookups')).data?.materials?.[0] || (await pool.query('select id from materials limit 1')).rows[0];
+  const o = await call('POST', '/orders', { title: 'خاتم', product_type: 'خاتم', karat: 21, color: 'yellow', quantity: 1, customer_id: c.data.id, material_id: mat.id });
+  assert.equal(o.status, 200, JSON.stringify(o.data));
+  const lab = (await call('GET', `/orders/labels?ids=${o.data.id}`)).data[0];
+  assert.equal(lab.customer_label, 'أديار الرياض');
+  assert.match(lab.qr_code, /^\d{10}$/);
+  assert.equal((await call('GET', `/sup/lookup?code=${lab.qr_code}`)).data.id, o.data.id, 'المسح بالأرقام');
+  assert.equal((await call('GET', `/sup/lookup?code=${encodeURIComponent(lab.qr_code.replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]))}`)).data.id, o.data.id, 'أرقام عربية');
+});

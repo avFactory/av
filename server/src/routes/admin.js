@@ -9,6 +9,7 @@ import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { sendXlsx } from '../lib/xlsx.js';
 import { listBranches, createBranch, updateBranch, phoneKey } from '../lib/branches.js';
+import { autoShortName, cleanShortName } from '../lib/shortName.js';
 
 const r = Router();
 
@@ -303,6 +304,7 @@ r.get('/customers', requirePerm('customers.view'), async (req, res) => {
 // ------------------------------------------------------------------ استيراد العملاء من Excel (مع الفروع)
 // الترتيب مهم: الأعمدة الأكثر تحديداً أولاً (مثل "جوال المحل" هو جوال وليس اسم المحل)
 const CUST_HEADERS = [
+  ['short_name', /مختصر|short/i],
   ['phone2', /جوال ?2|جوال آخر|هاتف ?2|phone ?2/i], ['phone', /جوال|هاتف|رقم التواصل|موبايل|phone|mobile/i], ['email', /بريد|ايميل|إيميل|email/i],
   ['vat_number', /ضريب|vat/i], ['cr_number', /سجل|^cr\b/i], ['username', /اسم المستخدم|username/i], ['password', /كلمة المرور|كلمه المرور|password/i],
   ['city', /مدينة|المدينة|city/i], ['address', /عنوان|address/i], ['branch', /فرع|الفرع|branch/i],
@@ -422,9 +424,11 @@ r.post('/customers/import/commit', requirePerm('customers.manage'), async (req, 
       if (p.status === 'exists') { skipped.push(p.shop_name); continue; }
       let cid = p.existing_id;
       if (!cid) {
-        cid = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, tier_id, notes, status, approved_by, approved_at)
-          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,now()) returning id`,
-          [p.shop_name, p.owner_name, p.phone, p.phone2, p.email, p.city, p.address, p.vat_number ? digits(p.vat_number) : null, p.cr_number, await tierIdFor(db, p.tier), p.notes, req.user.id])).rows[0].id;
+        let sn = null;
+        try { sn = cleanShortName(p.short_name); } catch { sn = null; }
+        cid = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, tier_id, notes, status, approved_by, approved_at, short_name)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,now(),$13) returning id`,
+          [p.shop_name, p.owner_name, p.phone, p.phone2, p.email, p.city, p.address, p.vat_number ? digits(p.vat_number) : null, p.cr_number, await tierIdFor(db, p.tier), p.notes, req.user.id, sn || autoShortName(p.shop_name)])).rows[0].id;
         created++;
       }
       if (p.create_main_user) {
@@ -467,10 +471,11 @@ r.get('/customers/:id', requirePerm('customers.view'), async (req, res) => {
 r.post('/customers', requirePerm('customers.manage'), async (req, res) => {
   const b = req.body;
   res.json(await tx(async (db) => {
-    const c = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, status, tier_id, notes, approved_by, approved_at)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'approved',$10,$11,$12,now()) returning *`,
+    const c = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, status, tier_id, notes, approved_by, approved_at, short_name)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'approved',$10,$11,$12,now(),$13) returning *`,
       [str(b.shop_name, 'اسم المحل', { required: true }), str(b.owner_name, 'المالك'), str(b.phone, 'الجوال'), str(b.phone2, 'جوال 2'), str(b.email, 'البريد'),
-       str(b.city, 'المدينة'), str(b.address, 'العنوان'), str(b.vat_number, 'الرقم الضريبي'), str(b.cr_number, 'السجل'), b.tier_id ? int(b.tier_id) : null, str(b.notes, 'ملاحظات'), req.user.id])).rows[0];
+       str(b.city, 'المدينة'), str(b.address, 'العنوان'), str(b.vat_number, 'الرقم الضريبي'), str(b.cr_number, 'السجل'), b.tier_id ? int(b.tier_id) : null, str(b.notes, 'ملاحظات'), req.user.id,
+       cleanShortName(b.short_name) || autoShortName(b.shop_name)])).rows[0];
     const branches = (Array.isArray(b.branches) ? b.branches : []).filter((x) => x && (x.name || x.password));
     if (branches.length && !(b.username && b.password)) throw bad('الفروع تحتاج اسم مستخدم وكلمة مرور للحساب الرئيسي');
     if (b.username && b.password) {
@@ -502,6 +507,7 @@ r.put('/customers/:id', requirePerm('customers.manage'), async (req, res) => {
     const vals = fields.map((f) => (b[f] !== undefined ? str(b[f], f) : c[f]));
     await db.query(`update customers set ${fields.map((f, i) => `${f}=$${i + 2}`).join(', ')}, tier_id=$${fields.length + 2} where id=$1`,
       [id, ...vals, b.tier_id !== undefined ? (b.tier_id ? int(b.tier_id) : null) : c.tier_id]);
+    if (b.short_name !== undefined) await db.query('update customers set short_name=$2 where id=$1', [id, cleanShortName(b.short_name) || autoShortName(vals[0])]);
     if (b.status && b.status !== c.status) {
       const st = oneOf(b.status, ['pending', 'approved', 'rejected', 'suspended'], 'الحالة');
       await db.query('update customers set status=$2, approved_by=$3, approved_at=case when $2=\'approved\' then now() else approved_at end where id=$1', [id, st, req.user.id]);

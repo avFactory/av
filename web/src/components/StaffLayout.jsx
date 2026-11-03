@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
+import { useScanner } from '../useScanner.js';
 import { useAuth } from '../auth.jsx';
 import Bell from './Bell.jsx';
 
@@ -48,6 +49,9 @@ export default function StaffLayout() {
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
+  // مسح ملصق طلب بقارئ الباركود من أي صفحة يفتح بيانات الطلب
+  const navScan = useNavigate();
+  useScanner((code) => navScan(`/sup/scan?code=${encodeURIComponent(code)}`), can('scan.use', 'orders.view') && loc.pathname !== '/sup/scan');
   return (
     <div className="shell">
       {open && <div className="scrim" onClick={() => setOpen(false)} />}

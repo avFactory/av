@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useScanner } from '../../useScanner.js';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, DESIGN_STATUS } from '../../format.js';
@@ -11,6 +12,9 @@ export default function Scan() {
   const toast = useToast();
   const [o, setO] = useState(null);
   const scan = async (code) => { try { setO(await api.get(`/sup/lookup?code=${encodeURIComponent(code)}`)); } catch (e) { setO(null); toast(e.message, 'bad'); } };
+  const [sp] = useSearchParams();
+  useEffect(() => { if (sp.get('code')) scan(sp.get('code')); }, [sp]); // eslint-disable-line react-hooks/exhaustive-deps
+  useScanner(scan);
   return (
     <Page title="مسح QR" subtitle="امسح ملصق الطلب بالكاميرا أو قارئ الباركود">
       <ScanInput onScan={scan} />

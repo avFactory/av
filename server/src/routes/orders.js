@@ -1,5 +1,6 @@
 // إدارة الطلبات وأوامر الإنتاج (الإدارة / مدير الإنتاج / المشرف)
 import { Router } from 'express';
+import { autoShortName } from '../lib/shortName.js';
 import QRCode from 'qrcode';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, has } from '../lib/auth.js';
@@ -84,18 +85,22 @@ export async function orderDetail(db, id) {
 r.get('/labels', requirePerm('orders.view'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 200).map((x) => int(x));
   if (!ids.length) throw bad('لم يتم تحديد طلبات');
-  const rows = await many(`select o.id, o.order_no, o.qr_token, o.title, o.quantity, o.size, m.name as material_name, c.shop_name
+  const rows = await many(`select o.id, o.order_no, o.qr_token, o.title, o.quantity, o.size, m.name as material_name, c.shop_name, c.short_name
     from orders o join materials m on m.id=o.material_id left join customers c on c.id=o.customer_id where o.id = any($1::int[])`, [ids]);
   const byId = new Map(rows.map((r) => [r.id, r]));
   const out = [];
   for (const id of ids) {
     const o = byId.get(id);
     if (!o) continue;
-    o.qr_svg = await QRCode.toString(o.qr_token, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' });
+    // محتوى QR أرقام فقط (سنة + تسلسل الطلب): يقرؤه أي ماسح باركود مهما كانت لغة لوحة المفاتيح، ومربعاته أكبر وأوضح
+    const code = o.order_no.replace(/\D/g, '');
+    o.qr_code = code;
+    o.qr_svg = await QRCode.toString(code, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
     // مصفوفة نقاط QR لرسمها بدقة على طابعات Zebra (ZPL)
-    const m = QRCode.create(o.qr_token, { errorCorrectionLevel: 'M' }).modules;
+    const m = QRCode.create(code, { errorCorrectionLevel: 'M' }).modules;
     o.qr_matrix = { size: m.size, bits: Array.from(m.data, (b) => (b ? '1' : '0')).join('') };
     delete o.qr_token;
+    o.customer_label = o.shop_name ? (o.short_name || autoShortName(o.shop_name)) : null;
     out.push(o);
   }
   res.json(out);

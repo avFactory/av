@@ -61,6 +61,7 @@ export default function Customers() {
         {f && <>
           <div className="grid g3">
             {[['shop_name', 'اسم المحل *'], ['owner_name', 'اسم المالك'], ['phone', 'الجوال'], ['phone2', 'جوال آخر'], ['email', 'البريد'], ['city', 'المدينة'], ['address', 'العنوان'], ['vat_number', 'الرقم الضريبي'], ['cr_number', 'السجل التجاري']].map(([k, l]) => <Field key={k} label={l}><Input value={f[k] || ''} onChange={set(k)} /></Field>)}
+            <Field label="الاسم المختصر (يظهر على الملصق)" hint="حتى 3 كلمات — يُترك فارغاً ليُستنتج تلقائياً"><Input value={f.short_name || ''} onChange={set('short_name')} placeholder={autoShortName(f.shop_name) || 'مثال: اديار'} /></Field>
             <Field label="التصنيف"><Select value={f.tier_id || ''} onChange={set('tier_id')} placeholder="عميل عادي (افتراضي)" options={(tiers || []).map((t) => [t.id, t.name])} /></Field>
             <Field label="اسم المستخدم للمتجر" hint="واحد للمحل وكل فروعه"><Input value={f.username || ''} onChange={set('username')} dir="ltr" /></Field>
             <Field label="كلمة مرور الحساب الرئيسي"><Input type="password" value={f.password || ''} onChange={set('password')} dir="ltr" autoComplete="new-password" /></Field>
@@ -90,7 +91,8 @@ export default function Customers() {
           </div>
           {(f.branches || []).length > 0 && (!f.username || !f.password) && <div className="alert alert-warning small">الفروع تحتاج اسم مستخدم وكلمة مرور للحساب الرئيسي.</div>}
           {phoneIssue(f) && <div className="alert alert-warning small">{phoneIssue(f)}</div>}
-          <div className="hrow end"><Btn loading={busy} disabled={!f.shop_name || ((f.branches || []).length > 0 && (!f.username || !f.password || !!phoneIssue(f) || f.branches.some((b) => !b.name || (b.password || '').length < 8)))}
+          {shortErr(f.short_name) && <div className="alert alert-warning small">{shortErr(f.short_name)}</div>}
+          <div className="hrow end"><Btn loading={busy} disabled={!f.shop_name || !!shortErr(f.short_name) || ((f.branches || []).length > 0 && (!f.username || !f.password || !!phoneIssue(f) || f.branches.some((b) => !b.name || (b.password || '').length < 8)))}
             onClick={() => run(async () => { await api.post('/admin/customers', f); setF(null); reload(); }, 'تمت الإضافة')}>حفظ</Btn></div>
         </>}
       </Modal>
@@ -111,6 +113,14 @@ function phoneIssue(f) {
   }
   return null;
 }
+
+export function autoShortName(shop) {
+  const G = new Set(['شركة', 'شركه', 'مؤسسة', 'مؤسسه', 'مجموعة', 'محل', 'محلات', 'معرض', 'معارض', 'مصنع', 'متجر', 'ذهب', 'الذهب', 'للذهب', 'والذهب', 'وللذهب', 'مجوهرات', 'المجوهرات', 'للمجوهرات', 'والمجوهرات', 'وللمجوهرات', 'مصوغات', 'للمصوغات', 'والمصوغات', 'الماس', 'الألماس', 'للألماس', 'والألماس', 'تجارية', 'التجارية', 'للتجارة', 'تجارة', 'و', 'ل']);
+  const w = String(shop || '').replace(/[()،,.\-_/]+/g, ' ').split(/\s+/).filter(Boolean);
+  const k = w.filter((x) => !G.has(x.toLowerCase()));
+  return (k.length ? k : w).slice(0, 3).join(' ');
+}
+const shortErr = (v) => (v && v.trim().split(/\s+/).length > 3 ? 'الاسم المختصر لا يتجاوز 3 كلمات' : null);
 
 const IST = { new: ['جديد', 'info'], update: ['موجود - إضافة فروع', 'gold'], exists: ['موجود - سيُتجاوز', 'muted'], error: ['خطأ', 'bad'] };
 function ImportModal({ imp, setImp, busy, run, onDone }) {

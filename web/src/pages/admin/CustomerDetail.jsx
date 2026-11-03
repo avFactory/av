@@ -40,7 +40,7 @@ export default function CustomerDetail() {
       {edit && (
         <Card title="تعديل البيانات" className="mt">
           <div className="grid g3">
-            {['shop_name', 'owner_name', 'phone', 'phone2', 'email', 'city', 'address', 'vat_number', 'cr_number', 'notes'].map((k) => <Field key={k} label={k}><Input value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} /></Field>)}
+            {[['shop_name', 'اسم المحل'], ['short_name', 'الاسم المختصر (للملصق، حتى 3 كلمات)'], ['owner_name', 'المالك'], ['phone', 'الجوال'], ['phone2', 'جوال آخر'], ['email', 'البريد'], ['city', 'المدينة'], ['address', 'العنوان'], ['vat_number', 'الرقم الضريبي'], ['cr_number', 'السجل التجاري'], ['notes', 'ملاحظات']].map(([k, l]) => <Field key={k} label={l}><Input value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} /></Field>)}
             <Field label="التصنيف"><Select value={edit.tier_id || ''} onChange={(e) => setEdit({ ...edit, tier_id: e.target.value })} placeholder="—" options={(lookups?.tiers || []).map((t) => [t.id, t.name])} /></Field>
           </div>
           <div className="hrow gap end mt"><Btn kind="ghost" onClick={() => setEdit(null)}>إلغاء</Btn><Btn loading={busy} onClick={() => run(async () => { const { status, ...rest } = edit; await api.put(`/admin/customers/${id}`, rest); setEdit(null); reload(); }, 'تم الحفظ')}>حفظ</Btn></div>

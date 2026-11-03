@@ -143,7 +143,7 @@ export default function Labels() {
               <span className="label-title">{o.title}</span>
               <span className="label-line">{o.material_name}</span>
               <span className="label-line">الكمية {o.quantity}{o.size ? ` · مقاس ${o.size}` : ''}</span>
-              {o.shop_name && <span className="label-line label-shop">{o.shop_name}</span>}
+              {o.customer_label && <span className="label-line label-shop">{o.customer_label}</span>}
             </div>
           </div>
         ))}

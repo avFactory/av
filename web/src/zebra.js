@@ -23,38 +23,45 @@ export async function drawLabel(o, { dpi = 203, w = 62, h = 38 } = {}) {
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#000';
   await document.fonts?.ready;
-  const pad = 2 * d;
-  // QR على اليمين
+  const small = h < 30;
+  const pad = (small ? 1.2 : 2) * d;
+  // QR على اليمين بمربعات صحيحة (عدد نقاط ثابت لكل مربع) وهامش أبيض حوله ليقرأه الماسح
   const qrSide = Math.min(H - 2 * pad, 27 * d);
   const { size, bits } = o.qr_matrix;
-  const cell = Math.floor(qrSide / size);
+  const quiet = 2; // مربعان أبيضان حول الرمز
+  const cell = Math.max(1, Math.floor(qrSide / (size + quiet * 2)));
   const qrPx = cell * size;
-  const qx = W - pad - qrPx, qy = Math.round((H - qrPx) / 2);
+  const qx = Math.round(W - pad - cell * quiet - qrPx), qy = Math.round((H - qrPx) / 2);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (bits[y * size + x] === '1') ctx.fillRect(qx + x * cell, qy + y * cell, cell, cell);
-  // النصوص على يسار QR بمحاذاة يمين
-  const right = qx - 2 * d, left = pad, maxW = right - left;
-  ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-  const lines = [];
-  const pt = (n) => (n / 72) * dpi; // نقطة طباعية → نقاط الطابعة
+  // النصوص في المساحة المتبقية يسار QR، في المنتصف
+  const right = qx - cell * quiet - (small ? 0.5 : 1.5) * d, left = pad, maxW = right - left, cx = (left + right) / 2;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const pt = (n) => (n / 72) * dpi; // نقطة طباعية ← نقاط الطابعة
+  const k = small ? 0.9 : 1;
+  const lines = [
+    [`700 ${pt(7.6 * k)}px 'Courier New', monospace`, o.order_no, 'ltr'],
+    [`700 ${pt(7.8 * k)}px ${FONT}`, o.title],
+    [`600 ${pt(7 * k)}px ${FONT}`, o.material_name],
+    [`600 ${pt(7 * k)}px ${FONT}`, `الكمية ${o.quantity}${o.size ? ` · مقاس ${o.size}` : ''}`],
+  ];
+  const cust = o.customer_label || null;
+  if (cust) lines.push([`700 ${pt(7.8 * k)}px ${FONT}`, cust, 'rtl', true]);
   const logo = await loadImg('/logo.png');
-  lines.push([`700 ${pt(7.6)}px 'Courier New', monospace`, o.order_no, 'ltr']);
-  lines.push([`700 ${pt(8)}px ${FONT}`, o.title]);
-  lines.push([`400 ${pt(7)}px ${FONT}`, o.material_name]);
-  lines.push([`400 ${pt(7)}px ${FONT}`, `الكمية ${o.quantity}${o.size ? ` · مقاس ${o.size}` : ''}`]);
-  if (o.shop_name) lines.push([`400 ${pt(6.8)}px ${FONT}`, o.shop_name]);
-  // توسيط كتلة النص عمودياً بجانب QR
   const sizeOf = (f) => parseFloat(f.split(' ')[1]);
-  const logoH = logo ? 4.5 * d + 0.8 * d : 0;
-  const blockH = logoH + lines.filter((l) => l[1]).reduce((a, l) => a + sizeOf(l[0]) * 1.3, 0);
+  const lh = (small ? 3 : 4.5) * d;
+  const gap = 1.2;
+  const logoH = logo ? lh + 0.4 * d : 0;
+  const blockH = logoH + lines.filter((l) => l[1]).reduce((a, l) => a + sizeOf(l[0]) * gap, 0) + (cust ? 0.6 * d : 0);
   let y = Math.max(pad, (H - blockH) / 2);
-  if (logo) { const lh = 4.5 * d, lw = (logo.width / logo.height) * lh; ctx.drawImage(logo, right - lw, y, lw, lh); y += logoH; }
-  for (const [font, text, dir] of lines) {
+  if (logo) { const lw = (logo.width / logo.height) * lh; ctx.drawImage(logo, cx - lw / 2, y, lw, lh); y += logoH; }
+  for (const [font, text, dir, sep] of lines) {
     if (!text) continue;
     ctx.font = font; ctx.direction = dir || 'rtl';
-    const size = parseFloat(font.split(' ')[1]);
-    if (y + size > H - pad) break;
-    ctx.fillText(fit(ctx, String(text), maxW), right, y);
-    y += size * 1.3;
+    const fs = sizeOf(font);
+    if (sep) { ctx.fillRect(left + maxW * 0.1, y + 0.1 * d, maxW * 0.8, Math.max(1, Math.round(0.25 * d))); y += 0.6 * d; }
+    if (y + fs > H - pad / 2) break;
+    ctx.fillText(fit(ctx, String(text), maxW), cx, y);
+    y += fs * gap;
   }
   return c;
 }
@@ -73,7 +80,7 @@ export function canvasToZpl(c, { darkness = null, copies = 1 } = {}) {
         if (x >= W) continue;
         const i = (y * W + x) * 4;
         const lum = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-        if (px[i + 3] > 0 && lum < 140) byte |= 0x80 >> b;
+        if (px[i + 3] > 0 && lum < 160) byte |= 0x80 >> b;
       }
       hex.push(byte.toString(16).padStart(2, '0').toUpperCase());
     }
