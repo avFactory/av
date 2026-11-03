@@ -218,7 +218,7 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
     ['تركيب الأحجار والألماس', ids.w2, w2, '0', '0'],
     ['التلميع', ids.w1, w1, '0.04', '0.02'],
     ['الغسيل', ids.w1, w1, '0', '0'],
-    ['التشييك والجودة', ids.w2, w2, '0', '0'],
+    ['التشييك والجودة والوزن النهائي', ids.w2, w2, '0', '0'],
   ];
   for (const [stage, wid, wc, scrap, loss] of steps) {
     assert.equal((await orderOf(ids.order)).stage_name, stage);
@@ -233,7 +233,9 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
     bal = await gold();
     assert.equal(bal.toFixed(4), n(ret).toFixed(4));
   }
-  assert.equal((await orderOf(ids.order)).stage_name, 'الوزن النهائي');
+  // الوزن النهائي يُسجَّل داخل مرحلة التشييك والجودة بعد استلام الذهب من عامل الجودة
+  assert.equal((await orderOf(ids.order)).stage_name, 'التشييك والجودة والوزن النهائي');
+  assert.equal((await sup.req('POST', `/api/orders/${ids.order}/advance`)).status, 409, 'لا تقدم قبل الوزن النهائي');
   const mismatch = await sup.req('POST', `/api/orders/${ids.order}/final-weight`, { weight: '99.5' });
   assert.equal(mismatch.status, 400, 'الوزن النهائي المخالف لرصيد الطلب يتطلب سبباً');
   await sup.post(`/api/orders/${ids.order}/final-weight`, { weight: bal.toFixed(4) });

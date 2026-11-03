@@ -107,7 +107,7 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
                           left join stages s on s.id=l.stage_id left join users u on u.id=l.user_id left join users w on w.id=l.worker_id
                           where l.order_id=$1 order by l.id desc`, [id]);
   const files = await many('select f.*, u.full_name as uploaded_by_name from order_files f left join users u on u.id=f.uploaded_by where order_id=$1 order by id', [id]);
-  const custodies = await many(`select c.id, c.worker_id, c.custody_no, c.status, c.work_state, c.weight_issued::text, c.issued_at, c.closed_at, c.loss_rate_snapshot::text,
+  const custodies = await many(`select c.id, c.worker_id, c.stage_id, c.custody_no, c.status, c.work_state, c.weight_issued::text, c.issued_at, c.closed_at, c.loss_rate_snapshot::text,
       u.full_name as worker_name, s.name as stage_name, st.settlement_no, st.returned_weight::text, st.scrap_weight::text, st.actual_loss::text,
       st.normal_loss::text, st.abnormal_loss::text, st.status as settlement_status, st.id as settlement_id
     from custodies c join users u on u.id=c.worker_id join stages s on s.id=c.stage_id
@@ -310,8 +310,12 @@ r.post('/:id/assign', requirePerm('orders.advance'), async (req, res) => {
 r.post('/:id/final-weight', requirePerm('orders.advance'), async (req, res) => {
   res.json(await tx(async (db) => {
     const o = await prod.lockOrder(db, int(req.params.id));
-    const st = (await db.query('select kind from stages where id=$1', [o.current_stage_id])).rows[0];
+    const st = (await db.query('select id, name, kind, handles_gold from stages where id=$1', [o.current_stage_id])).rows[0];
     if (st?.kind !== 'final_weight') throw conflict('الطلب ليس في مرحلة الوزن النهائي');
+    const cs = (await db.query(`select count(*) filter (where status in ('open','under_review'))::int open,
+        count(*) filter (where status='closed' and stage_id=$2)::int closed from custodies where order_id=$1`, [o.id, st.id])).rows[0];
+    if (cs.open) throw conflict('استلم الذهب من العامل وأقفل العهدة أولاً ثم سجّل الوزن النهائي');
+    if (st.handles_gold && !cs.closed) throw conflict(`سلّم الطلب لعامل "${st.name}" واستلمه منه أولاً، ثم سجّل الوزن النهائي`);
     return prod.setFinalWeight(db, req, o, W(req.body.weight, 'الوزن النهائي'), str(req.body.note, 'السبب'));
   }));
 });

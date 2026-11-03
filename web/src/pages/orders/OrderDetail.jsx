@@ -72,12 +72,15 @@ export default function OrderDetail() {
             {can('custody.receive') && openCust.filter((c) => c.status === 'open').map((c) => <LinkBtn key={c.id} kind="dark" to={`/sup/receive?worker=${c.worker_id}`}>استلام من {c.worker_name}</LinkBtn>)}
             {(can('custody.issue') || can('orders.manage')) && inProd && <Btn kind="ghost" onClick={() => open('allocate', { source: 'vault' })}>تسجيل ذهب على الطلب</Btn>}
             {can('orders.advance') && inProd && <Btn kind="ghost" onClick={() => open('assign', { worker_id: o.assigned_worker_id || '' })}>إسناد لعامل</Btn>}
-            {cur?.kind === 'final_weight' && can('orders.advance') && <Btn onClick={() => open('final', { weight: orderBal })}>تسجيل الوزن النهائي</Btn>}
+            {cur?.kind === 'final_weight' && can('orders.advance') && !openCust.length && (!cur.handles_gold || custodies.some((c) => c.stage_id === cur.id && c.status === 'closed')) && <Btn onClick={() => open('final', { weight: orderBal })}>{o.final_weight ? 'تعديل الوزن النهائي' : 'تسجيل الوزن النهائي'}</Btn>}
             {cur?.kind === 'invoicing' && can('invoices.manage') && <LinkBtn kind="primary" to={`/admin/invoices?new=1&customer=${o.customer_id}&order=${o.id}`}>إصدار فاتورة الأجور</LinkBtn>}
             {o.status === 'ready' && can('orders.advance', 'orders.manage') && <Btn kind="ok" onClick={() => open('deliver')}>تسليم الطلب للعميل وإقفاله</Btn>}
             {inProd && can('orders.advance') && cur?.kind !== 'delivery_ready' && <Btn kind="dark" loading={busy} onClick={() => act('advance', {}, 'انتقل الطلب للمرحلة التالية')}>{o.stage_state === 'pending_approval' ? 'اعتماد وإنهاء المرحلة' : 'نقل للمرحلة التالية'}</Btn>}
             {inProd && can('orders.manage') && <Btn kind="ghost" size="sm" onClick={() => open('force')}>تجاوز المرحلة (بسبب)</Btn>}
           </div>
+          {cur?.kind === 'final_weight' && inProd && (o.final_weight
+            ? <div className="alert alert-success mt">الوزن النهائي: <b>{fmtW(o.final_weight)}</b> جم (صافي ذهب {fmtW(o.final_gold_weight)}) — يمكن النقل للمرحلة التالية</div>
+            : <div className="alert alert-warning mt">{cur.handles_gold && !custodies.some((c) => c.stage_id === cur.id && c.status === 'closed') ? 'سلّم الطلب لعامل الجودة للتشييك، وبعد استلامه سجّل الوزن النهائي ثم انقله للفوترة.' : openCust.length ? 'بانتظار استلام الذهب من العامل، ثم تسجيل الوزن النهائي.' : 'سجّل الوزن النهائي قبل نقل الطلب للفوترة.'}</div>)}
           {o.stage_state === 'pending_approval' && <div className="alert alert-info mt">أنهى العامل المرحلة وهي بانتظار اعتماد المشرف</div>}
           {cur?.kind === 'design_approval' && o.design_status !== 'approved' && <div className="alert alert-warning mt">بانتظار اعتماد العميل للتصميم — لا يمكن بدء الصب قبل الاعتماد</div>}
         </Card>

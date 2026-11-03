@@ -26,7 +26,7 @@ async function login(page, u, p) { await page.goto(BASE + '/login'); await page.
   await api('POST', '/sup/receive', { worker_id: w.id, items: [{ custody_id: open[0].id, returned_weight: open[0].weight_issued, scrap_weight: '0' }] });
   for (let i = 0; i < 6; i++) {
     const d = await api('GET', '/orders/1');
-    if (!d.order.handles_gold) break;
+    if (!d.order.handles_gold || (d.order.stage_kind === 'final_weight' && d.custodies.some((c) => c.stage_id === d.order.current_stage_id && c.status === 'closed'))) break;
     const bal = d.gold.find((g) => g.loc_type === 'order').balance;
     const r = await api('POST', '/sup/issue', { worker_id: w.id, items: [{ order_id: 1, weight: bal }] });
     await api('POST', '/sup/receive', { worker_id: w.id, items: [{ custody_id: r.custodies[0].id, returned_weight: bal, scrap_weight: '0' }] });

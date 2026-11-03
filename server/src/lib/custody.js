@@ -89,6 +89,8 @@ export async function issue(db, req, body) {
     )).rows[0];
     await ledger.post(db, { kind: 'issue', material_id: order.material_id, weight: net, from: ['order', order.id], to: ['worker', workerId], order_id: order.id, custody_id: c.id, worker_id: workerId, stage_id: stage.id, batch_id: batch.id, user_id: req.user.id });
     await db.query("update orders set assigned_worker_id=$2, stage_state='waiting', updated_at=now() where id=$1", [order.id, workerId]);
+    // تسليم جديد في مرحلة الجودة والوزن النهائي يُلغي أي وزن نهائي سابق (سيتغير الوزن) - يُسجَّل من جديد بعد الاستلام
+    if (stage.kind === 'final_weight') await db.query('update orders set final_weight=null, final_gold_weight=null where id=$1 and final_weight is not null', [order.id]);
     await logStage(db, order.id, stage.id, 'assigned', req.user.id, `تسليم ${net} جم - ${c.custody_no}`, false, workerId);
     if (sig) await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'ack',$2,'توقيع العامل عند التسليم')", [c.id, req.user.id]);
     created.push({ ...c, order_no: order.order_no });
