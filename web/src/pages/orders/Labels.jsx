@@ -17,7 +17,7 @@ export default function Labels() {
   const [sp] = useSearchParams();
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(null);
-  const [roll, setRoll] = useState(() => { try { return localStorage.getItem('label_roll') === '1'; } catch { return false; } });
+  const [roll, setRoll] = useState(() => { try { return localStorage.getItem('label_roll') !== '0'; } catch { return true; } });
   const [cfg, setCfg] = useState(loadCfg);
   const [printers, setPrinters] = useState(null);
   const [zErr, setZErr] = useState('');
@@ -71,8 +71,8 @@ export default function Labels() {
   if (err) return <div style={{ padding: 16 }}><ErrorBox error={err} /></div>;
   if (!rows) return <Loader />;
   return (
-    <div className="labels-page" style={{ padding: 16 }}>
-      {roll && !zebra && <style>{'@media print { @page { size: 62mm 38mm; margin: 0; } html, body { margin: 0 !important; padding: 0 !important; } .labels-page { padding: 0 !important; } .labels { display: block !important; } .label { border: 0 !important; border-radius: 0 !important; } .label:not(:last-child) { break-after: page; page-break-after: always; } }'}</style>}
+    <div className={`labels-page${opts.h < 30 ? ' labels-sm' : ''}`} style={{ padding: 16, '--lw': `${opts.w}mm`, '--lh': `${opts.h}mm`, '--lq': `${Math.min(27, opts.h - (opts.h < 30 ? 3 : 4))}mm` }}>
+      {roll && !zebra && <style>{'@media print { @page { size: ' + opts.w + 'mm ' + opts.h + 'mm; margin: 0; } html, body { margin: 0 !important; padding: 0 !important; } .labels-page { padding: 0 !important; } .labels { display: block !important; } .label { border: 0 !important; border-radius: 0 !important; } .label:not(:last-child) { break-after: page; page-break-after: always; } }'}</style>}
       <div className="no-print mb d-grid gap-2">
         <div className="btn-group" role="group" style={{ justifySelf: 'start' }}>
           <button type="button" className={`btn ${!zebra ? 'btn-dark' : 'btn-outline-secondary'}`} onClick={() => setCfg((c) => ({ ...c, mode: 'browser' }))}>طباعة عادية (المتصفح)</button>
@@ -82,8 +82,13 @@ export default function Labels() {
         {!zebra ? (
           <div className="hrow gap wrap">
             <Btn onClick={() => window.print()}>طباعة الملصقات ({rows.length})</Btn>
-            <label className="check"><input type="checkbox" checked={roll} onChange={(e) => setRoll(e.target.checked)} /> طابعة ملصقات (ملصق واحد لكل ورقة 62×38 مم)</label>
-            <span className="muted small">بدون هذا الخيار تُطبع الملصقات متجاورة على ورق A4</span>
+            <label className="check"><input type="checkbox" checked={roll} onChange={(e) => setRoll(e.target.checked)} /> طابعة ملصقات (ملصق واحد لكل ورقة)</label>
+            <div className="d-flex align-items-center gap-1"><span className="small">المقاس</span>
+              <input className="form-control form-control-sm" style={{ width: 64 }} dir="ltr" value={cfg.w} onChange={set('w')} aria-label="العرض مم" />
+              <span>×</span>
+              <input className="form-control form-control-sm" style={{ width: 64 }} dir="ltr" value={cfg.h} onChange={set('h')} aria-label="الطول مم" />
+              <span className="small muted">مم (عرض × طول)</span></div>
+            <span className="muted small w-100">{roll ? 'في نافذة الطباعة: اختر طابعة الملصقات، الهوامش "بلا"، والمقياس 100%. المقاس يُحفظ على هذا الجهاز.' : 'بدون خيار طابعة الملصقات تُطبع الملصقات متجاورة على ورق A4.'}</span>
           </div>
         ) : (
           <div className="card"><div className="card-body d-grid gap-3">

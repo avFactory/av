@@ -264,9 +264,9 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 2px solid #a8844a; padding-bottom: 12px; margin-bottom: 16px; }
 .sig-box { border: 1px dashed #aaa; border-radius: 8px; height: 90px; display: grid; place-items: center; }
 .sig-box img { max-height: 84px; }
-.labels { display: grid; grid-template-columns: repeat(auto-fill, 62mm); gap: 4mm; }
-.label { box-sizing: border-box; width: 62mm; height: 38mm; overflow: hidden; border: 1px solid #999; border-radius: 2.5mm; padding: 2mm; display: flex; gap: 2mm; align-items: center; background: #fff; color: #000; break-inside: avoid; direction: rtl; }
-.label-qr { flex: none; width: 27mm; height: 27mm; image-rendering: pixelated; }
+.labels { display: grid; grid-template-columns: repeat(auto-fill, var(--lw, 62mm)); gap: 4mm; }
+.label { box-sizing: border-box; width: var(--lw, 62mm); height: var(--lh, 38mm); overflow: hidden; border: 1px solid #999; border-radius: 2.5mm; padding: 2mm; display: flex; gap: 2mm; align-items: center; background: #fff; color: #000; break-inside: avoid; direction: rtl; }
+.label-qr { flex: none; width: var(--lq, 27mm); height: var(--lq, 27mm); image-rendering: pixelated; }
 .label-info { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: .4mm; font-size: 7pt; line-height: 1.25; }
 .label-info > * { min-width: 0; }
 .label-logo { height: 4.5mm; width: auto; align-self: flex-start; margin-bottom: .5mm; }
@@ -274,6 +274,13 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .label-title { font-weight: 700; font-size: 7.5pt; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .label-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label-shop { color: #333; border-top: .2mm solid #ccc; padding-top: .4mm; margin-top: .3mm; }
+/* ملصقات صغيرة (أقل من 30 مم طولاً) مثل 50×25 */
+.labels-sm .label { padding: 1.5mm; gap: 1.5mm; border-radius: 1.5mm; }
+.labels-sm .label-info { font-size: 6pt; gap: .2mm; line-height: 1.2; }
+.labels-sm .label-logo { height: 3.2mm; margin-bottom: .2mm; }
+.labels-sm .label-no { font-size: 6.4pt; }
+.labels-sm .label-title { font-size: 6.6pt; -webkit-line-clamp: 1; }
+.labels-sm .label-shop { display: none; }
 @media print { .doc-sheet { border: 0; padding: 0; } @page { margin: 10mm; } }
 
 /* الجوال: الجداول تتحول إلى بطاقات، والتنبيهات أعلى الشاشة */
