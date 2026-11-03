@@ -8,7 +8,7 @@ const toNum = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦�
  * mode="public": الأوزان فقط قابلة للإدخال (لا تُحفظ)، وكل شيء آخر للعرض.
  * mode="admin": تعديل الثوابت (المصنعية، الفائدة، سعر القيراط...) والأوزان الافتراضية، عبر onRowsChange.
  */
-export default function PricingSheet({ data, mode = 'public', rows: rowsProp, onRowsChange }) {
+export default function PricingSheet({ data, mode = 'public', rows: rowsProp, onRowsChange, hideGold = false }) {
   const admin = mode === 'admin';
   const saved = admin ? rowsProp : data.rows;
   const [weights, setWeights] = useState({});
@@ -24,11 +24,11 @@ export default function PricingSheet({ data, mode = 'public', rows: rowsProp, on
 
   return (
     <div className="pricing">
-      <div className="pricing-gold">
+      {!hideGold && <div className="pricing-gold">
         <div><span>سعر الذهب الصافي 24</span><b>{money(Number(data.gold24))}</b></div>
         <div><span>سعر الذهب عيار 18</span><b>{money(gold18)}</b></div>
         <div><span>آخر تحديث</span><b>{data.updated_at || '—'}</b></div>
-      </div>
+      </div>}
       {sections.map((s) => (
         <section key={s.id} className="pricing-sec">
           <h2>{s.title}</h2>

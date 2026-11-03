@@ -8,7 +8,7 @@
       // الوضع الليلي يتبع إعداد الجهاز (Bootstrap data-bs-theme)
       (function () {
         var m = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
-        var set = function () { document.documentElement.setAttribute('data-bs-theme', m && m.matches ? 'dark' : 'light'); };
+        var set = function () { if (document.documentElement.dataset.themeLock) return; document.documentElement.setAttribute('data-bs-theme', m && m.matches ? 'dark' : 'light'); };
         set(); if (m && m.addEventListener) m.addEventListener('change', set);
       })();
     </script>

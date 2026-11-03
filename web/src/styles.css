@@ -399,3 +399,23 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .pricing-table .pricing-total { font-weight: 700; background: #f1f8ef; }
 [data-bs-theme=dark] .pricing-table .col-in { background: #3a3220; }
 [data-bs-theme=dark] .pricing-table .pricing-total { background: #1f2d1f; }
+
+/* رأس صفحة التسعيرة: الشعار وأسعار الذهب ثابتة أعلى الصفحة عند التمرير */
+.pricing-head { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; background: #141414; color: #f3e9d2; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.pricing-brand { display: flex; align-items: center; gap: 10px; }
+.pricing-brand img { height: 40px; width: auto; }
+.pricing-head-gold { display: flex; gap: 8px; flex-wrap: wrap; margin-inline-start: auto; }
+.pricing-head-gold > div { background: rgba(255,255,255,.08); border: 1px solid rgba(201,162,39,.45); border-radius: 10px; padding: 4px 12px; display: flex; flex-direction: column; min-width: 120px; }
+.pricing-head-gold span { font-size: .72rem; color: #cbbd9a; }
+.pricing-head-gold b { font-size: 1.05rem; direction: ltr; text-align: right; color: #fff; }
+.pricing-theme { border: 1px solid rgba(243,233,210,.5); color: #f3e9d2; }
+.pricing-theme:hover { background: rgba(255,255,255,.12); color: #fff; }
+@media (max-width: 640px) {
+  .pricing-head { padding: 8px 10px; gap: 8px; }
+  .pricing-brand img { height: 30px; }
+  .pricing-brand .small { display: none; }
+  .pricing-head-gold { order: 3; width: 100%; margin: 0; gap: 6px; }
+  .pricing-head-gold > div { flex: 1; min-width: 0; padding: 3px 8px; }
+  .pricing-head-gold b { font-size: .92rem; }
+  .pricing-theme { margin-inline-start: auto; }
+}
