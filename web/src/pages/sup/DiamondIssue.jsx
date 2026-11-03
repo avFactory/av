@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api.js';
 import { Btn, Card, Field, Input, Loader, ScanInput, Select, Empty, useAction, useToast } from '../../ui.jsx';
 import { ShapeIcon } from '../admin/Stones.jsx';
+import { useAuth } from '../../auth.jsx';
 
 const ct = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const toNum = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
@@ -72,7 +73,12 @@ export default function DiamondIssue() {
 function IssueForm({ lot, onBack, onDone }) {
   const toast = useToast();
   const [run, busy] = useAction();
-  const [workers, setWorkers] = useState(null);
+  const { lookups } = useAuth();
+  const [allWorkers, setWorkers] = useState(null);
+  // عمال صرف الألماس فقط (حسب الأرقام الوظيفية المحددة في الإعدادات، الافتراضي 16 و17 و18 و19)
+  const key = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\D/g, '').replace(/^0+/, '');
+  const allowed = (lookups?.settings?.diamond_worker_nos || []).map(key).filter(Boolean);
+  const workers = allWorkers && (allowed.length ? allWorkers.filter((w) => allowed.includes(key(w.employee_no))) : allWorkers);
   const [workerId, setWorkerId] = useState('');
   const [open, setOpen] = useState([]);
   const [order, setOrder] = useState(null);
@@ -116,7 +122,7 @@ function IssueForm({ lot, onBack, onDone }) {
       </Card>
       <Card title="صرف الألماس">
         <div className="grid">
-          <Field label="العامل *">
+          <Field label="العامل *" hint={workers && allowed.length ? (workers.length ? `عمال الألماس: ${allowed.join('، ')}` : `لا يوجد عامل نشط بالأرقام ${allowed.join('، ')} — عدّلها من الإعدادات`) : undefined}>
             <Select value={workerId} onChange={(e) => { setWorkerId(e.target.value); setOrder(null); }} placeholder={workers ? 'اختر العامل' : 'جارٍ التحميل…'}
               options={(workers || []).map((w) => [w.id, `${w.full_name}${w.employee_no ? ` (${w.employee_no})` : ''}${w.open_count ? ` — لديه ${w.open_count} طلب` : ''}`])} />
           </Field>

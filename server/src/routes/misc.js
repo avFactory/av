@@ -14,7 +14,7 @@ const r = Router();
 r.get('/lookups', requireAuth, async (req, res) => {
   const staff = req.user.role_code !== 'customer';
   const materials = await many('select id, name, karat, color from materials where active order by id');
-  const settings = Object.fromEntries((await many("select key, value from settings where key in ('company','weight_decimals','currency','vat_rate')")).map((x) => [x.key, x.value]));
+  const settings = Object.fromEntries((await many("select key, value from settings where key in ('company','weight_decimals','currency','vat_rate','diamond_worker_nos')")).map((x) => [x.key, x.value]));
   if (!staff) return res.json({ materials, settings: { weight_decimals: settings.weight_decimals, currency: settings.currency, company: { name: settings.company?.name } } });
   res.json({
     materials, settings,

@@ -31,13 +31,16 @@ export default function Settings() {
             <Field label="نسبة ضريبة القيمة المضافة %"><Input value={s.vat_rate} onChange={(e) => setS({ ...s, vat_rate: e.target.value })} dir="ltr" /></Field>
             <Field label="دقة عرض الوزن (خانات عشرية)" hint="التخزين دائماً بدقة 4 خانات"><Select value={String(s.weight_decimals)} onChange={(e) => setS({ ...s, weight_decimals: Number(e.target.value) })} options={[['3', '3 خانات'], ['4', '4 خانات']]} /></Field>
             <Field label="حد المراجعة للعجز غير الطبيعي (جم)" hint="0 = أي تجاوز يحال للمراجعة"><Input value={s.abnormal_threshold} onChange={(e) => setS({ ...s, abnormal_threshold: e.target.value })} dir="ltr" /></Field>
+            <Field label="أرقام العمال في شاشة صرف الألماس" hint="الأرقام الوظيفية مفصولة بفاصلة، مثال: 16, 17, 18, 19 — فارغ = كل العمال">
+              <Input dir="ltr" value={Array.isArray(s.diamond_worker_nos) ? s.diamond_worker_nos.join(', ') : (s.diamond_worker_nos ?? '')} onChange={(e) => setS({ ...s, diamond_worker_nos: e.target.value })} />
+            </Field>
           </div>
         </Card>
         <Card title="قنوات الإشعارات الخارجية للعملاء">
           <p className="small muted mb">تتطلب ضبط مفاتيح المزود على الخادم (متغيرات البيئة) - لا توضع المفاتيح في الواجهة.</p>
           <div className="hrow gap wrap">{[['whatsapp', 'WhatsApp Business'], ['sms', 'SMS'], ['email', 'البريد الإلكتروني']].map(([k, l]) => <label key={k} className="check"><input type="checkbox" checked={!!ch[k]} onChange={(e) => setS({ ...s, notify_channels: { ...ch, [k]: e.target.checked } })} />{l}</label>)}</div>
         </Card>
-        <div className="hrow end"><Btn size="lg" loading={busy} onClick={() => run(async () => { await api.put('/admin/settings', { company: s.company, vat_rate: Number(s.vat_rate), weight_decimals: Number(s.weight_decimals), abnormal_threshold: Number(s.abnormal_threshold), notify_channels: s.notify_channels }); await refresh(); }, 'تم حفظ الإعدادات')}>حفظ الإعدادات</Btn></div>
+        <div className="hrow end"><Btn size="lg" loading={busy} onClick={() => run(async () => { await api.put('/admin/settings', { company: s.company, vat_rate: Number(s.vat_rate), weight_decimals: Number(s.weight_decimals), abnormal_threshold: Number(s.abnormal_threshold), notify_channels: s.notify_channels, diamond_worker_nos: (Array.isArray(s.diamond_worker_nos) ? s.diamond_worker_nos : String(s.diamond_worker_nos || '').split(/[,،\s]+/)).map((x) => String(x).trim()).filter(Boolean) }); await refresh(); }, 'تم حفظ الإعدادات')}>حفظ الإعدادات</Btn></div>
         <Card title="الأقسام">
           <div className="hrow gap">
             <Input value={dept} onChange={(e) => setDept(e.target.value)} placeholder="اسم قسم جديد" style={{ maxWidth: 260 }} />
