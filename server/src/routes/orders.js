@@ -92,6 +92,9 @@ r.get('/labels', requirePerm('orders.view'), async (req, res) => {
     const o = byId.get(id);
     if (!o) continue;
     o.qr_svg = await QRCode.toString(o.qr_token, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' });
+    // مصفوفة نقاط QR لرسمها بدقة على طابعات Zebra (ZPL)
+    const m = QRCode.create(o.qr_token, { errorCorrectionLevel: 'M' }).modules;
+    o.qr_matrix = { size: m.size, bits: Array.from(m.data, (b) => (b ? '1' : '0')).join('') };
     delete o.qr_token;
     out.push(o);
   }
