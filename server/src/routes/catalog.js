@@ -43,6 +43,17 @@ r.get('/next-sku', requirePerm('products.manage'), async (req, res) => {
   res.json({ sku: await nextSku(pool, req.query.type) });
 });
 
+/** الصورة الرئيسية: main_media (صورة محفوظة) أو main_new (ترتيب صورة مرفوعة الآن) تصبح الأولى */
+async function setMainMedia(db, productId, body, newIds) {
+  let main = null;
+  if (body.main_new !== undefined && body.main_new !== '' && newIds[Number(body.main_new)]) main = newIds[Number(body.main_new)];
+  else if (body.main_media) main = int(body.main_media, 'الصورة الرئيسية');
+  if (!main) return;
+  await db.query(`update product_media m set sort = x.rn from (
+      select id, row_number() over (order by (id = $2) desc, sort, id) as rn from product_media where product_id = $1) x
+    where m.id = x.id`, [productId, main]);
+}
+
 r.post('/products', requirePerm('products.manage'), upload.array('files', 20), async (req, res) => {
   res.json(await tx(async (db) => {
     const vals = productVals(req.body);
@@ -52,7 +63,9 @@ r.post('/products', requirePerm('products.manage'), upload.array('files', 20), a
         diamonds, pearl_weight, stone_weight, zircon_weight)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning *`, vals).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; })).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
-    for (const [i, f] of files.entries()) await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,$4)', [p.id, f.path, f.mime?.startsWith('video') ? 'video' : 'image', i]);
+    const ids = [];
+    for (const [i, f] of files.entries()) ids.push((await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,$4) returning id', [p.id, f.path, f.mime?.startsWith('video') ? 'video' : 'image', i])).rows[0].id);
+    await setMainMedia(db, p.id, req.body, ids);
     await audit(db, req, 'product.create', 'product', p.id, { sku: p.sku });
     return p;
   }));
@@ -69,8 +82,10 @@ r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 20)
       labor_method=$11, labor_rate=$12, availability=$13, route_id=$14, active=$15,
       diamonds=$16, pearl_weight=$17, stone_weight=$18, zircon_weight=$19 where id=$1`, [id, ...vals]).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; });
     const files = await registerFiles(db, req.files, req.user.id);
-    for (const f of files) await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,99)', [id, f.path, f.mime?.startsWith('video') ? 'video' : 'image']);
+    const ids = [];
+    for (const f of files) ids.push((await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,99) returning id', [id, f.path, f.mime?.startsWith('video') ? 'video' : 'image'])).rows[0].id);
     for (const mid of arr(req.body.remove_media)) await db.query('delete from product_media where id=$1 and product_id=$2', [int(mid), id]);
+    await setMainMedia(db, id, req.body, ids);
     await audit(db, req, 'product.update', 'product', id, { before, after: req.body });
     return { ok: true };
   }));

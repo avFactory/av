@@ -535,3 +535,19 @@ test('العجز على حساب العامل: الوزن الفعلي من ال
   assert.equal((await call('PUT', '/admin/specialty-rates', { rates: [...sr.map((r) => ({ specialty: r.specialty, rate_percent: r.rate_percent })), { specialty: 'صب', rate_percent: '0.3' }] })).status, 200);
   assert.ok((await call('GET', '/admin/specialty-rates')).data.some((r) => r.specialty === 'صب'));
 });
+
+test('الصورة الرئيسية للمنتج: عند الإضافة أو التعديل', async () => {
+  const f = new FormData();
+  for (const [k, v] of Object.entries({ name: 'عقد صور', product_type: 'عقد', karats: '21', colors: 'yellow', main_new: '2' })) f.append(k, v);
+  for (const n of ['1.png', '2.png', '3.png']) f.append('files', new Blob([PNG1], { type: 'image/png' }), n);
+  const p = (await call('POST', '/catalog/products', null, f)).data;
+  const media = async () => (await pool.query('select id from product_media where product_id=$1 order by sort, id', [p.id])).rows.map((r) => r.id);
+  const m = await media();
+  assert.equal(m.length, 3);
+  const all = (await pool.query('select id from product_media where product_id=$1 order by id', [p.id])).rows.map((r) => r.id);
+  assert.equal(m[0], all[2], 'الصورة الثالثة أصبحت الرئيسية');
+  const u = new FormData();
+  for (const [k, v] of Object.entries({ name: 'عقد صور', product_type: 'عقد', karats: '21', colors: 'yellow', main_media: String(all[1]) })) u.append(k, v);
+  assert.equal((await call('PUT', `/catalog/products/${p.id}`, null, u)).status, 200);
+  assert.equal((await media())[0], all[1], 'تغيير الرئيسية لصورة محفوظة');
+});

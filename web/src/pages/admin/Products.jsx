@@ -22,12 +22,13 @@ export default function Products() {
   const save = () => run(async () => {
     const fd = new FormData();
     for (const [k, v] of Object.entries(f)) {
-      if (['files', 'media', 'id', 'diamonds', 'has_diamonds'].includes(k) || k.startsWith('show_') || v == null) continue;
+      if (['files', 'media', 'id', 'diamonds', 'has_diamonds', 'main'].includes(k) || k.startsWith('show_') || v == null) continue;
       fd.append(k, Array.isArray(v) ? v.join(',') : v);
     }
     fd.append('diamonds', JSON.stringify(f.has_diamonds === false ? [] : (f.diamonds || []).filter((d) => d.lot_id)));
     for (const k of ['pearl_weight', 'stone_weight', 'zircon_weight']) if (f[k] == null) fd.append(k, '');
     for (const x of f.files || []) fd.append('files', x);
+    if (f.main?.new != null) fd.append('main_new', String(f.main.new)); else if (f.main?.media) fd.append('main_media', String(f.main.media));
     if (f.id) await api.put(`/catalog/products/${f.id}`, fd); else await api.post('/catalog/products', fd);
     setF(null); reload();
   }, 'تم حفظ المنتج');
@@ -70,8 +71,19 @@ export default function Products() {
           <Field label="العيارات"><div className="chips">{[18, 21, 24].map((k) => <button type="button" key={k} className={`chip ${(f.karats || []).includes(k) ? 'on' : ''}`} onClick={() => toggle('karats', k)}>{k}</button>)}</div></Field>
           <Field label="الألوان"><div className="chips">{Object.entries(COLORS).map(([k, v]) => <button type="button" key={k} className={`chip ${(f.colors || []).includes(k) ? 'on' : ''}`} onClick={() => toggle('colors', k)}>{v}</button>)}</div></Field>
           <Field label="الوصف"><Textarea value={f.description || ''} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
-          <FilePicker label="الصور والفيديو" accept="image/*,video/*" value={f.files || []} onChange={(files) => setF({ ...f, files })} hint="أضف صورة بعد صورة — تُرفع كلها عند الحفظ" />
-          {f.media?.length > 0 && <div className="files">{f.media.map((m) => <span key={m.id}><img src={fileUrl(m.path)} alt="" /><button className="link small" onClick={() => setF({ ...f, remove_media: [...(f.remove_media || []), m.id], media: f.media.filter((x) => x.id !== m.id) })}>حذف</button></span>)}</div>}
+          <FilePicker label="الصور والفيديو" accept="image/*,video/*" value={f.files || []} hint="أضف صورة بعد صورة — تُرفع كلها عند الحفظ. اضغط ★ لتحديد الصورة الرئيسية"
+            onChange={(files) => setF({ ...f, files, main: f.main?.new != null && f.main.new >= files.length ? null : f.main })}
+            main={f.main?.new ?? (!f.main && !f.media?.length && f.files?.length ? 0 : null)} onMain={(i) => setF({ ...f, main: { new: i } })} />
+          {f.media?.length > 0 && <div className="files">{f.media.map((m, i) => {
+            const isMain = f.main ? f.main.media === m.id : i === 0;
+            return (
+              <span key={m.id} className={`media-item ${isMain ? 'main' : ''}`}>
+                {m.kind === 'video' ? <span className="doc">فيديو</span> : <img src={fileUrl(m.path)} alt="" />}
+                {isMain ? <span className="media-main-tag">★ الرئيسية</span> : <button type="button" className="link small" onClick={() => setF({ ...f, main: { media: m.id } })}>☆ تعيين رئيسية</button>}
+                <button type="button" className="link small text-danger" onClick={() => setF({ ...f, remove_media: [...(f.remove_media || []), m.id], media: f.media.filter((x) => x.id !== m.id), main: f.main?.media === m.id ? null : f.main })}>حذف</button>
+              </span>
+            );
+          })}</div>}
           <label className="check"><input type="checkbox" checked={f.active !== false} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ظاهر في المتجر</label>
           <div className="hrow end gap">
             {f.id && <Btn kind="danger" loading={busy} onClick={() => remove(f)}>حذف المنتج</Btn>}

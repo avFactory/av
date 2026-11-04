@@ -413,7 +413,7 @@ export function ThemeToggle({ light = false, className = '' }) {
 }
 
 /** اختيار عدة ملفات بالتتابع (كل اختيار يُضاف للقائمة) مع معاينة وحذف */
-export function FilePicker({ label, value = [], onChange, accept = 'image/*', max = 20, hint }) {
+export function FilePicker({ label, value = [], onChange, accept = 'image/*', max = 20, hint, main = null, onMain }) {
   const ref = useRef(null);
   const [urls, setUrls] = useState([]);
   useEffect(() => {
@@ -431,9 +431,10 @@ export function FilePicker({ label, value = [], onChange, accept = 'image/*', ma
       {label && <span className="form-label mb-0 field-l">{label}</span>}
       <div className="file-pick-grid">
         {value.map((f, i) => (
-          <div key={`${f.name}-${i}`} className="file-pick-item" title={f.name}>
+          <div key={`${f.name}-${i}`} className={`file-pick-item ${onMain && main === i ? 'main' : ''}`} title={f.name}>
             {urls[i] ? <img src={urls[i]} alt="" /> : <span className="file-pick-name">{f.name.split('.').pop().toUpperCase()}<small>{f.name}</small></span>}
             <button type="button" className="file-pick-x" aria-label="حذف" onClick={() => onChange(value.filter((_, j) => j !== i))}>×</button>
+            {onMain && <button type="button" className="file-pick-star" title={main === i ? 'الصورة الرئيسية' : 'تعيين كصورة رئيسية'} onClick={() => onMain(i)}>{main === i ? '★ الرئيسية' : '☆'}</button>}
           </div>
         ))}
         {value.length < max && (
