@@ -50,9 +50,10 @@ r.get('/tasks', async (req, res) => {
 r.get('/orders/:id', async (req, res) => {
   const o = await canSeeOrder(pool, req, int(req.params.id));
   // صور الطلب (التصميم والمرجع…) ثم صور المنتج إن كان الطلب من منتج في المتجر
-  const files = await many(`select id::text, kind, path, original_name, mime, created_at from order_files where order_id=$1
-    union all select 'p' || id, 'product', path, 'صورة المنتج', case kind when 'video' then 'video/mp4' else 'image/jpeg' end, null from product_media where product_id=$2
-    order by kind='product', id`, [o.id, o.product_id || 0]);
+  const files = await many(`select * from (
+      select id::text as id, kind, path, original_name, mime, created_at, 0 as src, id as n from order_files where order_id=$1
+      union all select 'p' || id, 'product', path, 'صورة المنتج', case kind when 'video' then 'video/mp4' else 'image/jpeg' end, null, 1, id from product_media where product_id=$2
+    ) x order by src, n`, [o.id, o.product_id || 0]);
   const stones = await one(`select o.color, o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text,
       coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
         from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details

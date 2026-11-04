@@ -446,3 +446,22 @@ test('رابط مخزون الألماس الخارجي: عرض فقط بدون 
   assert.equal((await fetch(`${base}/api/public/stones/${token}`)).status, 404, 'الرابط القديم يتوقف');
   assert.equal((await fetch(`${base}/api/public/stones/${t2}`)).status, 200);
 });
+
+test('العامل يرى صور الطلب وصورة المنتج', async () => {
+  const fd = new FormData(); for (const [k, v] of Object.entries({ name: 'منتج بصورة للعامل', product_type: 'خاتم', karats: '21', colors: 'yellow' })) fd.append(k, v);
+  fd.append('files', new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')], { type: 'image/png' }), 'p.png');
+  const p = (await call('POST', '/catalog/products', null, fd)).data;
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0];
+  const o = (await call('POST', '/orders', { title: 'طلب بصورة', product_id: p.id, product_type: 'خاتم', karat: 21, color: 'yellow', quantity: 1, material_id: mat.id })).data;
+  const wk = (await pool.query("insert into users(username, password_hash, full_name, role_code) values ('imgw','x','عامل الصور','worker') returning id")).rows[0].id;
+  await pool.query('update orders set assigned_worker_id=$2 where id=$1', [o.id, wk]);
+  const det = (await call('GET', `/orders/${o.id}`)).data.order;
+  assert.ok(det.thumb, 'صورة الطلب في صفحة الإدارة');
+  const list = (await call('GET', '/orders')).data.find((x) => x.id === o.id);
+  assert.equal(list.thumb, det.thumb, 'صورة في قائمة الطلبات');
+  // واجهة العامل (بصلاحية الإدارة لنفس المسار)
+  const { createSession } = await import('../src/lib/auth.js');
+  const r = await fetch(`${base}/api/w/orders/${o.id}`, { headers: { cookie } });
+  assert.notEqual(r.status, 500, 'لا خطأ في صور الطلب للعامل');
+  assert.ok(createSession);
+});
