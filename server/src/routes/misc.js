@@ -59,7 +59,11 @@ r.get('/files/*filepath', async (req, res) => {
   const pm = await one('select 1 from product_media where path=$1 limit 1', [rel]);
   if (pm) allowed = true; // صور المنتجات لأي مستخدم مسجل (موظف أو محل)
   else if (of) {
-    if (u.role_code === 'customer') allowed = of.customer_id === u.customer_id && of.customer_visible;
+    if (u.role_code === 'customer') {
+      allowed = of.customer_id === u.customer_id && of.customer_visible;
+      // حساب الفرع يرى ملفات طلبات فرعه فقط
+      if (allowed && u.branch_id) allowed = !!(await one('select 1 from orders where id=$1 and branch_id=$2', [of.order_id, u.branch_id]));
+    }
     else if (u.role_code === 'worker') allowed = of.assigned_worker_id === u.id || !!(await one("select 1 from custodies where order_id=$1 and worker_id=$2 limit 1", [of.order_id, u.id]));
     else allowed = has(req, 'orders.view');
   } else if (rel.startsWith('signatures/')) {
@@ -68,10 +72,15 @@ r.get('/files/*filepath', async (req, res) => {
     const f = await one('select uploaded_by from files where path=$1', [rel]);
     const cd = await one('select customer_id from customer_documents where path=$1', [rel]);
     if (cd) allowed = has(req, 'customers.view') || cd.customer_id === u.customer_id;
-    else allowed = u.role_code !== 'customer' ? true : f?.uploaded_by === u.id;
+    // ملفات أخرى (مستندات الموظفين، إيصالات، صور المخزون…): للموظفين عدا العمال، والعامل/العميل يرى ما رفعه فقط
+    else allowed = u.role_code !== 'customer' && u.role_code !== 'worker' ? true : f?.uploaded_by === u.id;
   }
   if (!allowed) throw forbidden();
   if (!fs.existsSync(abs)) throw notFound('الملف غير موجود');
+  // الملفات تُعرض في بيئة معزولة، وغير الصور/الفيديو/PDF تُنزَّل ولا تُفتح في المتصفح
+  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  if (!/\.(jpe?g|png|webp|gif|heic|mp4|mov|webm|pdf)$/i.test(abs)) res.attachment(path.basename(abs));
   res.sendFile(abs);
 });
 

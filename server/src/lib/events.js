@@ -27,7 +27,14 @@ function flush() {
   for (const res of clients) res.write(msg);
 }
 
+const perUser = new Map();
 export function sseHandler(req, res) {
+  // حد أقصى للاتصالات المفتوحة لكل مستخدم (حماية من استنزاف الخادم)
+  const uid = req.user?.id;
+  const n = perUser.get(uid) || 0;
+  if (n >= 8) return res.status(429).json({ error: 'اتصالات كثيرة مفتوحة' });
+  perUser.set(uid, n + 1);
+  req.on('close', () => { const c = (perUser.get(uid) || 1) - 1; if (c > 0) perUser.set(uid, c); else perUser.delete(uid); });
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.write('retry: 3000\n\n');
   clients.add(res);

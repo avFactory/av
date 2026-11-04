@@ -5,4 +5,6 @@ cd "$(dirname "$0")/.."
 git pull --ff-only origin main
 docker compose up -d --build
 docker image prune -f >/dev/null
+# التأكد من جدولة النسخ الاحتياطي (قاعدة البيانات + الملفات)
+bash deploy/setup-cron.sh || true
 echo "✅ تم التحديث"

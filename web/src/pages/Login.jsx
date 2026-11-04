@@ -4,6 +4,9 @@ import { api } from '../api.js';
 import { useAuth, homeFor } from '../auth.jsx';
 import { Btn, Field, Input, ThemeToggle } from '../ui.jsx';
 
+// منع التحويل لموقع خارجي بعد الدخول: مسار داخلي فقط
+const safeNext = (v) => (typeof v === 'string' && /^\/(?![\/\\])[^\s]*$/.test(v) && !/[\\]|%5c|%2f%2f/i.test(v) ? v : null);
+
 export default function Login() {
   const { me, refresh } = useAuth();
   const [sp] = useSearchParams();
@@ -14,7 +17,7 @@ export default function Login() {
   // فروع المحل: تُجلب بعد كتابة اسم المستخدم، ويختار العميل فرعه قبل كلمة المرور
   const [branches, setBranches] = useState({ for: null, list: [] });
   const [branch, setBranch] = useState(null);
-  if (me) return <Navigate to={sp.get('next') || homeFor(me)} replace />;
+  if (me) return <Navigate to={safeNext(sp.get('next')) || homeFor(me)} replace />;
   const loadBranches = async (username) => {
     const u = username.trim();
     if (!u || branches.for === u.toLowerCase()) return branches.list;
@@ -33,7 +36,7 @@ export default function Login() {
       if (list.length && branch === null) { setErr('اختر الفرع ثم اكتب كلمة مرور الفرع'); return; }
       await api.post('/auth/login', { ...f, branch_id: branch && branch !== '0' ? branch : undefined });
       await refresh();
-      nav(sp.get('next') || '/', { replace: true });
+      nav(safeNext(sp.get('next')) || '/', { replace: true });
     } catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
   const hasBranches = branches.for === f.username.trim().toLowerCase() && branches.list.length > 0;

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { pool, tx } from '../db.js';
-import { createSession, destroySession, verifyLogin, hashPassword, loginThrottle, loginReset, requireAuth, currentTokenHash } from '../lib/auth.js';
+import { createSession, destroySession, verifyLogin, hashPassword, loginThrottle, loginGuard, loginFailed, loginReset, requireAuth, currentTokenHash } from '../lib/auth.js';
 import { bad, str, int } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyPerm } from '../lib/notify.js';
@@ -17,10 +17,15 @@ r.post('/login', async (req, res) => {
   const username = str(req.body.username, 'اسم المستخدم', { required: true, max: 100 });
   const password = String(req.body.password || '');
   const key = `${req.ip}:${username.toLowerCase()}`;
-  loginThrottle(key);
+  loginGuard(req.ip, username);
+  if (password.length > 200) throw bad('اسم المستخدم أو كلمة المرور غير صحيحة');
   const branchId = req.body.branch_id ? int(req.body.branch_id, 'الفرع') : null;
   const u = await verifyLogin(username, password, branchId);
-  if (!u) throw bad('اسم المستخدم أو كلمة المرور غير صحيحة');
+  if (!u) {
+    loginFailed(req.ip, username);
+    await audit(pool, { ip: req.ip }, 'login.failed', 'user', null, { username: username.slice(0, 60) });
+    throw bad('اسم المستخدم أو كلمة المرور غير صحيحة');
+  }
   loginReset(key);
   await createSession(res, u, req);
   await audit(pool, { user: u, ip: req.ip }, 'login', 'user', u.id);
@@ -55,7 +60,11 @@ r.get('/me', requireAuth, async (req, res) => {
 r.post('/change-password', requireAuth, async (req, res) => {
   const cur = String(req.body.current || '');
   const next = String(req.body.next || '');
+  loginThrottle(`chpw:${req.user.id}`, 10);
   if (next.length < 8) throw bad('كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف');
+  if (next.length > 200) throw bad('كلمة المرور طويلة جداً');
+  if (!/[A-Za-z\u0600-\u06FF]/.test(next) || !/\d/.test(next)) throw bad('كلمة المرور يجب أن تحتوي على حروف وأرقام');
+  if (next.toLowerCase().includes(String(req.user.username).toLowerCase())) throw bad('كلمة المرور لا يجب أن تحتوي على اسم المستخدم');
   const u = (await pool.query('select password_hash from users where id=$1', [req.user.id])).rows[0];
   if (!bcrypt.compareSync(cur, u.password_hash)) throw bad('كلمة المرور الحالية غير صحيحة');
   if (cur === next) throw bad('كلمة المرور الجديدة يجب أن تختلف عن الحالية');
@@ -78,6 +87,7 @@ r.post('/register-customer', regUpload, async (req, res) => {
   const username = str(b.username, 'اسم المستخدم', { required: true, max: 60 });
   if (!/^[A-Za-z0-9_.@-]{3,60}$/.test(username)) throw bad('اسم المستخدم يجب أن يكون بالأحرف الإنجليزية أو الأرقام');
   if (String(b.password || '').length < 8) throw bad('كلمة المرور يجب ألا تقل عن 8 أحرف');
+  if (String(b.password).length > 200) throw bad('كلمة المرور طويلة جداً');
   const out = await tx(async (db) => {
     const exists = await db.query('select 1 from users where lower(username)=lower($1)', [username]);
     if (exists.rowCount) throw bad('اسم المستخدم مستخدم مسبقاً');

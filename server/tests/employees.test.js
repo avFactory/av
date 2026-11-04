@@ -87,7 +87,7 @@ test('إلزام تغيير كلمة المرور عند أول دخول', async
   assert.equal((await w('GET', '/auth/me')).data.must_change_password, true);
   assert.equal((await w('GET', '/w/tasks')).status, 403, 'لا يستخدم النظام قبل التغيير');
   assert.equal((await w('POST', '/auth/change-password', { current: '123123123', next: '123123123' })).status, 400);
-  assert.equal((await w('POST', '/auth/change-password', { current: '123123123', next: 'Sadaam#2026' })).status, 200);
+  assert.equal((await w('POST', '/auth/change-password', { current: '123123123', next: 'Factory#2026w' })).status, 200);
   assert.equal((await w('GET', '/w/tasks')).status, 200, 'الجلسة الحالية تبقى صالحة بعد التغيير');
   assert.equal((await w('GET', '/auth/me')).data.must_change_password, false);
 });

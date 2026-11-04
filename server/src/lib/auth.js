@@ -85,13 +85,38 @@ export async function verifyLogin(username, password, branchId = null) {
 
 export const hashPassword = (pw) => bcrypt.hashSync(pw, 10);
 
-// حماية بسيطة من محاولات التخمين
+// حماية من محاولات التخمين: حد لكل (عنوان + مستخدم)، وحد لكل عنوان، وحد لكل مستخدم من كل العناوين
 const attempts = new Map();
-export function loginThrottle(key, max = 10) {
+const WINDOW = 15 * 60 * 1000;
+function hit(key, max) {
   const now = Date.now();
-  const a = (attempts.get(key) || []).filter((t) => now - t < 15 * 60 * 1000);
-  if (a.length >= max) throw new HttpError(429, 'محاولات كثيرة، حاول بعد قليل');
+  const a = (attempts.get(key) || []).filter((t) => now - t < WINDOW);
+  if (a.length >= max) { attempts.set(key, a); return false; }
   a.push(now);
   attempts.set(key, a);
+  return true;
+}
+export function loginThrottle(key, max = 10) {
+  if (!hit(key, max)) throw new HttpError(429, 'محاولات كثيرة، حاول بعد 15 دقيقة');
+}
+/** تسجيل الدخول: تُحسب المحاولات الفاشلة فقط — 10 لكل عنوان+مستخدم، 50 لكل عنوان، 30 لكل مستخدم من كل العناوين */
+const LOGIN_LIMITS = (ip, u) => [[`${ip}:${u}`, 10], [`ip:${ip}`, 50], [`user:${u}`, 30]];
+export function loginGuard(ip, username) {
+  const u = String(username || '').toLowerCase();
+  const now = Date.now();
+  for (const [k, max] of LOGIN_LIMITS(ip, u)) {
+    if ((attempts.get(k) || []).filter((t) => now - t < WINDOW).length >= max) throw new HttpError(429, 'محاولات دخول خاطئة كثيرة، حاول بعد 15 دقيقة');
+  }
+}
+export function loginFailed(ip, username) {
+  const u = String(username || '').toLowerCase();
+  for (const [k] of LOGIN_LIMITS(ip, u)) hit(k, Infinity);
 }
 export const loginReset = (key) => attempts.delete(key);
+// تنظيف دوري حتى لا تكبر الذاكرة
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, a] of attempts) if (!a.some((t) => now - t < WINDOW)) attempts.delete(k);
+}, 5 * 60 * 1000).unref();
+// حذف الجلسات المنتهية
+setInterval(() => { pool.query('delete from sessions where expires_at < now()').catch(() => {}); }, 60 * 60 * 1000).unref();

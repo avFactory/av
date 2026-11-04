@@ -18,11 +18,35 @@ const storage = multer.diskStorage({
   filename: (_req, file, cb) => cb(null, crypto.randomBytes(16).toString('hex') + path.extname(file.originalname).toLowerCase()),
 });
 
+// الامتداد يجب أن يطابق نوع الملف المعلن (لا يُقبل ملف HTML أو سكربت باسم صورة)
+const MIME_OK = (ext, mime) => {
+  const m = String(mime || '').toLowerCase();
+  if (!m || m === 'application/octet-stream') return true; // بعض الجوالات لا ترسل النوع — يُخدم الملف حسب امتداده مع nosniff
+  if (/^(jpe?g|png|webp|gif|heic)$/.test(ext)) return m.startsWith('image/') && !m.includes('svg');
+  if (/^(mp4|mov|webm)$/.test(ext)) return m.startsWith('video/');
+  if (ext === 'pdf') return m === 'application/pdf';
+  return !/html|javascript|svg|xml/.test(m); // ملفات 3D وzip
+};
+
 export const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024, files: 20 },
-  fileFilter: (_req, file, cb) => (ALLOWED.test(file.originalname) ? cb(null, true) : cb(bad('نوع الملف غير مسموح'))),
+  limits: { fileSize: 50 * 1024 * 1024, files: 20, fields: 200, fieldSize: 2 * 1024 * 1024, parts: 300 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).slice(1).toLowerCase();
+    return ALLOWED.test(file.originalname) && MIME_OK(ext, file.mimetype) ? cb(null, true) : cb(bad('نوع الملف غير مسموح'));
+  },
 });
+
+/** حذف الملفات المرفوعة إذا فشل الطلب (حتى لا تتراكم ملفات يتيمة على القرص) */
+export function cleanupFailedUploads(req, res, next) {
+  res.on('finish', () => {
+    if (res.statusCode < 400) return;
+    const list = Array.isArray(req.files) ? req.files : req.files ? Object.values(req.files).flat() : [];
+    if (req.file) list.push(req.file);
+    for (const f of list) if (f?.path) fs.unlink(f.path, () => {});
+  });
+  next();
+}
 
 export const relPath = (abs) => path.relative(UPLOAD_DIR, abs).split(path.sep).join('/');
 

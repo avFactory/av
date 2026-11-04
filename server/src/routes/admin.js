@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { monthlyLossSummary, workerLossRows, monthTotals, monthStart } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, hashPassword } from '../lib/auth.js';
-import { bad, conflict, notFound, int, str, oneOf } from '../lib/http.js';
+import { bad, conflict, forbidden, notFound, int, str, oneOf } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyCustomer, notifyUsers } from '../lib/notify.js';
 import multer from 'multer';
@@ -14,6 +14,30 @@ import { autoShortName, cleanShortName } from '../lib/shortName.js';
 import { getPricing, savePricing, rotateToken } from '../lib/pricingSheet.js';
 
 const r = Router();
+
+// الموظفون فقط (ليس العملاء ولا الزوار)
+const staffOnly = (req, _res, next) => { if (!req.user || req.user.role_code === 'customer') throw forbidden(); next(); };
+
+/**
+ * منع رفع الصلاحيات: من لا يملك "إدارة الأدوار" لا يستطيع إعطاء دور أو صلاحيات أعلى من صلاحياته،
+ * ولا تعديل/تغيير كلمة مرور حساب يملك صلاحيات ليست لديه (مثل مدير النظام).
+ */
+async function assertCanGrant(db, req, { role, extraPerms, target }) {
+  if (req.user.perms.has('roles.manage')) return;
+  // صلاحيات الهوية (حساب عامل/حساب متجر) ليست صلاحيات إدارية
+  const mine = new Set([...req.user.perms, 'worker.self', 'store.access']);
+  const permsOf = async (code) => (await db.query('select perm_code from role_permissions where role_code=$1', [code])).rows.map((x) => x.perm_code);
+  if (role) {
+    if (role === 'admin') throw forbidden('تعيين دور مدير النظام يتطلب صلاحية إدارة الأدوار');
+    if ((await permsOf(role)).some((p) => !mine.has(p))) throw forbidden('لا يمكنك تعيين دور بصلاحيات أعلى من صلاحياتك');
+  }
+  if (extraPerms && extraPerms.some((p) => !mine.has(p))) throw forbidden('لا يمكنك منح صلاحيات لا تملكها');
+  if (target && target.id !== req.user.id) {
+    const tp = new Set(await permsOf(target.role_code));
+    for (const p of target.extra_perms || []) tp.add(p);
+    if (target.role_code === 'admin' || [...tp].some((p) => !mine.has(p))) throw forbidden('لا يمكنك تعديل حساب يملك صلاحيات أعلى من صلاحياتك');
+  }
+}
 
 /** الإحصائيات - كلها محسوبة من قاعدة البيانات */
 r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
@@ -65,6 +89,7 @@ r.post('/employees', requirePerm('employees.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
     const role = str(b.role_code, 'الدور', { required: true });
     if (role === 'customer') throw bad('حسابات العملاء تنشأ من صفحة العملاء');
+    await assertCanGrant(db, req, { role });
     if (String(b.password || '').length < 8) throw bad('كلمة المرور يجب ألا تقل عن 8 أحرف');
     const u = (await db.query(
       `insert into users(username, password_hash, full_name, role_code, employee_no, department_id, specialty, phone)
@@ -139,6 +164,7 @@ r.post('/employees/import/parse', requirePerm('employees.manage'), empUpload.sin
 r.post('/employees/import/commit', requirePerm('employees.manage'), async (req, res) => {
   const role = String(req.body.role_code || 'worker');
   if (role === 'customer' || role === 'admin') throw bad('دور غير مسموح في الاستيراد');
+  await assertCanGrant(pool, req, { role });
   const mustChange = req.body.must_change_password !== false;
   const input = (Array.isArray(req.body.rows) ? req.body.rows : []).map((r) => ({
     employee_no: str(r.employee_no, 'الرقم', { max: 40 }), full_name: str(r.full_name, 'الاسم', { max: 120 }) || '', username: str(r.username, 'اسم المستخدم', { max: 60 }) || '',
@@ -188,6 +214,10 @@ r.put('/employees/:id', requirePerm('employees.manage'), async (req, res) => {
     if (u.id === req.user.id && b.active === false) throw bad('لا يمكنك تعطيل حسابك');
     const role = b.role_code ?? u.role_code;
     if (role === 'customer') throw bad('دور غير صالح');
+    if (b.extra_perms != null && (!Array.isArray(b.extra_perms) || b.extra_perms.some((x) => typeof x !== 'string'))) throw bad('صلاحيات غير صالحة');
+    if (b.denied_perms != null && (!Array.isArray(b.denied_perms) || b.denied_perms.some((x) => typeof x !== 'string'))) throw bad('صلاحيات غير صالحة');
+    await assertCanGrant(db, req, { role: b.role_code && b.role_code !== u.role_code ? role : null, extraPerms: b.extra_perms, target: u });
+    if (u.id === req.user.id && (b.role_code && b.role_code !== u.role_code || b.extra_perms) && !req.user.perms.has('roles.manage')) throw forbidden('لا يمكنك تعديل صلاحيات حسابك');
     if (b.active === false) {
       const open = (await db.query("select count(*)::int n from custodies where worker_id=$1 and status in ('open','under_review')", [id])).rows[0].n;
       if (open) throw conflict('لا يمكن تعطيل/حذف عامل لديه عهدة مفتوحة - استلم العهد أولاً');
@@ -279,7 +309,7 @@ r.put('/roles/:code', requirePerm('roles.manage'), async (req, res) => {
 });
 
 // ------------------------------------------------------------------ الأقسام والفئات
-r.get('/departments', async (_req, res) => res.json(await many('select * from departments order by name')));
+r.get('/departments', staffOnly, async (_req, res) => res.json(await many('select * from departments order by name')));
 r.post('/departments', requirePerm('employees.manage'), async (req, res) => {
   const d = await one('insert into departments(name) values ($1) returning *', [str(req.body.name, 'اسم القسم', { required: true })]);
   await audit(pool, req, 'department.create', 'department', d.id, d);
@@ -522,7 +552,7 @@ r.put('/customers/:id', requirePerm('customers.manage'), async (req, res) => {
 });
 
 // ------------------------------------------------------------------ المراحل ونسب العجز
-r.get('/stages', async (_req, res) => {
+r.get('/stages', requirePerm('stages.manage', 'loss_rates.manage', 'orders.view', 'custody.issue'), async (_req, res) => {
   res.json(await many(`select s.*, scr.rate_percent::text as loss_rate,
       (select array_agg(user_id) from stage_workers w where w.stage_id=s.id) as worker_ids,
       (select count(*) from route_stages rs where rs.stage_id=s.id)::int as routes_count
@@ -613,7 +643,7 @@ r.get('/stages/:id/rates', requirePerm('stages.manage', 'loss_rates.manage', 're
 });
 
 // ------------------------------------------------------------------ مسارات الإنتاج
-r.get('/routes', async (_req, res) => {
+r.get('/routes', requirePerm('stages.manage', 'loss_rates.manage', 'orders.view', 'products.manage'), async (_req, res) => {
   res.json(await many(`select r.*, coalesce(json_agg(json_build_object('seq', rs.seq, 'stage_id', rs.stage_id, 'name', s.name) order by rs.seq) filter (where rs.seq is not null), '[]') as stages
                        from routes r left join route_stages rs on rs.route_id=r.id left join stages s on s.id=rs.stage_id group by r.id order by r.id`));
 });
