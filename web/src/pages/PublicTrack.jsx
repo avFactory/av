@@ -25,7 +25,7 @@ export default function PublicTrack() {
   return (
     <div className="track-page">
       <header className="track-head">
-        <img src="/logo-gold.png" alt="AV" />
+        <img src="/logo-white.png" alt="AV" />
         <div><b>مصنع AV للمجوهرات</b><div className="small">تتبع الطلب</div></div>
         <ThemeToggle light className="ms-auto" />
       </header>

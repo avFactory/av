@@ -42,7 +42,7 @@ export default function Login() {
       <div className="login-bg" aria-hidden="true" />
       <ThemeToggle light className="login-theme" />
       <form className="login-card" onSubmit={submit}>
-        <img src="/logo-gold.png" alt="AV" className="login-card-logo" />
+        <img src="/logo-white.png" alt="AV" className="login-card-logo" />
         <h1>مصنع AV للمجوهرات</h1>
         <p className="login-sub">AV Jewelry Factory · تسجيل الدخول</p>
         {err && <div className="alert alert-danger">{err}</div>}

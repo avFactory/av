@@ -346,7 +346,7 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .login-card { position: relative; z-index: 1; width: min(400px, 100%); display: grid; gap: 14px; padding: 30px 28px 24px; border-radius: 20px;
   background: rgba(20,17,12,.62); border: 1px solid rgba(201,169,106,.35); box-shadow: 0 30px 80px rgba(0,0,0,.55);
   backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); color: #f3ead6; }
-.login-card-logo { height: 64px; width: auto; justify-self: center; filter: drop-shadow(0 4px 18px rgba(201,169,106,.35)); }
+.login-card-logo { height: 64px; width: auto; justify-self: center; filter: drop-shadow(0 4px 18px rgba(255,255,255,.18)); }
 .login-card h1 { text-align: center; color: #e2c88f; font-size: 1.45rem; }
 .login-sub { text-align: center; color: #bfb39a; font-size: .85rem; margin-top: -8px; letter-spacing: .02em; }
 .login-card .field-l { color: #e9dfc8; }

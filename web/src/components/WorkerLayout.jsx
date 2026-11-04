@@ -9,7 +9,7 @@ export default function WorkerLayout() {
     <div className="wk">
       <header className="navbar navbar-dark bg-dark sticky-top px-3 wk-top no-print" data-bs-theme="dark">
         <div className="d-flex align-items-center gap-2">
-          <img src="/logo-gold.png" alt="AV" className="brand-logo" />
+          <img src="/logo-white.png" alt="AV" className="brand-logo" />
           <div className="lh-sm"><div className="small text-white-50">مرحباً</div><b className="text-gold">{me.full_name}</b> <span className="small text-white-50">{me.employee_no}</span></div>
         </div>
         <div className="d-flex align-items-center gap-2">

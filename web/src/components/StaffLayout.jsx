@@ -59,7 +59,7 @@ export default function StaffLayout() {
     <div className="shell">
       {open && <div className="scrim" onClick={() => setOpen(false)} />}
       <aside className={`side ${open ? 'open' : ''}`}>
-        <a href="/" className="brand"><img src="/logo-gold.png" alt="AV" className="brand-logo" /><span>مصنع AV للمجوهرات</span></a>
+        <a href="/" className="brand"><img src="/logo-white.png" alt="AV" className="brand-logo" /><span>مصنع AV للمجوهرات</span></a>
         <nav className="nav nav-pills flex-column">
           {NAV.map(([grp, items]) => {
             const vis = items.filter(([, , p]) => can(...p));

@@ -34,7 +34,7 @@ export default function PublicPricing() {
     <div className="track-page pricing-page">
       <header className="pricing-head">
         <div className="pricing-brand">
-          <img src="/logo-gold.png" alt="AV" />
+          <img src="/logo-white.png" alt="AV" />
           <div><b>مصنع AV للمجوهرات</b><div className="small">{d?.view === 'short' ? 'التسعيرة المختصرة' : 'التسعيرة'}</div></div>
         </div>
         {d && (

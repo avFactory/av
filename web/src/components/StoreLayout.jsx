@@ -27,7 +27,7 @@ export default function StoreLayout() {
     <CartCtx.Provider value={{ cart, setCart, approved, apiBase, me, loginUrl: `/login?next=${next}` }}>
       <header className="navbar navbar-expand-lg navbar-dark bg-dark sticky-top store-top no-print" data-bs-theme="dark">
         <div className="container-xl">
-          <Link to="/store" className="navbar-brand d-flex align-items-center gap-2"><img src="/logo-gold.png" alt="AV" className="brand-logo" /><span className="fw-bold">مصنع AV للمجوهرات <small className="fw-normal text-white-50">· متجر الجملة</small></span></Link>
+          <Link to="/store" className="navbar-brand d-flex align-items-center gap-2"><img src="/logo-white.png" alt="AV" className="brand-logo" /><span className="fw-bold">مصنع AV للمجوهرات <small className="fw-normal text-white-50">· متجر الجملة</small></span></Link>
           <button className="navbar-toggler" type="button" aria-label="القائمة" aria-expanded={menu} onClick={() => setMenu(!menu)}><span className="navbar-toggler-icon" /></button>
           <div className={`collapse navbar-collapse ${menu ? 'show' : ''}`}>
             <nav className="navbar-nav mx-lg-auto">
