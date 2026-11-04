@@ -500,3 +500,9 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 /* زر الوضع الداكن/الفاتح */
 .theme-toggle { min-width: 34px; font-size: 1rem; line-height: 1; padding: .3rem .5rem; }
 .login-theme { position: fixed; top: 14px; left: 14px; z-index: 5; }
+
+/* تصنيفات المتجر حسب الخامة */
+.cat-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.cat-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); color: var(--bs-body-color); font-weight: 600; }
+.cat-tab.on { background: #141414; color: #f3e9d2; border-color: #141414; }
+[data-bs-theme=dark] .cat-tab.on { background: #c9a227; color: #141414; border-color: #c9a227; }

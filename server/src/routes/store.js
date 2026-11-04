@@ -75,10 +75,15 @@ r.get('/products', async (req, res) => {
   const f = req.query;
   const rows = await many(`select p.id, p.sku, p.name, p.product_type, p.description, p.karats, p.colors, p.approx_weight::text, p.final_weight::text, p.sizes,
       p.stock_qty, p.availability,
-      coalesce((select json_agg(json_build_object('path', m.path, 'kind', m.kind) order by m.sort, m.id) from product_media m where m.product_id=p.id), '[]') as media
+      coalesce((select json_agg(json_build_object('path', m.path, 'kind', m.kind) order by m.sort, m.id) from product_media m where m.product_id=p.id), '[]') as media,
+      jsonb_array_length(p.diamonds) > 0 as has_diamond, coalesce(p.pearl_weight, 0) > 0 as has_pearl, coalesce(p.stone_weight, 0) > 0 as has_stone,
+  (jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight, 0) = 0 and coalesce(p.stone_weight, 0) = 0) as is_gold
     from products p where p.active and p.availability <> 'unavailable'
       and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3)
-    order by p.id desc`, [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null]);
+      and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
+        or ($4='stone' and coalesce(p.stone_weight,0) > 0)
+        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0))
+    order by p.id desc`, [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null, ['gold', 'diamond', 'pearl', 'stone'].includes(f.cat) ? f.cat : null]);
   for (const p of rows) {
     const l = await resolveLabor(pool, { customer_id: req.user.customer_id, product_id: p.id, product_type: p.product_type });
     p.labor = l ? { method: l.method, rate: l.rate, estimate: laborAmount(l.method, l.rate, p.final_weight || p.approx_weight, 1) } : null;

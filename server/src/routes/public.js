@@ -11,13 +11,18 @@ const COLS = `p.id, p.sku, p.name, p.product_type, p.description, p.karats, p.co
   coalesce((select json_agg(json_build_object('path', m.path, 'kind', m.kind) order by m.sort, m.id) from product_media m where m.product_id=p.id), '[]') as media,
   p.pearl_weight::text, p.stone_weight::text, p.zircon_weight::text,
   coalesce((select json_agg(json_build_object('shape', s.name, 'size', l.size_label, 'color', l.color, 'clarity', l.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
-    from jsonb_array_elements(p.diamonds) d join stone_lots l on l.id=(d->>'lot_id')::int left join stone_shapes s on s.id=l.shape_id), '[]') as diamond_details`;
+    from jsonb_array_elements(p.diamonds) d join stone_lots l on l.id=(d->>'lot_id')::int left join stone_shapes s on s.id=l.shape_id), '[]') as diamond_details,
+  jsonb_array_length(p.diamonds) > 0 as has_diamond, coalesce(p.pearl_weight, 0) > 0 as has_pearl, coalesce(p.stone_weight, 0) > 0 as has_stone,
+  (jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight, 0) = 0 and coalesce(p.stone_weight, 0) = 0) as is_gold`;
 
 r.get('/products', async (req, res) => {
   const f = req.query;
   const rows = await many(`select ${COLS} from products p where p.active and p.availability <> 'unavailable'
       and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3)
-    order by p.id desc limit 500`, [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null]);
+      and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
+        or ($4='stone' and coalesce(p.stone_weight,0) > 0)
+        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0))
+    order by p.id desc limit 500`, [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null, ['gold', 'diamond', 'pearl', 'stone'].includes(f.cat) ? f.cat : null]);
   const types = await many("select distinct product_type from products where active and availability <> 'unavailable' order by 1");
   res.setHeader('Cache-Control', 'public, max-age=60');
   res.json({ products: rows, types: types.map((t) => t.product_type) });

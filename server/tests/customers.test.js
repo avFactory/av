@@ -394,3 +394,24 @@ test('اطلب تصميمك مع الألماس والأحجار: يُحجز ا�
   assert.equal((await cu('POST', `/store/orders/${o2.id}/quote`, { decision: 'accept' })).status, 200);
   assert.equal((await pool.query('select status from orders where id=$1', [o2.id])).rows[0].status, 'approved', 'موافق عليه وينتظر توفر الألماس');
 });
+
+test('تصنيفات المتجر: ذهب (يشمل الزركون) / ألماس مخبري / لؤلؤ / أحجار + نوع القطعة', async () => {
+  const shape = (await call('GET', '/stones/shapes')).data[0];
+  const fl = new FormData(); for (const [k, v] of Object.entries({ shape_id: shape.id, size_label: '3.3 mm', carats: '5' })) fl.append(k, v);
+  const lot = (await call('POST', '/stones', null, fl)).data;
+  const mk = async (name, type, extra) => { const f = new FormData(); for (const [k, v] of Object.entries({ name, product_type: type, karats: '18', colors: 'yellow', ...extra })) f.append(k, v); return (await call('POST', '/catalog/products', null, f)).data.id; };
+  const ids = {
+    gold: await mk('تصنيف ذهب', 'عقد', {}),
+    zircon: await mk('تصنيف زركون', 'عقد', { zircon_weight: '0.5' }),
+    diamond: await mk('تصنيف ألماس', 'خاتم', { diamonds: JSON.stringify([{ lot_id: lot.id, carats: '0.2' }]) }),
+    pearl: await mk('تصنيف لؤلؤ', 'حلق', { pearl_weight: '2' }),
+    stone: await mk('تصنيف حجر', 'خاتم', { stone_weight: '1' }),
+  };
+  const list = async (q) => (await fetch(`${base}/api/public/products?q=${encodeURIComponent('تصنيف')}&${q}`).then((r) => r.json())).products.map((p) => p.id).sort();
+  assert.deepEqual(await list('cat=gold'), [ids.gold, ids.zircon].sort(), 'الزركون مع الذهب');
+  assert.deepEqual(await list('cat=diamond'), [ids.diamond]);
+  assert.deepEqual(await list('cat=pearl'), [ids.pearl]);
+  assert.deepEqual(await list('cat=stone'), [ids.stone]);
+  assert.deepEqual(await list('cat=stone&type=' + encodeURIComponent('خاتم')), [ids.stone]);
+  assert.equal((await list('')).length, 5);
+});

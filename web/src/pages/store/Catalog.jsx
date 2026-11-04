@@ -5,8 +5,11 @@ import { fmtW, fmtMoney, METHODS } from '../../format.js';
 import { Loader, Search, useFetch, Empty, LinkBtn } from '../../ui.jsx';
 import { useCart } from '../../components/StoreLayout.jsx';
 
+const CATS = [['', 'الكل', '✦'], ['gold', 'ذهب', '◯'], ['diamond', 'ألماس مخبري', '💎'], ['pearl', 'لؤلؤ', '⚪'], ['stone', 'أحجار', '◆']];
+const catBadges = (p) => [p.has_diamond && 'ألماس مخبري', p.has_pearl && 'لؤلؤ', p.has_stone && 'أحجار', p.is_gold && 'ذهب'].filter(Boolean);
+
 export default function Catalog() {
-  const [f, setF] = useState({ q: '', type: '', karat: '' });
+  const [f, setF] = useState({ q: '', type: '', karat: '', cat: '' });
   const { apiBase, approved, loginUrl } = useCart();
   const { data } = useFetch(`${apiBase}/products${qs(f)}`, { deps: [apiBase] });
   return (
@@ -14,6 +17,14 @@ export default function Catalog() {
       <div className="hero mb d-none d-md-flex">
         <div className="hrow gap"><img src="/logo-gold.png" alt="AV" style={{ height: 64, width: 'auto' }} /><div><h2>مصنع AV للمجوهرات — الجملة من المصنع مباشرة</h2><p>أجور تصنيع واضحة لكل جرام أو قطعة — قيمة الذهب خارج الفاتورة.</p></div></div>
         <LinkBtn to="/store/custom" kind="primary" size="lg">اطلب تصميمك الخاص</LinkBtn>
+      </div>
+      {/* التصنيف حسب الخامة: الذهب يشمل القطع التي فيها زركون */}
+      <div className="cat-tabs mb" role="tablist" aria-label="التصنيف">
+        {CATS.map(([k, label, icon]) => (
+          <button key={k} type="button" role="tab" aria-selected={f.cat === k} className={`cat-tab${f.cat === k ? ' on' : ''}`} onClick={() => setF({ ...f, cat: k })}>
+            <span aria-hidden="true">{icon}</span>{label}
+          </button>
+        ))}
       </div>
       <div className="hrow gap wrap mb">
         <Search value={f.q} onChange={(q) => setF({ ...f, q })} placeholder="ابحث باسم المنتج أو رقمه" />
@@ -31,6 +42,7 @@ export default function Catalog() {
               <div className="info">
                 <b>{p.name}</b>
                 <span className="small muted">{p.sku} · {p.product_type} · عيار {p.karats.join('/')}</span>
+                <span className="d-flex flex-wrap gap-1">{catBadges(p).map((c) => <span key={c} className="badge rounded-pill text-bg-light border fw-normal">{c}</span>)}</span>
                 <span className="small">الوزن التقريبي {fmtW(p.final_weight || p.approx_weight)} جم</span>
                 {p.labor && <span><b style={{ color: 'var(--gold-ink)' }}>{fmtMoney(p.labor.rate)}</b> <span className="small muted">{METHODS[p.labor.method]}</span></span>}
                 {!approved && <span className="small muted">أجور التصنيع تظهر بعد تسجيل الدخول</span>}
