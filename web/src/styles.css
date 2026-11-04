@@ -532,3 +532,8 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
   .stock-grid { display: block; }
   .stock-sec { break-inside: avoid; margin-bottom: 10px; }
 }
+
+.stock-cols { display: flex; gap: 16px; align-items: flex-start; margin-top: 8px; }
+.stock-col { flex: 1 1 0; min-width: 0; display: grid; gap: 16px; }
+@media (max-width: 900px) { .stock-cols { flex-direction: column; } .stock-col { width: 100%; } }
+@media print { .stock-cols { display: block; } .stock-col { display: block; } }

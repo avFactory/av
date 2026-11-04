@@ -6,6 +6,8 @@ import { Loader, ThemeToggle } from '../ui.jsx';
 import { ShapeIcon } from './admin/Stones.jsx';
 
 const ct = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+// الراوند والدمعة في العمود الأيمن، وباقي القصّات في العمود الأيسر
+const isRight = (g) => ['round', 'pear'].includes(g.icon) || /راوند|دمع|round|pear/i.test(g.name);
 const STATUS = { ok: ['متوفر', 'ok'], low: ['كمية محدودة', 'low'], out: ['نفد', 'out'] };
 
 /** مخزون الألماس برابط خارجي — عرض فقط، مرتب حسب القصّة والمقاس، يتحدث تلقائياً */
@@ -80,8 +82,10 @@ export default function PublicStones() {
           </div>
 
           {!shapes.length && <div className="text-center text-body-secondary py-5">لا توجد أصناف مطابقة</div>}
-          <div className="stock-grid">
-            {shapes.map((g) => (
+          <div className="stock-cols">
+            {[shapes.filter(isRight), shapes.filter((g) => !isRight(g))].filter((col) => col.length).map((col, ci) => (
+            <div key={ci} className="stock-col">
+            {col.map((g) => (
               <section key={g.id} className="stock-sec">
                 <header>
                   <span className="stock-ic"><ShapeIcon icon={g.icon} size={26} /></span>
@@ -105,6 +109,8 @@ export default function PublicStones() {
                   </table>
                 </div>
               </section>
+            ))}
+            </div>
             ))}
           </div>
           <p className="small text-body-secondary text-center mt-3">
