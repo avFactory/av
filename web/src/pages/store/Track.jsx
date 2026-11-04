@@ -37,24 +37,23 @@ export default function Track() {
       </div>}>
       {deletable && <div className="alert alert-light border small py-2">الطلب لم يُقبل بعد — يمكنك حذفه. بعد قبول المصنع وبدء التجهيز لا يمكن الحذف.</div>}
       <OrderItems items={items} current={o.id} />
-      {['approved', 'in_production'].includes(o.status) && (
-        <Card title="ملاحظة على الطلب" className="mb">
-          <p className="small muted mb-2">أرسل ملاحظة للمصنع على هذا المنتج أثناء التصنيع (تعديل بسيط، استفسار، طلب استعجال…). تصل للمصنع فوراً.</p>
-          <Field label="ملاحظتك"><Textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3} maxLength={1000} /></Field>
-          <div className="hrow end mt"><Btn loading={busy} disabled={!msg.trim()} onClick={sendNote}>إرسال الملاحظة</Btn></div>
-          {notes.length > 0 && (
-            <div className="d-grid gap-2 mt-3">
-              <b className="small">ملاحظاتك السابقة</b>
-              {notes.map((n, i) => <div key={i} className="border rounded-3 p-2 small"><div>{n.note}</div><div className="muted">{fmtDT(n.created_at)}</div></div>)}
-            </div>
-          )}
-        </Card>
-      )}
       <div className="grid g2 mb">
         <Card title="تفاصيل الطلب" actions={<StatusBadge map={STATUS} value={o.status} />}>
           <Kv items={[items.length > 1 && ['البند', o.order_no], items.length > 1 && ['المنتج', o.title], o.branch_name && ['الفرع', o.branch_name], ['العيار', o.karat], ['اللون', COLORS[o.color] || o.color], ...stoneItems(o), ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن', o.final_weight ? `${fmtW(o.final_weight)} جم (نهائي)` : o.approx_weight ? `${fmtW(o.approx_weight)} جم (تقريبي)` : '—'],
             ['أجور التصنيع', o.labor_rate ? `${fmtMoney(o.labor_rate)} ${METHODS[o.labor_method] || ''}` : '—'], ['التقدير', o.labor_estimate ? fmtMoney(o.labor_estimate) : '—'],
             ['المرحلة الحالية', o.stage_name], ['موعد التسليم المتوقع', fmtDate(o.due_date)], o.design_approval_required && ['التصميم', DESIGN_STATUS[o.design_status]]]} />
+          {['approved', 'in_production'].includes(o.status) && (
+            <div className="border-top mt-3 pt-3">
+              <Field label="ملاحظة على الطلب"><Textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3} maxLength={1000} placeholder="تعديل بسيط، استفسار، طلب استعجال… تصل للمصنع فوراً" /></Field>
+              <div className="hrow end mt-2"><Btn loading={busy} disabled={!msg.trim()} onClick={sendNote}>إرسال الملاحظة</Btn></div>
+              {notes.length > 0 && (
+                <div className="d-grid gap-2 mt-3">
+                  <b className="small">ملاحظاتك السابقة</b>
+                  {notes.map((n, i) => <div key={i} className="border rounded-3 p-2 small"><div>{n.note}</div><div className="muted">{fmtDT(n.created_at)}</div></div>)}
+                </div>
+              )}
+            </div>
+          )}
         </Card>
         <Card title={`نسبة الإنجاز ${o.progress}%`}>
           <div className="progress mb"><div style={{ width: `${o.progress}%` }} /></div>
