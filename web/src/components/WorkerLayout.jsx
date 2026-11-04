@@ -23,6 +23,7 @@ export default function WorkerLayout() {
       <nav className="nav nav-justified fixed-bottom bg-body border-top shadow-sm wk-nav no-print">
         <NavLink to="/w" end className="nav-link"><i>▤</i>مهامي</NavLink>
         <NavLink to="/w/scan" className="nav-link"><i>⌁</i>مسح QR</NavLink>
+        <NavLink to="/w/losses" className="nav-link"><i>⚖</i>العجز</NavLink>
         <NavLink to="/w/history" className="nav-link"><i>↺</i>السجل</NavLink>
         <NavLink to="/w/notifications" className="nav-link"><i>◔</i>الإشعارات</NavLink>
       </nav>

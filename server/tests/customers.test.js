@@ -465,3 +465,41 @@ test('العامل يرى صور الطلب وصورة المنتج', async () =
   assert.notEqual(r.status, 500, 'لا خطأ في صور الطلب للعامل');
   assert.ok(createSession);
 });
+
+test('العجز على حساب العامل: الوزن الفعلي من المشرف، شاشة العجز للعامل، وسلفة نهاية الشهر', async () => {
+  const { hashPassword } = await import('../src/lib/auth.js');
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0];
+  await call('POST', '/inventory/gold/in', { material_id: mat.id, weight: '200', note: 'رصيد اختبار' });
+  const wk = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('losswk',$1,'عامل العجز','worker','LW1') returning id", [hashPassword('Loss#2026w')])).rows[0].id;
+  const o = (await call('POST', '/orders', { title: 'طلب عجز', product_type: 'خاتم', karat: 21, color: 'yellow', quantity: 1, material_id: mat.id, route_id: 2 })).data;
+  let d = (await call('GET', `/orders/${o.id}`)).data;
+  for (let i = 0; i < 4 && !d.order.handles_gold; i++) { await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'اختبار' }); d = (await call('GET', `/orders/${o.id}`)).data; }
+  const stage = d.order.current_stage_id;
+  await call('POST', `/admin/stages/${stage}/rate`, { rate_percent: '1', note: 'اختبار' }); // 1% مسموح
+  const iss = (await call('POST', '/sup/issue', { worker_id: wk, items: [{ order_id: o.id, weight: '10' }] })).data;
+  const cid = iss.custodies[0].id;
+  // العامل يقبل ويبدأ وينهي بدون تسجيل أوزان
+  let wck = '';
+  const w = async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { 'content-type': 'application/json', cookie: wck }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) wck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  await pool.query("update users set must_change_password=false where id=$1", [wk]);
+  assert.equal((await w('POST', '/auth/login', { username: 'losswk', password: 'Loss#2026w' })).status, 200);
+  await w('POST', `/w/custody/${cid}/ack`); await w('POST', `/w/custody/${cid}/start`);
+  assert.equal((await w('POST', `/w/custody/${cid}/finish`)).status, 200, 'إنهاء المرحلة بدون أوزان من العامل');
+  // المشرف يستلم 9.8 جم: العجز 0.2، المسموح 0.1 (1%)، على حساب العامل 0.1
+  const rc = await call('POST', '/sup/receive', { worker_id: wk, items: [{ custody_id: cid, returned_weight: '9.8', scrap_weight: '0', reason: 'عجز زائد' }] });
+  assert.equal(rc.status, 200, JSON.stringify(rc.data));
+  const L = (await w('GET', '/w/losses')).data;
+  const row = L.rows.find((r) => r.order_id === o.id);
+  assert.deepEqual([Number(row.actual_loss), Number(row.normal_loss), Number(row.charged)], [0.2, 0.1, 0.1]);
+  assert.equal(Number(L.totals.charged.toFixed(4)), 0.1);
+  // الإدارة: ملخص الشهر وتسجيل السلفة (0.1 جم عيار 21 = 0.0875 صافي × 400 = 35 ر.س)
+  const A = (await call('GET', `/admin/loss-advances?month=${L.month}`)).data;
+  const sw = A.workers.find((x) => x.worker_id === wk);
+  assert.equal(Number(sw.charged), 0.1);
+  const adv = await call('POST', '/admin/loss-advances', { worker_id: wk, month: L.month, price_per_gram: '400', include_pending: true });
+  assert.equal(adv.status, 200, JSON.stringify(adv.data));
+  assert.equal(Number(adv.data.amount), 35);
+  assert.equal((await call('POST', '/admin/loss-advances', { worker_id: wk, month: L.month, price_per_gram: '400', include_pending: true })).status, 409, 'لا تتكرر سلفة نفس الشهر');
+  assert.equal(Number((await w('GET', '/w/losses')).data.advance.amount), 35, 'العامل يرى السلفة');
+  assert.equal((await w('GET', '/admin/loss-advances')).status, 403, 'العامل لا يدخل صفحة السلف');
+});

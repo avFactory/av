@@ -1,5 +1,6 @@
 // واجهة العامل: لا يرى إلا عهده وطلباته
 import { Router } from 'express';
+import { workerLossRows, monthStart } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm } from '../lib/auth.js';
 import { bad, conflict, forbidden, notFound, int, str, weight as W } from '../lib/http.js';
@@ -146,13 +147,8 @@ r.post('/custody/:id/finish', async (req, res) => {
     if (c.status !== 'open') throw conflict('العهدة مغلقة');
     if (!c.worker_ack_at) throw conflict('يجب قبول استلام العهدة أولاً');
     const stage = (await db.query('select * from stages where id=$1', [c.stage_id])).rows[0];
-    if (stage?.requires_weight && c.worker_declared_returned == null) throw bad('سجّل الوزن المرتجع والبقايا قبل إنهاء المرحلة');
-    for (const f of stage?.required_fields || []) {
-      if (f === 'photo') {
-        const p = await db.query("select 1 from order_files where order_id=$1 and kind='execution' and uploaded_by=$2 and created_at >= $3 limit 1", [c.order_id, req.user.id, c.issued_at]);
-        if (!p.rowCount) throw bad('هذه المرحلة تتطلب رفع صورة التنفيذ');
-      }
-    }
+    // العامل لا يملك ميزاناً: الوزن الفعلي يعتمده المشرف عند الاستلام (لا يُشترط تسجيل أوزان أو صور من العامل)
+    void stage;
     await db.query("update custodies set work_state='finished', finished_at=now() where id=$1", [c.id]);
     await db.query("insert into custody_work_log(custody_id, event, reason, user_id) values ($1,'finish',$2,$3)", [c.id, str(req.body.note, 'ملاحظة'), req.user.id]);
     const o = (await db.query('select order_no from orders where id=$1', [c.order_id])).rows[0];
@@ -197,6 +193,17 @@ r.post('/orders/:id/note', async (req, res) => {
     if (clarify) await notifyPerm(db, 'custody.issue', { kind: 'clarification', title: `طلب توضيح من ${req.user.full_name} - ${o.order_no}`, body: note, link: `/orders/${o.id}` });
     return { ok: true };
   }));
+});
+
+/** العجز على حساب العامل في شهر: لكل طلب العجز الفعلي والمسموح والمحمّل عليه */
+r.get('/losses', async (req, res) => {
+  const month = monthStart(req.query.month);
+  const rows = await workerLossRows(pool, req.user.id, month);
+  const sum = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
+  const advance = await one('select amount::text, grams::text, price_per_gram::text, created_at from worker_advances where worker_id=$1 and month=$2', [req.user.id, month]);
+  const months = await many(`select distinct to_char(date_trunc('month', st.received_at at time zone 'Asia/Riyadh'), 'YYYY-MM') as m
+    from settlements st join custodies c on c.id=st.custody_id where c.worker_id=$1 and st.status <> 'reversed' order by 1 desc limit 12`, [req.user.id]);
+  res.json({ month: month.slice(0, 7), rows, totals: { actual: sum('actual_loss'), normal: sum('normal_loss'), charged: sum('charged') }, advance, months: months.map((x) => x.m) });
 });
 
 r.get('/history', async (req, res) => {

@@ -1,10 +1,11 @@
 // لوحة الإدارة: الإحصائيات، الموظفون، الأدوار، العملاء، المراحل ونسب العجز، المسارات، الإعدادات، التدقيق
 import { Router } from 'express';
+import { monthlyLossSummary, workerLossRows, monthStart } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, hashPassword } from '../lib/auth.js';
 import { bad, conflict, notFound, int, str, oneOf } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
-import { notifyCustomer } from '../lib/notify.js';
+import { notifyCustomer, notifyUsers } from '../lib/notify.js';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { sendXlsx } from '../lib/xlsx.js';
@@ -645,6 +646,47 @@ r.put('/routes/:id', requirePerm('stages.manage'), async (req, res) => {
 r.get('/settings', requirePerm('settings.manage', 'finance.view'), async (_req, res) => {
   const rows = await many("select key, value from settings where key <> 'pricing_sheet'");
   res.json(Object.fromEntries(rows.map((x) => [x.key, x.value])));
+});
+
+// ------------------------------------------------------------------ سلف العجز الشهرية على العمال
+r.get('/loss-advances', requirePerm('loss.advances', 'loss.approve'), async (req, res) => {
+  const month = monthStart(req.query.month);
+  const workers = await monthlyLossSummary(pool, month);
+  const advances = await many(`select a.id, a.worker_id, a.grams::text, a.pure_grams::text, a.price_per_gram::text, a.amount::text, a.notes, a.created_at, u.full_name as created_by_name
+    from worker_advances a left join users u on u.id=a.created_by where a.month=$1`, [month]);
+  const gold24 = (await getPricing(pool)).gold24;
+  res.json({ month: month.slice(0, 7), workers, advances, gold24 });
+});
+r.post('/loss-advances', requirePerm('loss.advances'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const month = monthStart(req.body.month);
+    const workerId = int(req.body.worker_id, 'العامل');
+    const price = Number(req.body.price_per_gram);
+    if (!(price > 0) || price > 100000) throw bad('سعر الجرام عيار 24 غير صالح');
+    await db.query('select pg_advisory_xact_lock(hashtext($1))', [`adv:${workerId}:${month}`]);
+    if ((await db.query('select 1 from worker_advances where worker_id=$1 and month=$2', [workerId, month])).rowCount) throw conflict('سُجّلت سلفة هذا الشهر لهذا العامل مسبقاً');
+    const rows = (await workerLossRows(db, workerId, month)).filter((r) => Number(r.charged) > 0);
+    if (!rows.length) throw bad('لا يوجد عجز على حساب العامل في هذا الشهر');
+    if (rows.some((r) => ['pending_review', 'investigating'].includes(r.status)) && !req.body.include_pending) throw conflict('يوجد عجز تحت المراجعة لهذا العامل - اعتمده أولاً أو أكد التسجيل');
+    const grams = rows.reduce((a, r) => a + Number(r.charged), 0);
+    const pure = rows.reduce((a, r) => a + Number(r.charged) * Number(r.karat) / 24, 0);
+    const amount = Math.round(pure * price * 100) / 100;
+    const a = (await db.query(`insert into worker_advances(worker_id, month, grams, pure_grams, price_per_gram, amount, details, notes, created_by)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`, [workerId, month, grams.toFixed(4), pure.toFixed(4), price, amount,
+      JSON.stringify(rows.map((r) => ({ order_no: r.order_no, settlement_no: r.settlement_no, charged: r.charged, karat: r.karat }))), str(req.body.notes, 'ملاحظات'), req.user.id])).rows[0];
+    await notifyUsers(db, [workerId], { kind: 'loss', title: `سُجّلت سلفة عجز شهر ${month.slice(0, 7)}`, body: `${grams.toFixed(3)} جم = ${amount.toFixed(2)} ر.س تُخصم من الراتب`, link: '/w/losses' });
+    await audit(db, req, 'loss.advance', 'worker_advance', a.id, { worker_id: workerId, month, grams, pure, price, amount });
+    return a;
+  }));
+});
+r.delete('/loss-advances/:id', requirePerm('loss.advances'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const a = (await db.query('select * from worker_advances where id=$1', [int(req.params.id)])).rows[0];
+    if (!a) throw notFound();
+    await db.query('delete from worker_advances where id=$1', [a.id]);
+    await audit(db, req, 'loss.advance_cancel', 'worker_advance', a.id, a);
+    return { ok: true };
+  }));
 });
 
 // ------------------------------------------------------------------ صفحة التسعيرة (رابط خارجي)

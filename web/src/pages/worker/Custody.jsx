@@ -61,27 +61,11 @@ export default function WCustody() {
             {c.work_state === 'in_progress' && <Btn size="xl" kind="ghost" onClick={() => setPause(true)}>إيقاف مؤقت</Btn>}
             {c.work_state === 'paused' && <Btn size="xl" onClick={() => act('resume', {}, 'تم الاستئناف')} loading={busy}>استئناف العمل</Btn>}
           </div>
-          <Card title="تسجيل الأوزان">
-            <div className="grid g2">
-              <Field label="الوزن المرتجع (جم)"><WeightInput big value={d.returned} onChange={(v) => setDecl({ ...d, returned: v })} /></Field>
-              <Field label="بقايا الذهب (جم)"><WeightInput big value={d.scrap} onChange={(v) => setDecl({ ...d, scrap: v })} /></Field>
-              <Field label="الوزن المستخدم (اختياري)"><WeightInput value={d.used} onChange={(v) => setDecl({ ...d, used: v })} /></Field>
-            </div>
-            {k && <p className="small muted mt">الفرق عن المسلَّم: <b dir="ltr">{fmtW(k.actual, 4)}</b> جم — الوزن النهائي يعتمده المشرف عند الاستلام.</p>}
-            <Btn className="mt" kind="dark" loading={busy} disabled={d.returned === ''} onClick={() => act('declare', d, 'تم حفظ الأوزان')}>حفظ الأوزان</Btn>
-          </Card>
-          {c.order_id && <Card title="صور التنفيذ والملاحظات">
-            <label className="btn btn-outline-secondary">📷 رفع صور التنفيذ<input type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>
-            <Field label="ملاحظة أو طلب توضيح" className="mt"><Textarea value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-            <div className="hrow gap mt">
-              <Btn kind="ghost" disabled={!note} loading={busy} onClick={() => run(async () => { await api.post(`/w/orders/${c.order_id}/note`, { note }); setNote(''); }, 'تم حفظ الملاحظة')}>حفظ ملاحظة</Btn>
-              <Btn kind="dark" disabled={!note} loading={busy} onClick={() => run(async () => { await api.post(`/w/orders/${c.order_id}/note`, { note, clarification: true }); setNote(''); }, 'تم إرسال طلب التوضيح للمشرف')}>طلب توضيح من المشرف</Btn>
-            </div>
-          </Card>}
+          <div className="small text-body-secondary">بعد الانتهاء سلّم القطعة والبقايا للمشرف، وهو يزنها ويعتمد الوزن الفعلي.</div>
           <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started'} onClick={() => { if (window.confirm('إنهاء المرحلة وتسليمها للمشرف؟')) act('finish', {}, 'تم إنهاء المرحلة - سلّم القطعة للمشرف'); }}>إنهاء المرحلة وتسليمها</Btn>
         </>
       )}
-      {c.work_state === 'finished' && c.status === 'open' && <div className="alert alert-success">أنهيت المرحلة. سلّم القطعة والبقايا للمشرف ليعتمد الوزن.</div>}
+      {c.work_state === 'finished' && c.status === 'open' && <div className="alert alert-success">أنهيت المرحلة. سلّم القطعة والبقايا للمشرف ليزنها ويعتمد الوزن الفعلي.</div>}
       <Modal open={rejectOpen} onClose={() => setRejectOpen(false)} title="رفض استلام العهدة">
         <Field label="ما الخطأ؟ *"><Input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="مثال: الوزن الفعلي 39.5 جم" autoFocus /></Field>
         <Btn kind="danger" disabled={!rejectReason} loading={busy} onClick={() => act('reject', { reason: rejectReason }, 'أُبلغ المشرف بالرفض').then(() => { setRejectOpen(false); setRejectReason(''); })}>إرسال الرفض للمشرف</Btn>

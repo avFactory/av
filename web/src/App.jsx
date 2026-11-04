@@ -52,6 +52,8 @@ const WCustody = L(() => import('./pages/worker/Custody.jsx'));
 const WOrder = L(() => import('./pages/worker/Order.jsx'));
 const WHistory = L(() => import('./pages/worker/History.jsx'));
 const WScan = L(() => import('./pages/worker/Scan.jsx'));
+const WLosses = L(() => import('./pages/worker/Losses.jsx'));
+const LossAdvances = L(() => import('./pages/admin/LossAdvances.jsx'));
 const Catalog = L(() => import('./pages/store/Catalog.jsx'));
 const Product = L(() => import('./pages/store/Product.jsx'));
 const Cart = L(() => import('./pages/store/Cart.jsx'));
@@ -116,6 +118,7 @@ export default function App() {
           <Route path="/admin/stones" element={S(<Stones />, ['stones.view'])} />
           <Route path="/admin/products" element={S(<Products />, ['products.manage'])} />
           <Route path="/admin/pricing" element={S(<Pricing />, ['settings.manage', 'products.manage'])} />
+          <Route path="/admin/loss-advances" element={S(<LossAdvances />, ['loss.advances', 'loss.approve'])} />
           <Route path="/admin/labor" element={S(<Labor />, ['labor.manage'])} />
           <Route path="/admin/invoices" element={S(<Invoices />, ['finance.view'])} />
           <Route path="/admin/invoices/:id" element={S(<InvoiceView />, ['finance.view'])} />
@@ -134,6 +137,7 @@ export default function App() {
           <Route path="/w/orders/:id" element={<WOrder />} />
           <Route path="/w/history" element={<WHistory />} />
           <Route path="/w/scan" element={<WScan />} />
+          <Route path="/w/losses" element={<WLosses />} />
           <Route path="/w/notifications" element={<Notifications />} />
           <Route path="/w/account" element={<Account />} />
         </Route>
