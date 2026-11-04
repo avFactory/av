@@ -47,8 +47,15 @@ export default function Products() {
         ['', (p) => (p.media[0] ? <img src={fileUrl(p.media[0].path, 400)} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }} /> : null)],
         ['رقم المنتج', 'sku'], ['الاسم', (p) => <b>{p.name}</b>], ['النوع', 'product_type'], ['العيارات', (p) => p.karats.join('، ')], ['الألوان', (p) => p.colors.map((c) => COLORS[c]).join('، ')],
         ['الوزن', (p) => fmtW(p.final_weight || p.approx_weight)], ['الأجرة', (p) => (p.labor_method ? `${fmtMoney(p.labor_rate)} ${METHODS[p.labor_method]}` : 'حسب القواعد')], ['المخزون', 'stock_qty'],
-        ['التوفر', (p) => AV[p.availability]], ['', (p) => (p.active ? <Badge tone="ok">ظاهر</Badge> : <Badge>مخفي</Badge>)],
-        ['', (p) => <button type="button" className="btn btn-sm btn-outline-danger" onClick={(e) => { e.stopPropagation(); remove(p); }} title="حذف المنتج">حذف</button>],
+        ['التوفر', (p) => AV[p.availability]],
+        ['', (p) => <span className="d-inline-flex gap-2 align-items-center" onClick={(e) => e.stopPropagation()}>
+          <label className="form-check form-switch m-0 d-inline-flex align-items-center gap-2 text-nowrap small" title={p.active ? 'ظاهر في المتجر — اضغط للإخفاء' : 'مخفي — اضغط للإظهار'}>
+            <input className="form-check-input m-0" type="checkbox" role="switch" checked={!!p.active} disabled={busy}
+              onChange={(e) => run(async () => { await api.post(`/catalog/products/${p.id}/visibility`, { active: e.target.checked }); reload(); }, e.target.checked ? 'ظهر المنتج في المتجر' : 'أُخفي المنتج من المتجر')} />
+            <span className={p.active ? 'text-success' : 'text-body-secondary'}>{p.active ? 'ظاهر في المتجر' : 'مخفي'}</span>
+          </label>
+          <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => remove(p)} title="حذف المنتج">حذف</button>
+        </span>],
       ]} /></div>
       <Modal open={!!f} onClose={() => setF(null)} title={f?.id ? 'تعديل منتج' : 'منتج جديد'} wide>
         {f && <>

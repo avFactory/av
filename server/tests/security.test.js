@@ -176,3 +176,14 @@ test('أداء المتجر: صفحات، أجور صحيحة لكل منتج، 
   assert.ok(r.data.length < big.length / 3, 'المصغّرة أخف بكثير من الأصل');
   assert.match(r.headers.get('cache-control'), /max-age=2592000/);
 });
+
+test('إظهار/إخفاء المنتج في المتجر من القائمة', async () => {
+  const f = new FormData();
+  for (const [k, v] of Object.entries({ name: 'منتج الإظهار', product_type: 'خاتم', karats: '21', colors: 'yellow' })) f.append(k, v);
+  const p = (await admin('POST', '/catalog/products', null, f)).data;
+  assert.equal((await admin('POST', `/catalog/products/${p.id}/visibility`, { active: false })).data.active, false);
+  assert.equal((await pool.query('select active from products where id=$1', [p.id])).rows[0].active, false);
+  assert.equal((await admin('POST', `/catalog/products/${p.id}/visibility`, { active: true })).data.active, true);
+  const cu = await user('vis_cust', 'customer');
+  assert.equal((await cu.c('POST', `/catalog/products/${p.id}/visibility`, { active: false })).status, 403);
+});

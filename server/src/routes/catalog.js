@@ -100,6 +100,16 @@ r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 20)
   }));
 });
 
+/** إظهار/إخفاء المنتج في المتجر بضغطة واحدة */
+r.post('/products/:id/visibility', requirePerm('products.manage'), async (req, res) => {
+  const id = int(req.params.id);
+  const active = !!req.body.active;
+  const p = await one('update products set active=$2 where id=$1 and deleted_at is null returning id, active', [id, active]);
+  if (!p) throw notFound();
+  await audit(pool, req, 'product.visibility', 'product', id, { active });
+  res.json(p);
+});
+
 /**
  * حذف منتج: يُمنع إن كان له مخزون جاهز (قطع أو ذهب)،
  * ويُحذف نهائياً إن لم يُستخدم، وإلا يُؤرشف (يختفي من القوائم والمتجر وتبقى الطلبات والسجلات سليمة).
