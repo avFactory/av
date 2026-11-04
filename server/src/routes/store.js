@@ -13,6 +13,7 @@ import * as ledger from '../lib/ledger.js';
 import { materialFor, orderColor } from './orders.js';
 import { parseDiamonds, optW } from '../lib/stoneReserve.js';
 import { invoiceDetail } from './finance.js';
+import { newGroupNo, nextItemNo } from '../lib/orderGroups.js';
 import { listBranches, createBranch, updateBranch, assertMainAccount } from '../lib/branches.js';
 
 const r = Router();
@@ -110,9 +111,10 @@ r.post('/orders', async (req, res) => {
   const items = Array.isArray(req.body.items) ? req.body.items : [];
   if (!items.length) throw bad('السلة فارغة');
   res.json(await tx(async (db) => {
-    const cartRef = (await db.query("select next_doc_no('CART') v")).rows[0].v;
+    // طلب واحد برقم واحد، وكل صنف بند فيه (ORD-…-1، -2 …) يُصنَّع ويُتتبع مستقلاً
+    const cartRef = await newGroupNo(db);
     const created = [];
-    for (const it of items) {
+    for (const [idx, it] of items.entries()) {
       const p = (await db.query('select * from products where id=$1 and active for update', [int(it.product_id)])).rows[0];
       if (!p || p.availability === 'unavailable') throw bad('منتج غير متوفر');
       const karat = int(it.karat, 'العيار');
@@ -125,14 +127,14 @@ r.post('/orders', async (req, res) => {
       const w = p.final_weight || p.approx_weight;
       const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_id, product_type, title, material_id, approx_weight, size, quantity, notes,
           status, labor_method, labor_rate, labor_estimate, created_by, route_id, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight)
-        values (next_doc_no('ORD'),$1,'store_catalog',$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *`,
+        values ($22,$1,'store_catalog',$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *`,
         [req.user.customer_id, cartRef, p.id, p.product_type, p.name, await materialFor(db, karat), w ? (await db.query('select ($1::numeric * $2)::text v', [w, qty])).rows[0].v : null,
          str(it.size, 'المقاس'), qty, str(it.notes, 'ملاحظات'), labor?.method || null, labor?.rate || null,
-         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null, orderColor(color), JSON.stringify(p.diamonds || []), p.pearl_weight, p.stone_weight, p.zircon_weight])).rows[0];
+         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null, orderColor(color), JSON.stringify(p.diamonds || []), p.pearl_weight, p.stone_weight, p.zircon_weight, `${cartRef}-${idx + 1}`])).rows[0];
       await prod.logStage(db, o.id, null, 'created', req.user.id, `طلب من المتجر (${cartRef})`, true);
       created.push(o);
     }
-    await notifyPerm(db, 'orders.manage', { kind: 'order', title: `طلب جديد من ${req.user.shop_name}${req.user.branch_name ? ' - ' + req.user.branch_name : ''}`, body: `${created.length} منتج - ${cartRef}`, link: '/orders?status=pending_review' });
+    await notifyPerm(db, 'orders.manage', { kind: 'order', title: `طلب جديد من ${req.user.shop_name}${req.user.branch_name ? ' - ' + req.user.branch_name : ''}`, body: `${created.length} صنف - ${cartRef}`, link: `/orders?q=${encodeURIComponent(cartRef)}` });
     await audit(db, req, 'store.order', 'cart', cartRef, { orders: created.map((o) => o.order_no) });
     return { cart_ref: cartRef, orders: created.map((o) => ({ id: o.id, order_no: o.order_no })) };
   }));
@@ -154,15 +156,16 @@ r.post('/custom', upload.array('files', 20), async (req, res) => {
     if (b.from_cart) {
       const ref = str(b.cart_ref, 'رقم السلة', { max: 40 });
       cartRef = ref && (await db.query('select 1 from orders where cart_ref=$1 and customer_id=$2 limit 1', [ref, req.user.customer_id])).rows[0] ? ref
-        : (await db.query("select next_doc_no('CART') v")).rows[0].v;
+        : await newGroupNo(db);
     }
+    const orderNo = cartRef ? await nextItemNo(db, cartRef) : null;
     const karat = oneOf(int(b.karat, 'العيار'), [18, 21, 24], 'العيار');
     const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight)
-      values (next_doc_no('ORD'),$1,'store_custom',$17,$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11,$12,$13,$14,$15,$16) returning *`,
+      values (coalesce($18, next_doc_no('ORD')),$1,'store_custom',$17,$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11,$12,$13,$14,$15,$16) returning *`,
       [req.user.customer_id, str(b.product_type, 'نوع القطعة', { required: true }), str(b.title, 'اسم التصميم') || `تصميم خاص - ${b.product_type}`,
        await materialFor(db, karat), b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : null, str(b.size, 'المقاس'),
        int(b.quantity ?? 1, 'الكمية', { min: 1 }), b.due_date || null, str(b.notes, 'الملاحظات', { max: 5000 }), req.user.id, req.user.branch_id || null, orderColor(b.color) || 'yellow',
-       JSON.stringify(parseDiamonds(b.diamonds)), optW(b.pearl_weight, 'وزن اللؤلؤ'), optW(b.stone_weight, 'وزن الحجر'), optW(b.zircon_weight, 'وزن الزركون'), cartRef])).rows[0];
+       JSON.stringify(parseDiamonds(b.diamonds)), optW(b.pearl_weight, 'وزن اللؤلؤ'), optW(b.stone_weight, 'وزن الحجر'), optW(b.zircon_weight, 'وزن الزركون'), cartRef, orderNo])).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
     let kinds = [];
     try { kinds = JSON.parse(b.file_kinds || '[]'); } catch { kinds = []; }

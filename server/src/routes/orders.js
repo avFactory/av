@@ -13,6 +13,7 @@ import { upload, registerFiles } from '../lib/uploads.js';
 import * as ledger from '../lib/ledger.js';
 import * as prod from '../lib/production.js';
 import { resolveLabor, laborAmount } from '../lib/labor.js';
+import { nextItemNo, orderCopyColumns } from '../lib/orderGroups.js';
 
 const r = Router();
 
@@ -70,7 +71,7 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
   if (f.q) add('(o.order_no ilike ? or o.title ilike ? or c.shop_name ilike ?)', `%${f.q}%`);
   if (f.late) where.push("o.due_date < current_date and o.status not in ('delivered','cancelled','rejected')");
   res.json(await many(`
-    select o.id, o.order_no, o.title, o.status, o.quantity, o.due_date, o.created_at, o.source, o.design_status, o.stage_state,
+    select o.id, o.order_no, o.cart_ref, o.customer_id, o.title, o.status, o.quantity, o.due_date, o.created_at, o.source, o.design_status, o.stage_state,
            o.final_weight::text, o.approx_weight::text, o.labor_estimate::text,
            c.shop_name, br.name as branch_name, s.name as stage_name, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, w.full_name as worker_name,
            (o.due_date < current_date and o.status not in ('delivered','cancelled','rejected')) as late, ${orderThumb()} as thumb
@@ -147,7 +148,10 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
   const invoices = await many(`select distinct i.id, i.invoice_no, i.total::text, i.status, i.invoice_type from invoice_lines l join invoices i on i.id=l.invoice_id where l.order_id=$1`, [id]);
   const stonesG = await prod.embeddedStonesGrams(pool, id);
   const labor = await resolveLabor(pool, { customer_id: o.customer_id, product_id: o.product_id, product_type: o.product_type });
-  res.json({ order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams: stonesG, suggestedLabor: labor });
+  // بنود نفس الطلب (من السلة أو بعد التقسيم)
+  const siblings = o.cart_ref ? await many(`select o.id, o.order_no, o.title, o.quantity, o.status, o.approx_weight::text, r.name as route_name, s.name as stage_name
+      from orders o left join routes r on r.id=o.route_id left join stages s on s.id=o.current_stage_id where o.cart_ref=$1 order by o.id`, [o.cart_ref]) : [];
+  res.json({ order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams: stonesG, suggestedLabor: labor, siblings });
 });
 
 r.put('/:id', requirePerm('orders.manage'), async (req, res) => {
@@ -237,6 +241,62 @@ r.post('/:id/reject', requirePerm('orders.manage'), async (req, res) => {
     await notifyCustomer(db, o.customer_id, { kind: 'order', title: `تعذر قبول الطلب ${o.order_no}`, body: reason, link: `/store/orders/${o.id}` });
     await audit(db, req, 'order.reject', 'order', o.id, { reason });
     return { ok: true };
+  }));
+});
+
+/** بدء إنتاج كل بنود الطلب الجاهزة دفعة واحدة (التصاميم الخاصة تنتظر عرض الأجور) */
+r.post('/group/start', requirePerm('orders.manage'), async (req, res) => {
+  const ref = str(req.body.ref, 'رقم الطلب', { required: true, max: 60 });
+  res.json(await tx(async (db) => {
+    const items = (await db.query("select id from orders where cart_ref=$1 and status in ('pending_review','approved') order by id", [ref])).rows;
+    if (!items.length) throw bad('لا توجد بنود بانتظار البدء في هذا الطلب');
+    const started = [], skipped = [];
+    for (const { id } of items) {
+      const o = await prod.lockOrder(db, id);
+      if (o.source === 'store_custom' && o.status === 'pending_review') { skipped.push({ order_no: o.order_no, reason: 'تصميم خاص بانتظار عرض الأجور' }); continue; }
+      await prod.startProduction(db, o, req.user.id);
+      started.push(o.order_no);
+    }
+    await audit(db, req, 'order.group_start', 'order_group', ref, { started, skipped });
+    return { started, skipped };
+  }));
+});
+
+/**
+ * فصل جزء من كمية البند في بند مستقل (مثلاً جزء يحتاج صب وجزء لا) — قبل بدء الإنتاج فقط.
+ * الوزن التقريبي والأجرة التقديرية تُقسم بالنسبة، والصور تبقى للبندين.
+ */
+r.post('/:id/split', requirePerm('orders.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const o = await prod.lockOrder(db, int(req.params.id));
+    if (!['pending_review', 'quoted'].includes(o.status)) throw conflict('التقسيم متاح قبل اعتماد البند وبدء إنتاجه فقط');
+    const qty = int(req.body.quantity, 'الكمية المفصولة', { min: 1 });
+    if (qty >= o.quantity) throw bad(`الكمية المفصولة يجب أن تكون أقل من كمية البند (${o.quantity})`);
+    const routeId = req.body.route_id ? int(req.body.route_id, 'المسار') : o.route_id;
+    if (routeId && !(await db.query('select 1 from routes where id=$1 and active', [routeId])).rowCount) throw bad('مسار غير صالح');
+    const ref = o.cart_ref || o.order_no;
+    if (!o.cart_ref) await db.query('update orders set cart_ref=$2 where id=$1', [o.id, ref]);
+    const orderNo = await nextItemNo(db, ref, 2);
+    const ratio = qty / o.quantity;
+    const r4 = (x) => (x == null ? null : Math.round(Number(x) * ratio * 10000) / 10000);
+    const r2 = (x) => (x == null ? null : Math.round(Number(x) * ratio * 100) / 100);
+    const newW = r4(o.approx_weight);
+    const newEst = o.labor_method === 'fixed' ? null : r2(o.labor_estimate);
+    const cols = await orderCopyColumns(db);
+    const n = (await db.query(
+      `insert into orders(${cols.join(', ')}, order_no, quantity, approx_weight, labor_estimate, route_id)
+       select ${cols.map((c) => (c === 'cart_ref' ? '$2' : c)).join(', ')}, $3, $4, $5, $6, $7 from orders where id=$1 returning id, order_no`,
+      [o.id, ref, orderNo, qty, newW, newEst, routeId]
+    )).rows[0];
+    await db.query(`update orders set quantity=quantity-$2, approx_weight=case when approx_weight is null then null else approx_weight-$3 end,
+        labor_estimate=case when labor_estimate is null or $4::numeric is null then labor_estimate else labor_estimate-$4 end, updated_at=now() where id=$1`,
+      [o.id, qty, newW || 0, newEst]);
+    await db.query(`insert into order_files(order_id, kind, path, original_name, mime, uploaded_by, customer_visible)
+      select $2, kind, path, original_name, mime, uploaded_by, customer_visible from order_files where order_id=$1 order by id`, [o.id, n.id]);
+    await prod.logStage(db, n.id, null, 'created', req.user.id, `فُصل من ${o.order_no} (الكمية ${qty})`, false);
+    await prod.logStage(db, o.id, null, 'note', req.user.id, `فصل ${qty} قطعة إلى ${n.order_no}`, false);
+    await audit(db, req, 'order.split', 'order', o.id, { new_order: n.order_no, quantity: qty, route_id: routeId });
+    return n;
   }));
 });
 

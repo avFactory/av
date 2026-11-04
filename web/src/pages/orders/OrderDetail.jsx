@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, fileUrl, qrUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
@@ -41,7 +41,7 @@ export default function OrderDetail() {
   const [run, busy] = useAction();
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
-  const { order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams, suggestedLabor } = data;
+  const { order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams, suggestedLabor, siblings = [] } = data;
   const orderBal = gold.find((g) => g.loc_type === 'order')?.balance || '0';
   const cur = stages.find((s) => s.seq === o.stage_seq);
   const openCust = custodies.filter((c) => ['open', 'under_review'].includes(c.status));
@@ -115,6 +115,12 @@ export default function OrderDetail() {
           {cur?.kind === 'design_approval' && o.design_status !== 'approved' && <div className="alert alert-warning mt">بانتظار اعتماد العميل للتصميم — لا يمكن بدء الصب قبل الاعتماد</div>}
         </Card>
       ) : null}
+
+      {(siblings.length > 1 || (['pending_review', 'quoted'].includes(o.status) && o.quantity > 1 && can('orders.manage'))) && (
+        <OrderItems o={o} siblings={siblings} canManage={can('orders.manage')} busy={busy} routes={lookups?.routes || []}
+          onSplit={() => open('split', { quantity: '', route_id: o.route_id ? String(o.route_id) : '' })}
+          onStartAll={() => run(async () => { const r = await api.post('/orders/group/start', { ref: o.cart_ref }); reload(); if (r.skipped?.length) window.alert(`لم يبدأ:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`); }, 'تم بدء إنتاج الطلب')} />
+      )}
 
       <div className="mt">
         <Tabs value={tab} onChange={setTab} tabs={[['overview', 'مراحل الإنتاج'], ['custody', `العهد والتسويات (${custodies.length})`], ['files', `الملفات والتصميم (${files.length})`], ['stones', 'الأحجار'], ['log', 'السجل'], ['finance', 'الفواتير']]} />
@@ -210,9 +216,49 @@ export default function OrderDetail() {
         <Field label="توثيق القرار (كيف ومتى) *"><Textarea value={f.note || ''} onChange={setv('note')} /></Field>
         <Btn loading={busy} onClick={() => act('design/record', f, 'تم التسجيل')}>حفظ</Btn>
       </Modal>
+      <SplitModal open={modal === 'split'} o={o} f={f} setF={setF} busy={busy} routes={lookups?.routes || []} onClose={() => setModal(null)}
+        onSubmit={() => run(async () => { const r = await api.post(`/orders/${o.id}/split`, f); setModal(null); setF({}); reload(); return r; }, 'تم فصل الكمية في بند جديد')} />
       <ReasonModal open={modal === 'cancel'} title="إلغاء الطلب" label="سبب الإلغاء (يعاد رصيد ذهب الطلب للخزنة)" danger busy={busy} onClose={() => setModal(null)} onSubmit={(reason) => act('cancel', { reason }, 'تم الإلغاء')} />
       <ReasonModal open={modal === 'reject'} title="رفض الطلب" label="سبب الرفض (يظهر للعميل)" danger busy={busy} onClose={() => setModal(null)} onSubmit={(reason) => act('reject', { reason }, 'تم الرفض')} />
       <ReasonModal open={modal === 'force'} title="تجاوز شروط المرحلة" label="سبب التجاوز (يسجل في سجل التدقيق)" danger busy={busy} onClose={() => setModal(null)} onSubmit={(reason) => act('advance', { force: true, reason }, 'تم التجاوز')} />
     </Page>
+  );
+}
+
+/** بنود الطلب الواحد: كل بند أمر إنتاج مستقل (يمكن أن يختلف مساره: صب / بدون صب …) */
+function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll }) {
+  const nav = useNavigate();
+  const list = siblings.length ? siblings : [{ id: o.id, order_no: o.order_no, title: o.title, quantity: o.quantity, status: o.status, approx_weight: o.approx_weight, route_name: o.route_name, stage_name: o.stage_name }];
+  const canSplit = canManage && ['pending_review', 'quoted'].includes(o.status) && o.quantity > 1;
+  const startable = canManage && o.cart_ref && siblings.some((x) => ['pending_review', 'approved'].includes(x.status));
+  return (
+    <Card className="mb" title={<span>بنود الطلب {o.cart_ref && <b dir="ltr">{o.cart_ref}</b>} <span className="small text-body-secondary fw-normal">({list.length})</span></span>}
+      actions={<>
+        {canSplit && <Btn size="sm" kind="ghost" onClick={onSplit}>✂ تقسيم الكمية</Btn>}
+        {startable && <Btn size="sm" loading={busy} onClick={onStartAll}>بدء إنتاج الطلب كاملاً</Btn>}
+      </>}>
+      <Table rows={list} onRow={(x) => x.id !== o.id && nav(`/orders/${x.id}`)} rowClass={(x) => (x.id === o.id ? 'row-current' : '')} columns={[
+        ['البند', (x) => <b dir="ltr">{x.order_no}</b>], ['الوصف', 'title'], ['الكمية', 'quantity'],
+        ['الوزن التقريبي', (x) => <span className="n">{fmtW(x.approx_weight)}</span>], ['المسار', (x) => x.route_name || '—'],
+        ['الحالة', (x) => <StatusBadge map={STATUS} value={x.status} />], ['المرحلة', (x) => x.stage_name || '—'],
+      ]} />
+      {canSplit && <div className="small text-body-secondary mt-2">التقسيم يفصل جزءاً من كمية هذا البند في بند مستقل بمساره الخاص (مثلاً جزء يحتاج صب وجزء لا) — متاح قبل بدء الإنتاج.</div>}
+    </Card>
+  );
+}
+
+function SplitModal({ open, o, f, setF, busy, routes, onClose, onSubmit }) {
+  const q = Number(f.quantity || 0);
+  const ok = q >= 1 && q < o.quantity;
+  return (
+    <Modal open={open} onClose={onClose} title={`تقسيم كمية ${o.order_no}`}>
+      <div className="small text-body-secondary mb-2">الكمية الحالية: <b>{o.quantity}</b>. الجزء المفصول يصبح بنداً جديداً بنفس رقم الطلب، ويُقسم الوزن التقريبي والأجرة بالنسبة.</div>
+      <div className="grid g2">
+        <Field label="الكمية المفصولة *"><Input inputMode="numeric" value={f.quantity || ''} onChange={(e) => setF({ ...f, quantity: e.target.value.replace(/\D/g, '') })} autoFocus /></Field>
+        <Field label="مسار الإنتاج للجزء المفصول"><Select value={f.route_id || ''} onChange={(e) => setF({ ...f, route_id: e.target.value })} options={routes.map((r) => [String(r.id), r.name])} /></Field>
+      </div>
+      {q > 0 && <div className="alert alert-light py-2 small">بعد التقسيم: هذا البند <b>{Math.max(0, o.quantity - q)}</b> قطعة، والبند الجديد <b>{q}</b> قطعة.</div>}
+      <div className="hrow end"><Btn loading={busy} disabled={!ok} onClick={onSubmit}>تقسيم</Btn></div>
+    </Modal>
   );
 }

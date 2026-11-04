@@ -411,13 +411,15 @@ test('اطلب تصميمك مع الألماس والأحجار: يُحجز ا�
   for (const [k, v] of Object.entries({ product_type: 'حلق', karat: '21', from_cart: '1', cart_ref: '', file_kinds: JSON.stringify(['reference', 'reference', 'sketch']) })) fd3.append(k, v);
   for (const n of ['a.png', 'b.png', 'c.png']) fd3.append('files', new Blob([png], { type: 'image/png' }), n);
   const c1 = (await cu('POST', '/store/custom', null, fd3)).data;
-  assert.match(c1.cart_ref, /CART/);
+  assert.match(c1.cart_ref, /^ORD-/);
+  assert.equal(c1.order_no, `${c1.cart_ref}-1`, 'بند أول داخل الطلب');
   const kinds = (await pool.query('select kind from order_files where order_id=$1 order by id', [c1.id])).rows.map((x) => x.kind);
   assert.deepEqual(kinds, ['reference', 'reference', 'sketch']);
   const fd4 = new FormData();
   for (const [k, v] of Object.entries({ product_type: 'عقد', karat: '21', from_cart: '1', cart_ref: c1.cart_ref })) fd4.append(k, v);
   const c2 = (await cu('POST', '/store/custom', null, fd4)).data;
   assert.equal(c2.cart_ref, c1.cart_ref, 'نفس رقم السلة');
+  assert.equal(c2.order_no, `${c1.cart_ref}-2`);
 });
 
 test('تصنيفات المتجر: ذهب (يشمل الزركون) / ألماس مخبري / لؤلؤ / أحجار + نوع القطعة', async () => {
@@ -571,4 +573,43 @@ test('مدير المتجر بدون صلاحية المخزون يرى أنوا
   for (const [k, v] of Object.entries({ name: 'خاتم ألماس', product_type: 'خاتم', karats: '18', colors: 'white', diamonds: JSON.stringify([{ lot_id: lot.id, carats: '0.5', count: '1' }]) })) f.append(k, v);
   const p = await sm('POST', '/catalog/products', null, f);
   assert.equal(p.status, 200, JSON.stringify(p.data));
+});
+
+test('طلب السلة برقم واحد وبنود، وبدء إنتاج الطلب كاملاً، وتقسيم كمية بند حسب الشغل', async () => {
+  const mk = async (name) => { const f = new FormData(); for (const [k, v] of Object.entries({ name, product_type: 'خاتم', karats: '21', colors: 'yellow', approx_weight: '2', labor_method: 'per_gram', labor_rate: '10' })) f.append(k, v); return (await call('POST', '/catalog/products', null, f)).data; };
+  const p1 = await mk('خاتم بند 1');
+  const p2 = await mk('خاتم بند 2');
+  const { hashPassword } = await import('../src/lib/auth.js');
+  const c = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('محل البنود','م','0500000123','approved') returning id")).rows[0].id;
+  await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, must_change_password) values ('grpshop',$1,'م','customer',$2,false)", [hashPassword('Group#2026s'), c]);
+  let ck = '';
+  const cu = async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  assert.equal((await cu('POST', '/auth/login', { username: 'grpshop', password: 'Group#2026s' })).status, 200);
+  const sent = (await cu('POST', '/store/orders', { items: [{ product_id: p1.id, karat: 21, quantity: 10 }, { product_id: p2.id, karat: 21, quantity: 3 }] })).data;
+  assert.match(sent.cart_ref, /^ORD-\d{4}-\d+$/);
+  assert.deepEqual(sent.orders.map((o) => o.order_no), [`${sent.cart_ref}-1`, `${sent.cart_ref}-2`], 'بنود برقم الطلب نفسه');
+  // تقسيم البند الأول: 4 قطع لمسار آخر
+  const id1 = sent.orders[0].id;
+  const route2 = (await pool.query('select id from routes where active order by id desc limit 1')).rows[0].id;
+  assert.equal((await call('POST', `/orders/${id1}/split`, { quantity: 10 })).status, 400, 'لا تُفصل كل الكمية');
+  const sp = await call('POST', `/orders/${id1}/split`, { quantity: 4, route_id: route2 });
+  assert.equal(sp.status, 200, JSON.stringify(sp.data));
+  assert.equal(sp.data.order_no, `${sent.cart_ref}-3`);
+  const a = (await pool.query('select quantity, approx_weight::float w, labor_estimate::float e from orders where id=$1', [id1])).rows[0];
+  const b = (await pool.query('select quantity, approx_weight::float w, labor_estimate::float e, route_id, cart_ref from orders where id=$1', [sp.data.id])).rows[0];
+  assert.deepEqual([a.quantity, b.quantity], [6, 4]);
+  assert.equal(Number((a.w + b.w).toFixed(4)), 20, 'الوزن التقريبي مقسوم بالنسبة');
+  assert.equal(b.route_id, route2);
+  assert.equal(b.cart_ref, sent.cart_ref);
+  const d = (await call('GET', `/orders/${id1}`)).data;
+  assert.equal(d.siblings.length, 3, 'بنود الطلب تظهر في التفاصيل');
+  // بدء إنتاج الطلب كاملاً
+  const st = await call('POST', '/orders/group/start', { ref: sent.cart_ref });
+  assert.equal(st.status, 200, JSON.stringify(st.data));
+  assert.equal(st.data.started.length, 3);
+  assert.equal((await pool.query("select count(*)::int n from orders where cart_ref=$1 and status='in_production'", [sent.cart_ref])).rows[0].n, 3);
+  assert.equal((await call('POST', `/orders/${sp.data.id}/split`, { quantity: 1 })).status, 409, 'لا تقسيم بعد بدء الإنتاج');
+  // العميل يرى الطلب كاملاً ببنوده
+  const mine = (await cu('GET', '/store/orders')).data.filter((o) => o.cart_ref === sent.cart_ref);
+  assert.equal(mine.length, 3);
 });

@@ -632,3 +632,13 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .zoom-nav.prev { inset-inline-start: 14px; }
 .zoom-nav.next { inset-inline-end: 14px; }
 .zoom-count { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); color: #fff; font-size: .85rem; z-index: 3; direction: ltr; }
+
+/* تجميع بنود الطلب الواحد */
+tr.row-group { cursor: pointer; background: color-mix(in srgb, var(--gold-soft, #f3ead9) 55%, transparent); }
+tr.row-group td { font-weight: 600; }
+tr.row-group.open td { border-bottom-color: transparent; }
+tr.row-child td { background: var(--bs-tertiary-bg); font-size: .92em; }
+tr.row-child td:first-child { border-inline-start: 3px solid var(--gold, #a8864f); }
+.child-no { font-weight: 600; }
+.grp-caret { display: inline-block; width: 1em; color: var(--gold, #a8864f); }
+tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%, transparent); font-weight: 600; }
