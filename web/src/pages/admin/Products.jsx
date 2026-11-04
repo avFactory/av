@@ -22,9 +22,11 @@ export default function Products() {
   const save = () => run(async () => {
     const fd = new FormData();
     for (const [k, v] of Object.entries(f)) {
-      if (['files', 'media', 'id'].includes(k) || v == null) continue;
+      if (['files', 'media', 'id', 'diamonds', 'has_diamonds'].includes(k) || k.startsWith('show_') || v == null) continue;
       fd.append(k, Array.isArray(v) ? v.join(',') : v);
     }
+    fd.append('diamonds', JSON.stringify(f.has_diamonds === false ? [] : (f.diamonds || []).filter((d) => d.lot_id)));
+    for (const k of ['pearl_weight', 'stone_weight', 'zircon_weight']) if (f[k] == null) fd.append(k, '');
     for (const x of f.files || []) fd.append('files', x);
     if (f.id) await api.put(`/catalog/products/${f.id}`, fd); else await api.post('/catalog/products', fd);
     setF(null); reload();
@@ -64,6 +66,7 @@ export default function Products() {
             <Field label="التوفر"><Select value={f.availability} onChange={(e) => setF({ ...f, availability: e.target.value })} options={Object.entries(AV)} /></Field>
             <Field label="مسار الإنتاج"><Select value={f.route_id || ''} onChange={(e) => setF({ ...f, route_id: e.target.value })} placeholder="تلقائي" options={(lookups?.routes || []).map((r) => [r.id, r.name])} /></Field>
           </div>
+          <StonesSection f={f} setF={setF} />
           <Field label="العيارات"><div className="chips">{[18, 21, 24].map((k) => <button type="button" key={k} className={`chip ${(f.karats || []).includes(k) ? 'on' : ''}`} onClick={() => toggle('karats', k)}>{k}</button>)}</div></Field>
           <Field label="الألوان"><div className="chips">{Object.entries(COLORS).map(([k, v]) => <button type="button" key={k} className={`chip ${(f.colors || []).includes(k) ? 'on' : ''}`} onClick={() => toggle('colors', k)}>{v}</button>)}</div></Field>
           <Field label="الوصف"><Textarea value={f.description || ''} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
@@ -77,5 +80,51 @@ export default function Products() {
         </>}
       </Modal>
     </Page>
+  );
+}
+
+const STONE_FIELDS = [['pearl_weight', 'اللؤلؤ', 'وزن اللؤلؤ (جم)'], ['stone_weight', 'الحجر', 'وزن الحجر (قيراط)'], ['zircon_weight', 'الزركون', 'وزن الزركون (جم)']];
+
+/** تفاصيل أحجار المنتج: الألماس يُختار من مخزون الألماس ويُحجز عند اعتماد الطلب، والباقي للعرض فقط */
+function StonesSection({ f, setF }) {
+  const { data: lots } = useFetch('/stones');
+  const has = f.has_diamonds ?? (f.diamonds || []).length > 0;
+  const list = f.diamonds || [];
+  const setList = (l) => setF({ ...f, diamonds: l, has_diamonds: true });
+  const upd = (i, k, v) => setList(list.map((d, j) => (j === i ? { ...d, [k]: v } : d)));
+  const num = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
+  const opts = (lots || []).map((l) => [l.id, `${l.shape_name} — ${l.size_label || ''}${l.color ? ` ${l.color}` : ''}${l.clarity ? ` ${l.clarity}` : ''} (متوفر ${Number(l.stock_carats)} ct)`]);
+  const shown = (k) => f[`show_${k}`] ?? (f[k] != null && f[k] !== '');
+  return (
+    <div className="card mb-3">
+      <div className="card-header bg-transparent py-2"><b>تفاصيل الأحجار</b> <span className="small text-body-secondary">(اختياري — لكل قطعة)</span></div>
+      <div className="card-body d-grid gap-3">
+        <div className="d-flex flex-wrap gap-2">
+          <button type="button" className={`chip ${has ? 'on' : ''}`} onClick={() => setF({ ...f, has_diamonds: !has, diamonds: !has && !list.length ? [{ lot_id: '', carats: '', count: '' }] : list })}>💎 الألماس</button>
+          {STONE_FIELDS.map(([k, l]) => <button key={k} type="button" className={`chip ${shown(k) ? 'on' : ''}`} onClick={() => setF({ ...f, [`show_${k}`]: !shown(k), [k]: shown(k) ? null : f[k] })}>{l}</button>)}
+        </div>
+        {has && (
+          <div className="d-grid gap-2">
+            {list.map((d, i) => (
+              <div key={i} className="grid g3 align-items-end">
+                <Field label={`نوع الألماس ${list.length > 1 ? i + 1 : ''}`}><Select value={d.lot_id || ''} onChange={(e) => upd(i, 'lot_id', e.target.value)} placeholder={lots ? 'اختر من مخزون الألماس' : 'جارٍ التحميل…'} options={opts} /></Field>
+                <Field label="الوزن (قيراط)"><Input dir="ltr" inputMode="decimal" value={d.carats ?? ''} onChange={(e) => upd(i, 'carats', num(e.target.value))} /></Field>
+                <div className="d-flex gap-2 align-items-end">
+                  <Field label="عدد الحبات" className="flex-grow-1"><Input dir="ltr" inputMode="numeric" value={d.count ?? ''} onChange={(e) => upd(i, 'count', e.target.value.replace(/\D/g, ''))} /></Field>
+                  <Btn kind="ghost" size="sm" onClick={() => setList(list.filter((_, j) => j !== i))}>حذف</Btn>
+                </div>
+              </div>
+            ))}
+            <div><Btn kind="ghost" size="sm" onClick={() => setList([...list, { lot_id: '', carats: '', count: '' }])}>+ نوع ألماس آخر</Btn></div>
+            <div className="small text-body-secondary">عند اعتماد أي طلب لهذا المنتج يُخصم الألماس من المخزون (الوزن × عدد القطع) ويُحجز للطلب، ويُعاد للمخزون إذا أُلغي الطلب.</div>
+          </div>
+        )}
+        {STONE_FIELDS.some(([k]) => shown(k)) && (
+          <div className="grid g3">
+            {STONE_FIELDS.filter(([k]) => shown(k)).map(([k, , label]) => <Field key={k} label={label} hint="للعرض فقط"><Input dir="ltr" inputMode="decimal" value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: num(e.target.value) })} /></Field>)}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

@@ -127,7 +127,7 @@ export default function Stones() {
                       <span className="qty" dir="ltr">{stock > 0 ? ct(stock) : '—'}</span>
                       <span className="unit">{stock > 0 ? 'قيراط' : 'نفد'}</span>
                       <span className="bar"><i style={{ width: `${Math.max(2, (100 * stock) / max)}%` }} /></span>
-                      {(Number(l.with_workers_carats) > 0 || l.stock_count > 0) && <span className="meta">{l.stock_count > 0 ? `${l.stock_count} حبة` : ''}{Number(l.with_workers_carats) > 0 ? ` · لدى العمال ${ct(l.with_workers_carats)}` : ''}</span>}
+                      {(Number(l.with_workers_carats) > 0 || l.stock_count > 0 || Number(l.reserved_carats) > 0) && <span className="meta">{l.stock_count > 0 ? `${l.stock_count} حبة` : ''}{Number(l.with_workers_carats) > 0 ? ` · لدى العمال ${ct(l.with_workers_carats)}` : ''}{Number(l.reserved_carats) > 0 ? ` · محجوز للطلبات ${ct(l.reserved_carats)}` : ''}</span>}
                       {st === 'low' && <span className="flag">منخفض</span>}
                     </button>
                   );
@@ -161,6 +161,7 @@ function LotModal({ lot, onClose, can, onMove, onEdit, onReverse }) {
       <div className="stone-stats">
         <div className="stone-stat main"><span>في المخزن</span><b dir="ltr">{ct(l.stock_carats)}</b><small>قيراط · {l.stock_count} حبة</small></div>
         <div className="stone-stat"><span>لدى العمال</span><b dir="ltr">{ct(l.with_workers_carats)}</b><small>قيراط</small></div>
+        {Number(l.reserved_carats) > 0 && <div className="stone-stat"><span>محجوز للطلبات</span><b dir="ltr">{ct(l.reserved_carats)}</b><small>قيراط</small></div>}
         <div className="stone-stat"><span>مستخدم في الطلبات</span><b dir="ltr">{ct(l.used_carats)}</b><small>قيراط</small></div>
       </div>
       <Kv items={[['النوع', l.stone_type], ['اللون', l.color], ['النقاء', l.clarity], ['الشهادة', l.certificate_no], ['حد التنبيه', l.min_carats ? `${ct(l.min_carats)} قيراط` : '—'], ['السعر', l.unit_price ? fmtMoney(l.unit_price) : '—'], ['ملاحظات', l.notes]]} />

@@ -328,3 +328,37 @@ test('عيار 22 محذوف من النظام', async () => {
   const inv = (await call('GET', '/inventory/gold')).data;
   assert.ok(!inv.materials.some((m) => m.karat === 22));
 });
+
+test('أحجار المنتج: الألماس يُحجز من المخزون عند اعتماد الطلب، والصرف لا يخصم مرتين، والإلغاء يعيده', async () => {
+  const shape = (await call('GET', '/stones/shapes')).data[0];
+  const fl = new FormData(); for (const [k, v] of Object.entries({ shape_id: shape.id, size_label: '1.3 mm', carats: '10', count: '400' })) fl.append(k, v);
+  const lot = (await call('POST', '/stones', null, fl)).data;
+  const bal = async () => (await call('GET', '/stones')).data.find((l) => l.id === lot.id);
+  const fp = new FormData();
+  for (const [k, v] of Object.entries({ name: 'خاتم ألماس قلب', product_type: 'خاتم', karats: '18', colors: 'white', diamonds: JSON.stringify([{ lot_id: lot.id, carats: '0.5', count: '20' }]), pearl_weight: '1.2', zircon_weight: '' })) fp.append(k, v);
+  const p = (await call('POST', '/catalog/products', null, fp)).data;
+  assert.equal(Number(p.pearl_weight), 1.2);
+  assert.equal(p.zircon_weight, null);
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=18 and active")).rows[0];
+  const o = (await call('POST', '/orders', { title: 'خاتم ألماس قلب', product_id: p.id, product_type: 'خاتم', karat: 18, color: 'white', quantity: 2, material_id: mat.id, start: false })).data;
+  assert.equal(Number((await bal()).stock_carats), 10, 'لا خصم قبل الاعتماد');
+  assert.equal((await call('POST', `/orders/${o.id}/start`)).status, 200);
+  let b = await bal();
+  assert.deepEqual([Number(b.stock_carats), Number(b.reserved_carats), b.stock_count, b.reserved_count], [9, 1, 360, 40], 'حجز 0.5 × 2 قطعة');
+  assert.notEqual((await call('POST', `/orders/${o.id}/start`)).status, 200, 'لا يُعتمد مرتين');
+  assert.equal(Number((await bal()).reserved_carats), 1, 'لا يُحجز مرتين');
+  const wk = (await pool.query("insert into users(username, password_hash, full_name, role_code) values ('dw1','x','عامل ألماس','worker') returning id")).rows[0].id;
+  assert.equal((await call('POST', `/stones/${lot.id}/move`, { kind: 'issue', carats: '0.6', count: '24', order_id: o.id, worker_id: wk })).status, 200);
+  b = await bal();
+  assert.deepEqual([Number(b.stock_carats), Number(b.reserved_carats), Number(b.with_workers_carats)], [9, 0.4, 0.6], 'الصرف من المحجوز بدون خصم ثانٍ');
+  assert.equal((await call('POST', `/orders/${o.id}/cancel`, { reason: 'اختبار' })).status, 200);
+  b = await bal();
+  assert.deepEqual([Number(b.stock_carats), Number(b.reserved_carats)], [9.4, 0], 'الإلغاء يعيد المحجوز');
+  // مخزون غير كافٍ يمنع الاعتماد
+  const o2 = (await call('POST', '/orders', { title: 'كمية كبيرة', product_id: p.id, product_type: 'خاتم', karat: 18, color: 'white', quantity: 40, material_id: mat.id, start: false })).data;
+  const st = await call('POST', `/orders/${o2.id}/start`);
+  assert.equal(st.status, 409);
+  assert.match(st.data.error, /مخزون الألماس غير كافٍ/);
+  const pub = (await call('GET', `/public/products/${p.id}`)).data;
+  assert.equal(pub.diamond_details[0].carats, 0.5);
+});

@@ -8,7 +8,10 @@ import { notFound, int } from '../lib/http.js';
 const r = Router();
 const COLS = `p.id, p.sku, p.name, p.product_type, p.description, p.karats, p.colors, p.approx_weight::text, p.final_weight::text, p.sizes, p.availability,
   case when p.availability = 'available' and p.stock_qty > 0 then true else false end as in_stock,
-  coalesce((select json_agg(json_build_object('path', m.path, 'kind', m.kind) order by m.sort, m.id) from product_media m where m.product_id=p.id), '[]') as media`;
+  coalesce((select json_agg(json_build_object('path', m.path, 'kind', m.kind) order by m.sort, m.id) from product_media m where m.product_id=p.id), '[]') as media,
+  p.pearl_weight::text, p.stone_weight::text, p.zircon_weight::text,
+  coalesce((select json_agg(json_build_object('shape', s.name, 'size', l.size_label, 'color', l.color, 'clarity', l.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
+    from jsonb_array_elements(p.diamonds) d join stone_lots l on l.id=(d->>'lot_id')::int left join stone_shapes s on s.id=l.shape_id), '[]') as diamond_details`;
 
 r.get('/products', async (req, res) => {
   const f = req.query;

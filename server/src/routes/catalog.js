@@ -29,7 +29,22 @@ function productVals(b) {
     b.labor_rate !== undefined && b.labor_rate !== '' && b.labor_rate !== null ? money(b.labor_rate, 'الأجرة', { allowZero: true }) : null,
     oneOf(b.availability || 'made_to_order', ['available', 'made_to_order', 'unavailable'], 'التوفر'),
     b.route_id ? int(b.route_id) : null, b.active === undefined ? true : b.active === true || b.active === 'true',
+    JSON.stringify(parseDiamonds(b.diamonds)), optW(b.pearl_weight, 'وزن اللؤلؤ'), optW(b.stone_weight, 'وزن الحجر'), optW(b.zircon_weight, 'وزن الزركون'),
   ];
+}
+
+const optW = (v, name) => (v === undefined || v === null || v === '' ? null : W(v, name));
+/** ألماس المنتج: [{lot_id, carats, count}] لكل قطعة — يُحجز من المخزون عند اعتماد الطلب */
+function parseDiamonds(v) {
+  let list = v;
+  if (typeof v === 'string') { try { list = v ? JSON.parse(v) : []; } catch { throw bad('بيانات الألماس غير صالحة'); } }
+  if (!Array.isArray(list)) return [];
+  return list.filter((d) => d && d.lot_id).slice(0, 20).map((d) => {
+    const carats = Number(d.carats);
+    if (!(carats > 0) || carats > 10000) throw bad('وزن الألماس (قيراط) مطلوب لكل نوع');
+    const count = d.count === '' || d.count == null ? 0 : int(d.count, 'عدد الحبات', { min: 0 });
+    return { lot_id: int(d.lot_id, 'نوع الألماس'), carats: Math.round(carats * 10000) / 10000, count };
+  });
 }
 
 /** أنواع القطع وبادئاتها، ومعاينة رقم المنتج التالي لنوع معيّن */
@@ -45,8 +60,9 @@ r.post('/products', requirePerm('products.manage'), upload.array('files', 10), a
     const vals = productVals(req.body);
     // رقم المنتج يُولَّد تلقائياً من نوع القطعة (RIN، SW، NK...) إذا لم يُدخل يدوياً
     if (!vals[0]) vals[0] = await nextSku(db, vals[2], { lock: true });
-    const p = (await db.query(`insert into products(sku, name, product_type, description, karats, colors, approx_weight, final_weight, sizes, labor_method, labor_rate, availability, route_id, active)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning *`, vals).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; })).rows[0];
+    const p = (await db.query(`insert into products(sku, name, product_type, description, karats, colors, approx_weight, final_weight, sizes, labor_method, labor_rate, availability, route_id, active,
+        diamonds, pearl_weight, stone_weight, zircon_weight)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning *`, vals).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; })).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
     for (const [i, f] of files.entries()) await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,$4)', [p.id, f.path, f.mime?.startsWith('video') ? 'video' : 'image', i]);
     await audit(db, req, 'product.create', 'product', p.id, { sku: p.sku });
@@ -62,7 +78,8 @@ r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 10)
     const vals = productVals(req.body);
     if (!vals[0]) vals[0] = before.sku;
     await db.query(`update products set sku=$2, name=$3, product_type=$4, description=$5, karats=$6, colors=$7, approx_weight=$8, final_weight=$9, sizes=$10,
-      labor_method=$11, labor_rate=$12, availability=$13, route_id=$14, active=$15 where id=$1`, [id, ...vals]).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; });
+      labor_method=$11, labor_rate=$12, availability=$13, route_id=$14, active=$15,
+      diamonds=$16, pearl_weight=$17, stone_weight=$18, zircon_weight=$19 where id=$1`, [id, ...vals]).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; });
     const files = await registerFiles(db, req.files, req.user.id);
     for (const f of files) await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,99)', [id, f.path, f.mime?.startsWith('video') ? 'video' : 'image']);
     for (const mid of arr(req.body.remove_media)) await db.query('delete from product_media where id=$1 and product_id=$2', [int(mid), id]);

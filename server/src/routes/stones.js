@@ -1,5 +1,6 @@
 // إدارة الألماس والأحجار الكريمة: الدفعات، التسليم للعمال، الاستخدام، المرتجع، المتبقي
 import { Router } from 'express';
+import { reservedFor } from '../lib/stoneReserve.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm } from '../lib/auth.js';
 import { bad, conflict, notFound, int, str, oneOf } from '../lib/http.js';
@@ -18,7 +19,7 @@ const CT = (v, name = 'القيراط') => {
 
 r.get('/', requirePerm('stones.view'), async (_req, res) => {
   res.json(await many(`select l.*, l.unit_price::text, l.min_carats::text, b.stock_carats::text, b.stock_count, b.with_workers_carats::text, b.with_workers_count,
-      b.used_carats::text, b.used_count, b.lost_carats::text, b.total_in_carats::text, b.total_in_count,
+      b.used_carats::text, b.used_count, b.lost_carats::text, b.total_in_carats::text, b.total_in_count, b.reserved_carats::text, b.reserved_count,
       s.name as shape_name, s.icon as shape_icon, s.sort_order as shape_sort,
       (select path from stone_media sm where sm.lot_id=l.id order by id limit 1) as photo
     from stone_lots l join stone_lot_balances b on b.lot_id=l.id join stone_shapes s on s.id=l.shape_id
@@ -255,6 +256,17 @@ r.post('/:id/move', requirePerm('stones.manage'), async (req, res) => {
     const bal = (await db.query('select * from stone_lot_balances where lot_id=$1', [id])).rows[0];
     if (!bal) throw notFound();
     if (['issue', 'return', 'used', 'lost'].includes(kind) && (!orderId || !workerId)) throw bad('حدد الطلب والعامل');
+    // الألماس المحجوز لهذا الطلب عند اعتماده: يُفك حجزه أولاً ثم يُصرف للعامل (فلا يُخصم من المخزن مرتين)
+    if (kind === 'issue') {
+      const res = await reservedFor(db, id, orderId);
+      const c = Math.min(res.carats, Number(carats));
+      const n = Math.min(res.count, count);
+      if (c > 0 || n > 0) {
+        await db.query(`insert into stone_movements(lot_id, kind, carats, count, order_id, note, created_by) values ($1,'deallocate',$2,$3,$4,$5,$6)`,
+          [id, Math.max(0, c), Math.max(0, n), orderId, 'فك الحجز عند الصرف للعامل', req.user.id]);
+        Object.assign(bal, (await db.query('select * from stone_lot_balances where lot_id=$1', [id])).rows[0]);
+      }
+    }
     if (['issue', 'adjust_out'].includes(kind) && (Number(bal.stock_carats) < Number(carats) || Number(bal.stock_count) < count)) throw bad('رصيد الدفعة في المخزن غير كافٍ');
     if (['return', 'used', 'lost'].includes(kind)) {
       const w = (await db.query(`select coalesce(sum(case kind when 'issue' then carats else -carats end),0) c, coalesce(sum(case kind when 'issue' then count else -count end),0) n

@@ -1,5 +1,6 @@
 // إدارة الطلبات وأوامر الإنتاج (الإدارة / مدير الإنتاج / المشرف)
 import { Router } from 'express';
+import { releaseDiamonds } from '../lib/stoneReserve.js';
 import { autoShortName } from '../lib/shortName.js';
 import QRCode from 'qrcode';
 import { pool, tx, many, one } from '../db.js';
@@ -226,6 +227,7 @@ r.post('/:id/reject', requirePerm('orders.manage'), async (req, res) => {
     if (!['pending_review', 'quoted', 'approved'].includes(o.status)) throw conflict('لا يمكن رفض الطلب في حالته الحالية');
     const reason = str(req.body.reason, 'السبب', { required: true });
     await db.query("update orders set status='rejected', updated_at=now() where id=$1", [o.id]);
+    await releaseDiamonds(db, o.id, req.user.id, `رفض الطلب ${o.order_no}`);
     await prod.logStage(db, o.id, null, 'status', req.user.id, `رفض الطلب: ${reason}`, true);
     await notifyCustomer(db, o.customer_id, { kind: 'order', title: `تعذر قبول الطلب ${o.order_no}`, body: reason, link: `/store/orders/${o.id}` });
     await audit(db, req, 'order.reject', 'order', o.id, { reason });
@@ -254,6 +256,7 @@ r.post('/:id/cancel', requirePerm('orders.manage'), async (req, res) => {
     const bals = await db.query("select material_id, balance::text from gold_balances where loc_type='order' and loc_ref=$1 and balance > 0", [o.id]);
     for (const b of bals.rows) await ledger.post(db, { kind: 'dealloc', material_id: b.material_id, weight: b.balance, from: ['order', o.id], to: ['vault', null], order_id: o.id, reason: `إلغاء الطلب: ${reason}`, user_id: req.user.id });
     await db.query("update orders set status='cancelled', updated_at=now() where id=$1", [o.id]);
+    await releaseDiamonds(db, o.id, req.user.id, `إلغاء الطلب ${o.order_no}`);
     await prod.logStage(db, o.id, o.current_stage_id, 'status', req.user.id, `إلغاء: ${reason}`, true);
     await audit(db, req, 'order.cancel', 'order', o.id, { reason });
     return { ok: true };

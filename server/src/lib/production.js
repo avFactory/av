@@ -1,4 +1,5 @@
 import { bad, conflict, notFound } from './http.js';
+import { reserveDiamonds } from './stoneReserve.js';
 import { notifyCustomer, notifyPerm, notifyUsers } from './notify.js';
 import * as ledger from './ledger.js';
 import { audit } from './audit.js';
@@ -63,6 +64,8 @@ export { logStage };
 /** تحويل الطلب إلى أمر إنتاج ودخوله المرحلة الأولى */
 export async function startProduction(db, order, userId) {
   if (!['approved', 'pending_review', 'quoted'].includes(order.status)) throw conflict('لا يمكن بدء الإنتاج لهذا الطلب في حالته الحالية');
+  // اعتماد الطلب يحجز ألماس المنتج من المخزون (اللؤلؤ والحجر والزركون للعرض فقط)
+  await reserveDiamonds(db, order, userId);
   const routeId = order.route_id || (await pickRoute(db, order.product_type, null));
   const stages = await routeStages(db, routeId);
   if (!stages.length) throw bad('مسار الإنتاج لا يحتوي مراحل');
