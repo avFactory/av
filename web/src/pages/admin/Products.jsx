@@ -91,7 +91,6 @@ export default function Products() {
               </span>
             );
           })}</div>}
-          <label className="check"><input type="checkbox" checked={f.active !== false} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ظاهر في المتجر</label>
           <div className="hrow end gap">
             {f.id && <Btn kind="danger" loading={busy} onClick={() => remove(f)}>حذف المنتج</Btn>}
             <Btn loading={busy} disabled={!f.product_type || !f.name} onClick={save}>حفظ</Btn>
