@@ -642,3 +642,13 @@ tr.row-child td:first-child { border-inline-start: 3px solid var(--gold, #a8864f
 .child-no { font-weight: 600; }
 .grp-caret { display: inline-block; width: 1em; color: var(--gold, #a8864f); }
 tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%, transparent); font-weight: 600; }
+
+/* منتجات الطلب عند العميل */
+.order-items { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.order-item { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center; padding: 8px; border: 1px solid var(--bs-border-color); border-radius: 12px; background: var(--bs-body-bg); color: inherit; font: inherit; text-align: right; cursor: pointer; }
+.order-item.on { border-color: var(--gold, #a8864f); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold, #a8864f) 25%, transparent); cursor: default; }
+.order-item-img { width: 72px; height: 72px; border-radius: 10px; overflow: hidden; background: var(--gold-soft); display: grid; place-items: center; color: var(--gold); }
+.order-item-img img { width: 100%; height: 100%; object-fit: cover; }
+.order-item-info { display: grid; gap: 2px; min-width: 0; }
+.order-item-info b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 480px) { .order-items { grid-template-columns: 1fr; } .order-item { grid-template-columns: 60px 1fr; } .order-item-img { width: 60px; height: 60px; } .order-item-st { grid-column: 2; } }

@@ -215,8 +215,14 @@ r.get('/orders/:id', async (req, res) => {
   const diamond = await prod.hasDiamonds(pool, o.id);
   const stages = o.route_id ? (await prod.routeStages(pool, o.route_id)).filter((s) => s.customer_visible && (diamond || s.code !== 'lab')).map((s) => ({ seq: s.seq, name: s.name })) : [];
   const total = o.route_id ? (await one('select count(*)::int n from route_stages where route_id=$1', [o.route_id])).n : 0;
-  const history = await many(`select l.event, l.note, l.created_at, s.name as stage_name from order_stage_log l left join stages s on s.id=l.stage_id
-                              where l.order_id=$1 and l.customer_visible order by l.id`, [o.id]);
+  // منتجات الطلب (كل بنود نفس الطلب) بصورة مصغّرة وتفاصيل مختصرة
+  const items = await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, o.status, o.approx_weight::text, o.final_weight::text,
+      m.karat, coalesce(o.color, m.color) as color, s.name as stage_name,
+      coalesce((select pm.path from product_media pm where pm.product_id=o.product_id and pm.kind='image' order by pm.sort, pm.id limit 1),
+               (select f.path from order_files f where f.order_id=o.id and f.customer_visible and f.mime like 'image/%' order by f.id limit 1)) as image
+    from orders o join materials m on m.id=o.material_id left join stages s on s.id=o.current_stage_id
+    where o.customer_id=$1 and ($2::int is null or o.branch_id=$2) and (o.id=$3 or ($4::text is not null and o.cart_ref=$4))
+    order by o.id`, [req.user.customer_id, req.user.branch_id || null, o.id, o.cart_ref || null]);
   const files = await many("select id, kind, path, original_name, mime from order_files where order_id=$1 and customer_visible order by id", [o.id]);
   const designs = await many('select id, file_ids, message, sent_at, status, customer_note, decided_at from design_reviews where order_id=$1 order by id desc', [o.id]);
   const invoices = await many(`select distinct i.id, i.invoice_no, i.total::text, i.invoice_type from invoice_lines l join invoices i on i.id=l.invoice_id where l.order_id=$1`, [o.id]);
@@ -233,10 +239,10 @@ r.get('/orders/:id', async (req, res) => {
       quote_note: o.quote_note, quote_sent_at: o.quote_sent_at, customer_accepted_at: o.customer_accepted_at, due_date: o.due_date, notes: o.notes,
       design_status: o.design_status, design_approval_required: o.design_approval_required, stage_name: stageName, created_at: o.created_at,
       progress: total && o.stage_seq ? Math.round((100 * (o.status === 'delivered' ? total : o.stage_seq - 1)) / total) : 0, delivered_at: o.delivered_at,
-      product_image: productImage,
+      product_image: productImage, cart_ref: o.cart_ref,
       ...stones,
     },
-    stages, current_seq: o.stage_seq, history, files, designs, invoices,
+    stages, current_seq: o.stage_seq, items, files, designs, invoices,
   });
 });
 

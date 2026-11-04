@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtDate, fmtDT, fmtMoney, fmtW, STATUS, DESIGN_STATUS, METHODS, COLORS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Kv, Loader, Page, StatusBadge, Textarea, useAction, useFetch, ErrorBox } from '../../ui.jsx';
@@ -12,15 +12,15 @@ export default function Track() {
   const [run, busy] = useAction();
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
-  const { order: o, stages, current_seq: seq, history, files, designs, invoices } = data;
+  const { order: o, stages, current_seq: seq, items = [], files, designs, invoices } = data;
   const pending = designs.find((d) => d.status === 'pending');
   const decide = (decision) => run(async () => { await api.post(`/store/orders/${o.id}/design`, { decision, note }); setNote(''); reload(); }, 'تم إرسال قراركم');
   return (
-    <Page title={`الطلب ${o.order_no}`} subtitle={o.title} back="/store/orders">
+    <Page title={`الطلب ${o.cart_ref || o.order_no}`} subtitle={items.length > 1 ? `${items.length} منتجات` : o.title} back="/store/orders">
+      <OrderItems items={items} current={o.id} />
       <div className="grid g2 mb">
         <Card title="تفاصيل الطلب" actions={<StatusBadge map={STATUS} value={o.status} />}>
-          {o.product_image && <img src={fileUrl(o.product_image, 400)} alt="" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 12, marginBottom: 10 }} />}
-          <Kv items={[o.branch_name && ['الفرع', o.branch_name], ['العيار', o.karat], ['اللون', COLORS[o.color] || o.color], ...stoneItems(o), ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن', o.final_weight ? `${fmtW(o.final_weight)} جم (نهائي)` : o.approx_weight ? `${fmtW(o.approx_weight)} جم (تقريبي)` : '—'],
+          <Kv items={[items.length > 1 && ['البند', o.order_no], items.length > 1 && ['المنتج', o.title], o.branch_name && ['الفرع', o.branch_name], ['العيار', o.karat], ['اللون', COLORS[o.color] || o.color], ...stoneItems(o), ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن', o.final_weight ? `${fmtW(o.final_weight)} جم (نهائي)` : o.approx_weight ? `${fmtW(o.approx_weight)} جم (تقريبي)` : '—'],
             ['أجور التصنيع', o.labor_rate ? `${fmtMoney(o.labor_rate)} ${METHODS[o.labor_method] || ''}` : '—'], ['التقدير', o.labor_estimate ? fmtMoney(o.labor_estimate) : '—'],
             ['المرحلة الحالية', o.stage_name], ['موعد التسليم المتوقع', fmtDate(o.due_date)], o.design_approval_required && ['التصميم', DESIGN_STATUS[o.design_status]]]} />
         </Card>
@@ -54,16 +54,37 @@ export default function Track() {
           </div>
         </Card>
       )}
-      <div className="grid g2">
-        <Card title="سجل المراحل">
-          <ol className="timeline">{history.map((h, i) => <li key={i} className="done"><div><b>{h.stage_name || STATUS[h.event]?.[0] || ''}</b> <span className="small">{h.event === 'entered' ? 'بدأت' : h.event === 'completed' ? 'اكتملت' : ''} {h.note || ''}</span><div className="small muted">{fmtDT(h.created_at)}</div></div></li>)}</ol>
-        </Card>
-        <div className="grid">
+      {(files.length > 0 || designs.length > 0 || invoices.length > 0) && (
+        <div className="grid g2">
           {files.length > 0 && <Card title="الملفات والصور"><div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div></Card>}
           {designs.length > 0 && <Card title="سجل اعتماد التصميم">{designs.map((d) => <div key={d.id} className="small hrow between"><span>{DESIGN_STATUS[d.status] || d.status} {d.customer_note ? `- ${d.customer_note}` : ''}</span><span className="muted">{fmtDT(d.decided_at || d.sent_at)}</span></div>)}</Card>}
           {invoices.length > 0 && <Card title="الفواتير">{invoices.map((i) => <Link key={i.id} to={`/store/invoices/${i.id}`} className="link hrow between"><span>{i.invoice_no}</span><span>{fmtMoney(i.total)}</span></Link>)}</Card>}
         </div>
-      </div>
+      )}
     </Page>
+  );
+}
+
+/** المنتجات المطلوبة: صورة مصغّرة وبجانبها التفاصيل المختصرة */
+function OrderItems({ items, current }) {
+  const nav = useNavigate();
+  if (!items.length) return null;
+  return (
+    <Card title={`المنتجات المطلوبة (${items.length})`} className="mb">
+      <div className="order-items">
+        {items.map((x) => (
+          <button key={x.id} type="button" className={`order-item ${x.id === current ? 'on' : ''}`} onClick={() => x.id !== current && nav(`/store/orders/${x.id}`)}>
+            <span className="order-item-img">{x.image ? <img src={fileUrl(x.image, 200)} alt="" loading="lazy" /> : '◇'}</span>
+            <span className="order-item-info">
+              <b>{x.title}</b>
+              <span className="small muted" dir="ltr" style={{ textAlign: 'right' }}>{x.order_no}</span>
+              <span className="small">عيار {x.karat} · {COLORS[x.color] || x.color} · الكمية {x.quantity}{x.size ? ` · مقاس ${x.size}` : ''}</span>
+              <span className="small muted">{x.final_weight ? `الوزن ${fmtW(x.final_weight)} جم` : x.approx_weight ? `الوزن التقريبي ${fmtW(x.approx_weight)} جم` : ''}{x.stage_name ? `${x.final_weight || x.approx_weight ? ' · ' : ''}${x.stage_name}` : ''}</span>
+            </span>
+            <span className="order-item-st"><StatusBadge map={STATUS} value={x.status} /></span>
+          </button>
+        ))}
+      </div>
+    </Card>
   );
 }

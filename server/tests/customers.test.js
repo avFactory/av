@@ -614,4 +614,7 @@ test('طلب السلة برقم واحد وبنود، وبدء إنتاج ال�
   // العميل يرى الطلب كاملاً ببنوده
   const mine = (await cu('GET', '/store/orders')).data.filter((o) => o.cart_ref === sent.cart_ref);
   assert.equal(mine.length, 3);
+  const det = (await cu('GET', `/store/orders/${id1}`)).data;
+  assert.equal(det.items.length, 3, 'تفاصيل الطلب تعرض كل منتجاته');
+  assert.equal(det.history, undefined, 'لا يُرسل سجل المراحل');
 });
