@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
-import { fmtW, fmtDT, fmtPct, WORK_STATE, calcLoss, CUSTODY_STATUS } from '../../format.js';
+import { fmtW, fmtDT, fmtPct, WORK_STATE, calcLoss, CUSTODY_STATUS, COLORS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Input, Loader, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal } from '../../ui.jsx';
 
 /** شاشة العهدة للعامل: تأكيد الاستلام، بدء/إيقاف العمل، تسجيل الأوزان، رفع الصور، إنهاء المرحلة */
@@ -27,14 +27,16 @@ export default function WCustody() {
     await api.post(`/w/orders/${c.order_id}/files`, fd);
     reloadOrder();
   }, 'تم رفع الصور');
+  const mainImg = (od?.files || []).find((f) => f.mime?.startsWith('image')) || (c.thumb ? { path: c.thumb } : null);
   const k = d.returned !== '' ? calcLoss(c.weight_issued, d.returned, d.scrap || 0, 0) : null;
   return (
     <div className="wk-body">
       <Link to="/w" className="back">→ مهامي</Link>
       <Card title={<span>{c.order_no}</span>} actions={c.status === 'open' ? <Badge tone="gold">{WORK_STATE[c.work_state]}</Badge> : <StatusBadge map={CUSTODY_STATUS} value={c.status} />}>
+        {mainImg && <a href={fileUrl(mainImg.path)} target="_blank" rel="noreferrer" className="wk-hero-img"><img src={fileUrl(mainImg.path)} alt={c.title} /></a>}
         <Kv items={[['الوصف', c.title], ['المرحلة الحالية', c.stage_name], ['المادة', c.material_name], ['الوزن المسلم لك', <span dir="ltr">{fmtW(c.weight_issued)} جم</span>],
           c.kind === 'general' && ['نوع العهدة', 'عهدة عامة (رصيد بدون طلب)'],
-          c.kind !== 'general' && ['عدد القطع', c.pieces], ['المقاس', c.size], ['تاريخ التسليم', fmtDT(c.issued_at)], c.order_notes && ['ملاحظات الطلب', c.order_notes]]} />
+          c.kind !== 'general' && ['عدد القطع', c.pieces], ['المقاس', c.size], ['تاريخ التسليم', fmtDT(c.issued_at)], c.order_notes && ['ملاحظات الطلب', c.order_notes], od?.order?.color && ['اللون', COLORS[od.order.color] || od.order.color], ...(od?.order ? stoneItems(od.order) : [])]} />
       </Card>
       {od?.files?.length > 0 && (
         <Card title="التصاميم والصور">

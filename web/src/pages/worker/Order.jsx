@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
-import { fmtDT } from '../../format.js';
+import { fmtDT, COLORS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Loader, Textarea, useAction, useFetch, Kv, ErrorBox } from '../../ui.jsx';
 
 /** طلب مسند للعامل (مثل التصميم): مشاهدة التفاصيل، رفع الملفات، إنهاء المهمة */
@@ -25,7 +25,8 @@ export default function WOrder() {
     <div className="wk-body">
       <Link to="/w" className="back">→ مهامي</Link>
       <Card title={o.order_no}>
-        <Kv items={[['الوصف', o.title], ['المرحلة', o.stage?.name], ['المادة', o.material], ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن التقريبي', o.approx_weight], ['ملاحظات', o.notes]]} />
+        {files.find((f) => f.mime?.startsWith('image')) && (() => { const im = files.find((f) => f.mime?.startsWith('image')); return <a href={fileUrl(im.path)} target="_blank" rel="noreferrer" className="wk-hero-img"><img src={fileUrl(im.path)} alt={o.title} /></a>; })()}
+        <Kv items={[['الوصف', o.title], ['المرحلة', o.stage?.name], ['المادة', o.material], o.color && ['اللون', COLORS[o.color] || o.color], ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن التقريبي', o.approx_weight], ...stoneItems(o), ['ملاحظات', o.notes]]} />
       </Card>
       <Card title="الملفات والتصاميم">
         <div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>

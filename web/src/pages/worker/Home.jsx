@@ -27,7 +27,7 @@ export default function WHome() {
       ))}
       {tasks.map((t) => (
         <Link key={t.order_id} to={`/w/orders/${t.order_id}`} className="task">
-          <div className="task-h"><div><b>{t.order_no}</b><div className="muted small">{t.title}</div></div><Badge tone="info">{t.stage_name}</Badge></div>
+          <div className="task-h"><div className="hrow gap">{t.thumb ? <img src={fileUrl(t.thumb)} alt="" /> : null}<div><b>{t.order_no}</b><div className="muted small">{t.title}</div></div></div><Badge tone="info">{t.stage_name}</Badge></div>
           {t.stage_state === 'pending_approval' && <span className="small muted">بانتظار اعتماد المشرف</span>}
         </Link>
       ))}

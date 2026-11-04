@@ -31,12 +31,17 @@ r.get('/tasks', async (req, res) => {
     select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
            c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text, c.issue_batch_id,
            coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, m.name as material_name, c.kind, c.purpose,
-           (select f.path from order_files f where f.order_id=o.id and f.kind in ('design','reference','sketch') and f.mime like 'image/%' order by f.id desc limit 1) as thumb
+           coalesce(
+             (select f.path from order_files f where f.order_id=o.id and f.mime like 'image/%' order by (f.kind='design') desc, (f.kind='reference') desc, (f.kind='sketch') desc, f.id desc limit 1),
+             (select pm.path from product_media pm where pm.product_id=o.product_id and pm.kind='image' order by pm.sort, pm.id limit 1)) as thumb
     from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
     where c.worker_id=$1 and c.status in ('open','under_review') order by c.issued_at`, [req.user.id]);
   // مهام بدون ذهب (مثل التصميم) مسندة للعامل
   const tasks = await many(`
-    select o.id as order_id, o.order_no, o.title, o.due_date, o.stage_state, s.name as stage_name, s.kind as stage_kind, s.requires_approval
+    select o.id as order_id, o.order_no, o.title, o.due_date, o.stage_state, s.name as stage_name, s.kind as stage_kind, s.requires_approval,
+           coalesce(
+             (select f.path from order_files f where f.order_id=o.id and f.mime like 'image/%' order by (f.kind='design') desc, (f.kind='reference') desc, (f.kind='sketch') desc, f.id desc limit 1),
+             (select pm.path from product_media pm where pm.product_id=o.product_id and pm.kind='image' order by pm.sort, pm.id limit 1)) as thumb
     from orders o join stages s on s.id=o.current_stage_id
     where o.assigned_worker_id=$1 and o.status='in_production' and not s.handles_gold`, [req.user.id]);
   res.json({ custodies, tasks });
@@ -44,7 +49,14 @@ r.get('/tasks', async (req, res) => {
 
 r.get('/orders/:id', async (req, res) => {
   const o = await canSeeOrder(pool, req, int(req.params.id));
-  const files = await many("select id, kind, path, original_name, mime, created_at from order_files where order_id=$1 order by id", [o.id]);
+  // صور الطلب (التصميم والمرجع…) ثم صور المنتج إن كان الطلب من منتج في المتجر
+  const files = await many(`select id::text, kind, path, original_name, mime, created_at from order_files where order_id=$1
+    union all select 'p' || id, 'product', path, 'صورة المنتج', case kind when 'video' then 'video/mp4' else 'image/jpeg' end, null from product_media where product_id=$2
+    order by kind='product', id`, [o.id, o.product_id || 0]);
+  const stones = await one(`select o.color, o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text,
+      coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
+        from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details
+    from orders o where o.id=$1`, [o.id]);
   const material = await one('select name from materials where id=$1', [o.material_id]);
   const stage = await one('select name, kind, handles_gold, required_fields from stages where id=$1', [o.current_stage_id]);
   const myCustodies = await many(`select c.*, c.weight_issued::text, s.name as stage_name from custodies c join stages s on s.id=c.stage_id
@@ -54,7 +66,7 @@ r.get('/orders/:id', async (req, res) => {
   res.json({
     order: { id: o.id, order_no: o.order_no, title: o.title, size: o.size, quantity: o.quantity, due_date: o.due_date, notes: o.notes,
              product_type: o.product_type, approx_weight: o.approx_weight, material: material?.name, stage, stage_state: o.stage_state,
-             assigned_to_me: o.assigned_worker_id === req.user.id },
+             assigned_to_me: o.assigned_worker_id === req.user.id, ...stones },
     files, custodies: myCustodies, log,
   });
 });

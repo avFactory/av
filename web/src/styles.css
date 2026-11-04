@@ -208,7 +208,7 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .wk-body { padding: 14px; display: grid; gap: 12px; }
 .task { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: grid; gap: 10px; text-decoration: none; color: inherit; }
 .task-h { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
-.task img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; background: var(--bg); }
+.task img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; background: var(--bg); flex: none; }
 .wk-nav { z-index: 1020; padding-bottom: env(safe-area-inset-bottom); --bs-nav-link-color: var(--muted); --bs-nav-link-hover-color: var(--ink); }
 .wk-nav .nav-link { padding: .55rem .25rem; font-size: .8rem; font-weight: 600; }
 .wk-nav .nav-link.active { color: var(--gold-ink); }
@@ -560,3 +560,7 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .reg-doc-ic { font-size: 1.6rem; color: #c9a227; font-weight: 700; }
 .reg-doc .small { color: var(--bs-secondary-color); word-break: break-all; }
 @media (max-width: 600px) { .reg-docs { grid-template-columns: 1fr; } .reg-doc { min-height: 110px; } }
+
+/* صورة الطلب الكبيرة في شاشة العامل */
+.wk-hero-img { display: block; margin: -4px 0 12px; border-radius: 12px; overflow: hidden; background: #fff; border: 1px solid var(--bs-border-color); }
+.wk-hero-img img { display: block; width: 100%; max-height: 320px; object-fit: contain; }
