@@ -130,7 +130,7 @@ export default function Receive() {
                     <label className="line-head check" style={{ cursor: 'pointer' }}>
                       <span className="hrow gap">
                         <input type="checkbox" checked={!!l} onChange={() => toggle(c)} />
-                        {c.thumb && <img src={fileUrl(c.thumb)} alt="" className="order-thumb" />}
+                        {c.thumb && <img src={fileUrl(c.thumb, 400)} alt="" className="order-thumb" />}
                         <span><b>{c.order_no}</b> <span className="muted">— {c.title}</span></span>
                       </span>
                       <span className="hrow gap wrap">

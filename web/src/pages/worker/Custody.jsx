@@ -33,14 +33,14 @@ export default function WCustody() {
     <div className="wk-body">
       <Link to="/w" className="back">→ مهامي</Link>
       <Card title={<span>{c.order_no}</span>} actions={c.status === 'open' ? <Badge tone="gold">{WORK_STATE[c.work_state]}</Badge> : <StatusBadge map={CUSTODY_STATUS} value={c.status} />}>
-        {mainImg && <a href={fileUrl(mainImg.path)} target="_blank" rel="noreferrer" className="wk-hero-img"><img src={fileUrl(mainImg.path)} alt={c.title} /></a>}
+        {mainImg && <a href={fileUrl(mainImg.path)} target="_blank" rel="noreferrer" className="wk-hero-img"><img src={fileUrl(mainImg.path, 800)} alt={c.title} /></a>}
         <Kv items={[['الوصف', c.title], ['المرحلة الحالية', c.stage_name], ['المادة', c.material_name], ['الوزن المسلم لك', <span dir="ltr">{fmtW(c.weight_issued)} جم</span>],
           c.kind === 'general' && ['نوع العهدة', 'عهدة عامة (رصيد بدون طلب)'],
           c.kind !== 'general' && ['عدد القطع', c.pieces], ['المقاس', c.size], ['تاريخ التسليم', fmtDT(c.issued_at)], c.order_notes && ['ملاحظات الطلب', c.order_notes], od?.order?.color && ['اللون', COLORS[od.order.color] || od.order.color], ...(od?.order ? stoneItems(od.order) : [])]} />
       </Card>
       {od?.files?.length > 0 && (
         <Card title="التصاميم والصور">
-          <div className="files">{od.files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path)} alt={f.original_name} /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
+          <div className="files">{od.files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt={f.original_name} /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
         </Card>
       )}
       {c.status === 'open' && !c.worker_ack_at && (

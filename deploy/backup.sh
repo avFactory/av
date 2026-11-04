@@ -7,7 +7,7 @@ mkdir -p "$DIR"
 chmod 700 "$DIR"
 D=$(date +%Y%m%d)
 docker compose exec -T db pg_dump -U goldadmin -Fc goldfactory > "$DIR/db-$D.dump"
-docker compose exec -T app tar czf - -C /data uploads > "$DIR/uploads-$D.tar.gz"
+docker compose exec -T app tar czf - --exclude=uploads/.thumbs -C /data uploads > "$DIR/uploads-$D.tar.gz"
 chmod 600 "$DIR"/*-"$D".*
 find "$DIR" -type f -mtime +30 -delete
 echo "✓ backup $D"

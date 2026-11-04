@@ -7,7 +7,7 @@ import { HttpError, bad, conflict, forbidden, notFound, int, str, oneOf, weight 
 import { audit } from '../lib/audit.js';
 import { notifyPerm } from '../lib/notify.js';
 import { upload, registerFiles } from '../lib/uploads.js';
-import { resolveLabor, laborAmount } from '../lib/labor.js';
+import { resolveLabor, resolveLaborMany, laborAmount } from '../lib/labor.js';
 import * as prod from '../lib/production.js';
 import * as ledger from '../lib/ledger.js';
 import { materialFor, orderColor } from './orders.js';
@@ -74,23 +74,33 @@ r.use((req, _res, next) => {
 
 r.get('/products', async (req, res) => {
   const f = req.query;
-  const rows = await many(`select p.id, p.sku, p.name, p.product_type, p.description, p.karats, p.colors, p.approx_weight::text, p.final_weight::text, p.sizes,
-      p.stock_qty, p.availability,
-      coalesce((select json_agg(json_build_object('path', m.path, 'kind', m.kind) order by m.sort, m.id) from product_media m where m.product_id=p.id), '[]') as media,
-      jsonb_array_length(p.diamonds) > 0 as has_diamond, coalesce(p.pearl_weight, 0) > 0 as has_pearl, coalesce(p.stone_weight, 0) > 0 as has_stone,
-  (jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight, 0) = 0 and coalesce(p.stone_weight, 0) = 0) as is_gold
-    from products p where p.active and p.availability <> 'unavailable'
+  // صفحات: 48 منتجاً في كل مرة (التمرير يجلب المزيد)، وصورة الغلاف فقط في القائمة
+  const limit = Math.min(Math.max(int(f.limit ?? 48, 'limit', { min: 1 }), 1), 200);
+  const offset = Math.max(int(f.offset ?? 0, 'offset', { min: 0 }), 0);
+  const params = [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null, ['gold', 'diamond', 'pearl', 'stone'].includes(f.cat) ? f.cat : null];
+  const where = `p.active and p.availability <> 'unavailable'
       and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3)
       and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
         or ($4='stone' and coalesce(p.stone_weight,0) > 0)
-        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0))
-    order by p.id desc`, [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null, ['gold', 'diamond', 'pearl', 'stone'].includes(f.cat) ? f.cat : null]);
+        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0))`;
+  const rows = await many(`select p.id, p.sku, p.name, p.product_type, p.karats, p.colors, p.approx_weight::text, p.final_weight::text, p.sizes,
+      p.stock_qty, p.availability, p.labor_method, p.labor_rate,
+      coalesce((select json_build_array(json_build_object('path', m.path, 'kind', m.kind)) from product_media m where m.product_id=p.id order by m.sort, m.id limit 1), '[]') as media,
+      jsonb_array_length(p.diamonds) > 0 as has_diamond, coalesce(p.pearl_weight, 0) > 0 as has_pearl, coalesce(p.stone_weight, 0) > 0 as has_stone,
+  (jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight, 0) = 0 and coalesce(p.stone_weight, 0) = 0) as is_gold
+    from products p where ${where}
+    order by p.id desc limit ${limit + 1} offset ${offset}`, params);
+  const hasMore = rows.length > limit;
+  if (hasMore) rows.pop();
+  const labor = await resolveLaborMany(pool, req.user.customer_id, rows);
   for (const p of rows) {
-    const l = await resolveLabor(pool, { customer_id: req.user.customer_id, product_id: p.id, product_type: p.product_type });
+    const l = labor.get(p.id);
     p.labor = l ? { method: l.method, rate: l.rate, estimate: laborAmount(l.method, l.rate, p.final_weight || p.approx_weight, 1) } : null;
+    delete p.labor_method; delete p.labor_rate;
   }
-  const types = await many('select distinct product_type from products where active order by 1');
-  res.json({ products: rows, types: types.map((t) => t.product_type) });
+  const total = offset === 0 ? (await one(`select count(*)::int n from products p where ${where}`, params)).n : undefined;
+  const types = offset === 0 ? (await many('select distinct product_type from products where active order by 1')).map((t) => t.product_type) : undefined;
+  res.json({ products: rows, types, total, has_more: hasMore, offset });
 });
 
 r.get('/products/:id', async (req, res) => {

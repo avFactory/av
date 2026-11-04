@@ -58,8 +58,8 @@ export default function Orders() {
           rowClass={(o) => (o.group ? `row-group ${o.open ? 'open' : ''}` : `${o.child ? 'row-child' : ''} ${o.late ? 'row-warn' : ''}`)} columns={[
           ['', G((o) => <input type="checkbox" checked={sel.includes(o.id)} onClick={(e) => e.stopPropagation()} onChange={(e) => setSel((s) => (e.target.checked ? [...s, o.id] : s.filter((x) => x !== o.id)))} />,
             (g) => { const ids = g.items.map((o) => o.id); const all = ids.every((i) => sel.includes(i)); return <input type="checkbox" checked={all} onClick={(e) => e.stopPropagation()} onChange={(e) => setSel((s) => (e.target.checked ? [...new Set([...s, ...ids])] : s.filter((x) => !ids.includes(x))))} />; })],
-          ['', G((o) => (o.thumb ? <img src={fileUrl(o.thumb)} alt="" className="order-thumb" loading="lazy" /> : <span className="order-thumb empty" aria-hidden="true">◇</span>),
-            (g) => { const t = g.items.find((o) => o.thumb)?.thumb; return t ? <img src={fileUrl(t)} alt="" className="order-thumb" loading="lazy" /> : <span className="order-thumb empty" aria-hidden="true">◇</span>; })],
+          ['', G((o) => (o.thumb ? <img src={fileUrl(o.thumb, 400)} alt="" className="order-thumb" loading="lazy" /> : <span className="order-thumb empty" aria-hidden="true">◇</span>),
+            (g) => { const t = g.items.find((o) => o.thumb)?.thumb; return t ? <img src={fileUrl(t, 400)} alt="" className="order-thumb" loading="lazy" /> : <span className="order-thumb empty" aria-hidden="true">◇</span>; })],
           ['رقم الطلب', G((o) => <b className={o.child ? 'child-no' : ''}>{o.child && <span aria-hidden="true">↳ </span>}{o.order_no}</b>,
             (g) => <span className="d-inline-flex align-items-center gap-2"><span className="grp-caret" aria-hidden="true">{g.open ? '▾' : '◂'}</span><b>{g.ref}</b><Badge tone="gold">{g.items.length} بنود</Badge></span>)],
           ['الوصف', G((o) => o.title, (g) => <span className="small">{g.items.map((o) => `${o.title} ×${o.quantity}`).join('، ')}</span>)],

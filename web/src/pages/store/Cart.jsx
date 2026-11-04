@@ -41,7 +41,7 @@ export default function Cart() {
           {cart.map((i, n) => (
             <div key={n} className="card card-body hrow gap wrap between">
               <div className="hrow gap">
-                {i.kind === 'custom' ? <span className="cart-custom-ic">✎</span> : i.image ? <img src={fileUrl(i.image)} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10 }} /> : null}
+                {i.kind === 'custom' ? <span className="cart-custom-ic">✎</span> : i.image ? <img src={fileUrl(i.image, 400)} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10 }} /> : null}
                 <div><b>{i.name}</b>{i.kind === 'custom' && <span className="badge text-bg-warning ms-2">تصميم خاص</span>}<div className="small muted">{i.kind === 'custom' ? `${i.file_count || 0} ملف` : i.sku} · عيار {i.karat} · {COLORS[i.color]}{i.size ? ` · مقاس ${i.size}` : ''}</div>{i.labor && <div className="small">أجور التصنيع {fmtMoney(i.labor.rate)} {METHODS[i.labor.method]}</div>}</div>
               </div>
               <div className="hrow gap">

@@ -119,18 +119,30 @@ function Controls({ z, zoomAt, reset, extra }) {
  * الصورة تُرسم كخلفية بمقاس محسوب (وليس تكبير طبقة كاملة بـ transform):
  * المتصفح يرسم الجزء الظاهر فقط، فلا تختفي الصفحة مع الصور الكبيرة عالية الدقة.
  */
-function Stage({ src, alt, zoom, className = '' }) {
+function Stage({ src, preview, alt, zoom, className = '' }) {
   const { z, box, nat, fit, handlers } = zoom;
   const [, setReady] = useState(0);
+  // نسخة خفيفة للعرض، والأصل بالدقة الكاملة يُحمّل فقط عند التكبير
+  const [hi, setHi] = useState(!preview);
+  useEffect(() => { setHi(!preview); }, [src, preview]);
+  useEffect(() => {
+    if (hi || z.s <= 1) return undefined;
+    let alive = true;
+    const im = new Image();
+    im.onload = () => { if (alive) setHi(true); };
+    im.src = src;
+    return () => { alive = false; };
+  }, [hi, z.s, src]);
+  const shownSrc = hi ? src : preview;
   const [size, setSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
     let alive = true;
     nat.current = null;
     const im = new Image();
     im.onload = () => { if (alive) { nat.current = { w: im.naturalWidth, h: im.naturalHeight }; setReady((n) => n + 1); } };
-    im.src = src;
+    im.src = preview || src;
     return () => { alive = false; };
-  }, [src]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [src, preview]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const el = box.current;
     if (!el) return undefined;
@@ -145,30 +157,30 @@ function Stage({ src, alt, zoom, className = '' }) {
   return (
     <div ref={box} className={`zoom-stage ${className} ${z.s > 1 ? 'zoomed' : ''}`} {...handlers}>
       <div className="zoom-img" role="img" aria-label={alt}
-        style={{ backgroundImage: `url("${src}")`, backgroundSize: `${dw}px ${dh}px`, backgroundPosition: `${left}px ${top}px` }} />
+        style={{ backgroundImage: `url("${shownSrc}")`, backgroundSize: `${dw}px ${dh}px`, backgroundPosition: `${left}px ${top}px` }} />
     </div>
   );
 }
 
 /** صورة المنتج مع أدوات التكبير وزر ملء الشاشة */
-export default function ImageZoom({ src, alt, images = [], index = 0, onIndex }) {
+export default function ImageZoom({ src, preview, alt, images = [], previews = [], index = 0, onIndex }) {
   const zoom = useZoom();
   const [full, setFull] = useState(false);
   useEffect(() => { zoom.reset(); }, [src]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <div className="zoom-wrap">
-        <Stage src={src} alt={alt} zoom={zoom} />
+        <Stage src={src} preview={preview} alt={alt} zoom={zoom} />
         <Controls z={zoom.z} zoomAt={zoom.zoomAt} reset={zoom.reset}
           extra={<button type="button" aria-label="ملء الشاشة" title="ملء الشاشة" onClick={() => setFull(true)}>⛶</button>} />
       </div>
-      {full && <Viewer images={images.length ? images : [src]} index={Math.max(0, images.indexOf(src))} alt={alt} onClose={() => setFull(false)} onIndex={onIndex} start={index} />}
+      {full && <Viewer images={images.length ? images : [src]} previews={previews} index={Math.max(0, images.indexOf(src))} alt={alt} onClose={() => setFull(false)} onIndex={onIndex} start={index} />}
     </>
   );
 }
 
 /** عرض بملء الشاشة مع التنقل بين الصور */
-function Viewer({ images, index, alt, onClose, onIndex }) {
+function Viewer({ images, previews = [], index, alt, onClose, onIndex }) {
   const [i, setI] = useState(index);
   const zoom = useZoom('contain');
   const go = (d) => { const n = (i + d + images.length) % images.length; setI(n); zoom.reset(); onIndex?.(n); };
@@ -187,7 +199,7 @@ function Viewer({ images, index, alt, onClose, onIndex }) {
   });
   return createPortal(
     <div className="zoom-viewer" role="dialog" aria-modal="true">
-      <Stage src={images[i]} alt={alt} zoom={zoom} className="full" />
+      <Stage src={images[i]} preview={previews[i]} alt={alt} zoom={zoom} className="full" />
       <button type="button" className="zoom-close" aria-label="إغلاق" onClick={onClose}>×</button>
       {images.length > 1 && <>
         <button type="button" className="zoom-nav prev" aria-label="السابقة" onClick={() => go(-1)}>›</button>

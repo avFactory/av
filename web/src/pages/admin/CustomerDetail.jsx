@@ -32,10 +32,10 @@ export default function CustomerDetail() {
             {[['cr', 'السجل التجاري'], ['vat', 'الشهادة الضريبية'], ['national_address', 'العنوان الوطني']].map(([t, label]) => {
               const d = data.docs.find((x) => x.doc_type === t);
               return d
-                ? <a key={t} href={fileUrl(d.path)} target="_blank" rel="noreferrer">{d.mime?.startsWith('image') ? <img src={fileUrl(d.path)} alt="" /> : <div className="doc">PDF</div>}<span><b>{label}</b></span></a>
+                ? <a key={t} href={fileUrl(d.path)} target="_blank" rel="noreferrer">{d.mime?.startsWith('image') ? <img src={fileUrl(d.path, 400)} alt="" /> : <div className="doc">PDF</div>}<span><b>{label}</b></span></a>
                 : <span key={t} className="text-body-secondary small border rounded-3 p-2">{label}: غير مرفق</span>;
             })}
-            {data.docs.filter((d) => !d.doc_type).map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer">{d.mime?.startsWith('image') ? <img src={fileUrl(d.path)} alt="" /> : <div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{d.original_name}</span></a>)}
+            {data.docs.filter((d) => !d.doc_type).map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer">{d.mime?.startsWith('image') ? <img src={fileUrl(d.path, 400)} alt="" /> : <div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{d.original_name}</span></a>)}
           </div>
         </Card>
       </div>

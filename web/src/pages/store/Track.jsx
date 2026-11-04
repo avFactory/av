@@ -19,7 +19,7 @@ export default function Track() {
     <Page title={`الطلب ${o.order_no}`} subtitle={o.title} back="/store/orders">
       <div className="grid g2 mb">
         <Card title="تفاصيل الطلب" actions={<StatusBadge map={STATUS} value={o.status} />}>
-          {o.product_image && <img src={fileUrl(o.product_image)} alt="" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 12, marginBottom: 10 }} />}
+          {o.product_image && <img src={fileUrl(o.product_image, 400)} alt="" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 12, marginBottom: 10 }} />}
           <Kv items={[o.branch_name && ['الفرع', o.branch_name], ['العيار', o.karat], ['اللون', COLORS[o.color] || o.color], ...stoneItems(o), ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن', o.final_weight ? `${fmtW(o.final_weight)} جم (نهائي)` : o.approx_weight ? `${fmtW(o.approx_weight)} جم (تقريبي)` : '—'],
             ['أجور التصنيع', o.labor_rate ? `${fmtMoney(o.labor_rate)} ${METHODS[o.labor_method] || ''}` : '—'], ['التقدير', o.labor_estimate ? fmtMoney(o.labor_estimate) : '—'],
             ['المرحلة الحالية', o.stage_name], ['موعد التسليم المتوقع', fmtDate(o.due_date)], o.design_approval_required && ['التصميم', DESIGN_STATUS[o.design_status]]]} />
@@ -45,7 +45,7 @@ export default function Track() {
       {pending && (
         <Card title="التصميم بانتظار اعتمادكم" className="mb">
           {pending.message && <p className="mb">{pending.message}</p>}
-          <div className="files mb">{files.filter((f) => pending.file_ids.includes(f.id)).map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
+          <div className="files mb">{files.filter((f) => pending.file_ids.includes(f.id)).map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
           <Field label="ملاحظاتكم (إلزامية عند طلب التعديل أو الرفض)"><Textarea value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <div className="hrow gap wrap mt">
             <Btn kind="ok" loading={busy} onClick={() => decide('approved')}>اعتماد التصميم</Btn>
@@ -59,7 +59,7 @@ export default function Track() {
           <ol className="timeline">{history.map((h, i) => <li key={i} className="done"><div><b>{h.stage_name || STATUS[h.event]?.[0] || ''}</b> <span className="small">{h.event === 'entered' ? 'بدأت' : h.event === 'completed' ? 'اكتملت' : ''} {h.note || ''}</span><div className="small muted">{fmtDT(h.created_at)}</div></div></li>)}</ol>
         </Card>
         <div className="grid">
-          {files.length > 0 && <Card title="الملفات والصور"><div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div></Card>}
+          {files.length > 0 && <Card title="الملفات والصور"><div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div></Card>}
           {designs.length > 0 && <Card title="سجل اعتماد التصميم">{designs.map((d) => <div key={d.id} className="small hrow between"><span>{DESIGN_STATUS[d.status] || d.status} {d.customer_note ? `- ${d.customer_note}` : ''}</span><span className="muted">{fmtDT(d.decided_at || d.sent_at)}</span></div>)}</Card>}
           {invoices.length > 0 && <Card title="الفواتير">{invoices.map((i) => <Link key={i.id} to={`/store/invoices/${i.id}`} className="link hrow between"><span>{i.invoice_no}</span><span>{fmtMoney(i.total)}</span></Link>)}</Card>}
         </div>

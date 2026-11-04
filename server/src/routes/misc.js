@@ -8,6 +8,7 @@ import { requireAuth, has } from '../lib/auth.js';
 import { HttpError, forbidden, notFound, int } from '../lib/http.js';
 import { UPLOAD_DIR } from '../lib/uploads.js';
 import { sseHandler } from '../lib/events.js';
+import { thumbnail } from '../lib/thumbs.js';
 
 const r = Router();
 
@@ -79,7 +80,14 @@ r.get('/files/*filepath', async (req, res) => {
   if (!fs.existsSync(abs)) throw notFound('الملف غير موجود');
   // الملفات تُعرض في بيئة معزولة، وغير الصور/الفيديو/PDF تُنزَّل ولا تُفتح في المتصفح
   res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
-  res.setHeader('Cache-Control', 'private, max-age=3600');
+  // أسماء الملفات عشوائية ولا تتغير، فيُحفظ الملف في المتصفح 30 يوماً
+  res.setHeader('Cache-Control', 'private, max-age=2592000, immutable');
+  // صورة مصغّرة خفيفة (WebP) للقوائم والمتجر: ?w=200|400|800
+  const w = Number(req.query.w);
+  if (w) {
+    const t = await thumbnail(abs, rel, w);
+    if (t) { res.type('image/webp'); return res.sendFile(t, { dotfiles: 'allow' }); }
+  }
   if (!/\.(jpe?g|png|webp|gif|heic|mp4|mov|webm|pdf)$/i.test(abs)) res.attachment(path.basename(abs));
   res.sendFile(abs);
 });

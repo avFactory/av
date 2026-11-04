@@ -167,7 +167,7 @@ function LotModal({ lot, onClose, can, onMove, onEdit, onReverse }) {
       </div>
       <Kv items={[['النوع', l.stone_type], ['اللون', l.color], ['النقاء', l.clarity], ['الشهادة', l.certificate_no], ['حد التنبيه', l.min_carats ? `${ct(l.min_carats)} قيراط` : '—'], ['السعر', l.unit_price ? fmtMoney(l.unit_price) : '—'], ['ملاحظات', l.notes]]} />
       {can('stones.manage') && <div className="hrow gap"><Btn onClick={() => onMove(l)}>تسجيل حركة</Btn><Btn kind="ghost" onClick={() => onEdit(l)}>تعديل البيانات</Btn></div>}
-      {lot.media.length > 0 && <div className="files">{lot.media.map((m) => <a key={m.id} href={fileUrl(m.path)} target="_blank" rel="noreferrer"><img src={fileUrl(m.path)} alt="" /></a>)}</div>}
+      {lot.media.length > 0 && <div className="files">{lot.media.map((m) => <a key={m.id} href={fileUrl(m.path)} target="_blank" rel="noreferrer"><img src={fileUrl(m.path, 400)} alt="" /></a>)}</div>}
       <Table rows={lot.movements} empty="لا توجد حركات" rowClass={(m) => (m.reversed ? 'row-warn' : '')} columns={[['الحركة', (m) => MK[m.kind]], ['قيراط', (m) => <span className="n">{ct(m.carats)}</span>], ['العدد', 'count'], ['الطلب', 'order_no'], ['العامل', 'worker_name'], ['ملاحظة', 'note'], ['بواسطة', 'user_name'], ['التاريخ', (m) => fmtDT(m.created_at)],
         ['', (m) => can('stones.manage') && m.kind !== 'reversal' && !m.reversed && <Btn size="sm" kind="ghost" onClick={() => onReverse(m)}>عكس</Btn>]]} />
     </Modal>

@@ -24,7 +24,8 @@ export const api = {
   del: (u) => request('DELETE', u),
 };
 
-export const fileUrl = (p) => (p ? `/api/files/${p}` : null);
+/** رابط ملف محمي؛ w (200/400/800) يعيد صورة مصغّرة خفيفة للقوائم */
+export const fileUrl = (p, w) => (p ? `/api/files/${p}${w ? `?w=${w}` : ''}` : null);
 export const qrUrl = (text) => `/api/qr?text=${encodeURIComponent(text)}`;
 
 export function qs(obj) {

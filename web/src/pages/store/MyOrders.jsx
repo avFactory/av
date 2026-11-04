@@ -44,7 +44,7 @@ function OrderCard({ o, nav, compact }) {
   const size = compact ? 48 : 64;
   return (
     <button className={`card card-body hrow gap ${compact ? 'py-2 shadow-none' : ''}`} style={{ textAlign: 'right', cursor: 'pointer', font: 'inherit', color: 'inherit', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }} onClick={() => nav(`/store/orders/${o.id}`)}>
-      <div style={{ width: size, height: size, borderRadius: 10, overflow: 'hidden', background: 'var(--gold-soft)', flex: 'none', display: 'grid', placeItems: 'center', color: 'var(--gold)' }}>{img ? <img src={fileUrl(img)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '◇'}</div>
+      <div style={{ width: size, height: size, borderRadius: 10, overflow: 'hidden', background: 'var(--gold-soft)', flex: 'none', display: 'grid', placeItems: 'center', color: 'var(--gold)' }}>{img ? <img src={fileUrl(img, 400)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '◇'}</div>
       <div className="grow" style={{ minWidth: 0 }}>
         <div className="hrow between wrap gap"><b>{o.order_no} — {o.title}</b><StatusBadge map={STATUS} value={o.status} /></div>
         <div className="small muted">{!compact && o.branch_name ? `${o.branch_name} · ` : ''}{o.material_name} · الكمية {o.quantity}{compact ? '' : ` · ${fmtDate(o.created_at)}`}{o.labor_estimate ? ` · أجور تقديرية ${fmtMoney(o.labor_estimate)}` : ''}</div>

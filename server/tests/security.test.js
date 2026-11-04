@@ -137,3 +137,42 @@ test('الملفات: لا يُقبل HTML باسم صورة، وتُحذف مل
   assert.equal((await client()('GET', `/files/${m}`)).status, 401, 'الزائر لا يرى الملفات');
   assert.ok([403, 404].includes((await admin('GET', '/files/..%2f..%2fetc%2fpasswd')).status), 'منع الخروج من مجلد الملفات');
 });
+
+test('أداء المتجر: صفحات، أجور صحيحة لكل منتج، وصور مصغّرة WebP', async () => {
+  const sharp = (await import('sharp')).default;
+  const big = await sharp({ create: { width: 2400, height: 1800, channels: 3, background: '#c9a' } }).jpeg({ quality: 90 }).toBuffer();
+  const ids = [];
+  for (let i = 0; i < 60; i++) {
+    const f = new FormData();
+    for (const [k, v] of Object.entries({ name: `أداء ${i}`, product_type: i % 2 ? 'خاتم' : 'عقد', karats: '21', colors: 'yellow', approx_weight: '2', labor_method: 'per_gram', labor_rate: String(10 + (i % 3)) })) f.append(k, v);
+    if (i === 0) f.append('files', new Blob([big], { type: 'image/jpeg' }), 'big.jpg');
+    ids.push((await admin('POST', '/catalog/products', null, f)).data.id);
+  }
+  // قاعدة أجرة خاصة لنوع "خاتم" تتقدم على أجرة المنتج؟ لا: أجرة المنتج (20) أعلى من النوع (10)
+  await pool.query("insert into labor_rates(name, scope, product_type, method, rate, active) values ('نوع خاتم','product','خاتم','per_gram',99,true)");
+  await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('محل الأداء','م','0500000999','approved')");
+  const cid = (await pool.query("select id from customers where shop_name='محل الأداء'")).rows[0].id;
+  await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, must_change_password) values ('perfshop',$1,'م','customer',$2,false)", [hashPassword('Perf#2026shop'), cid]);
+  const c = client();
+  assert.equal((await c('POST', '/auth/login', { username: 'perfshop', password: 'Perf#2026shop' })).status, 200);
+  const p1 = (await c('GET', '/store/products?limit=48')).data;
+  assert.equal(p1.products.length, 48);
+  assert.ok(p1.has_more && p1.total >= 60);
+  const p2 = (await c('GET', '/store/products?limit=48&offset=48')).data;
+  assert.ok(p2.products.length >= 12);
+  assert.equal(new Set([...p1.products, ...p2.products].map((p) => p.id)).size, p1.products.length + p2.products.length, 'بدون تكرار بين الصفحات');
+  // الأجرة في القائمة = نفس حساب صفحة المنتج
+  for (const p of [...p1.products, ...p2.products].slice(0, 20)) {
+    const d = (await c('GET', `/store/products/${p.id}`)).data;
+    assert.deepEqual(p.labor ? [p.labor.method, Number(p.labor.rate)] : null, d.labor ? [d.labor.method, Number(d.labor.rate)] : null, `أجرة ${p.name}`);
+  }
+  // صورة مصغّرة
+  const m = (await pool.query('select path from product_media where product_id=$1', [ids[0]])).rows[0].path;
+  const full = await fetch(`${base}/api/files/${m}`, { headers: { cookie: '' } });
+  assert.equal(full.status, 401);
+  const r = await c('GET', `/files/${m}?w=400`);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/webp');
+  assert.ok(r.data.length < big.length / 3, 'المصغّرة أخف بكثير من الأصل');
+  assert.match(r.headers.get('cache-control'), /max-age=2592000/);
+});

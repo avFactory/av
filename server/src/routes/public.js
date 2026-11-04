@@ -20,15 +20,21 @@ const COLS = `p.id, p.sku, p.name, p.product_type, p.description, p.karats, p.co
 
 r.get('/products', needLogin, async (req, res) => {
   const f = req.query;
-  const rows = await many(`select ${COLS} from products p where p.active and p.availability <> 'unavailable'
+  const limit = Math.min(Math.max(int(f.limit ?? 48, 'limit'), 1), 200);
+  const offset = Math.max(int(f.offset ?? 0, 'offset'), 0);
+  const params = [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null, ['gold', 'diamond', 'pearl', 'stone'].includes(f.cat) ? f.cat : null];
+  const where = `p.active and p.availability <> 'unavailable'
       and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3)
       and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
         or ($4='stone' and coalesce(p.stone_weight,0) > 0)
-        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0))
-    order by p.id desc limit 500`, [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null, ['gold', 'diamond', 'pearl', 'stone'].includes(f.cat) ? f.cat : null]);
-  const types = await many("select distinct product_type from products where active and availability <> 'unavailable' order by 1");
-  res.setHeader('Cache-Control', 'public, max-age=60');
-  res.json({ products: rows, types: types.map((t) => t.product_type) });
+        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0))`;
+  const rows = await many(`select ${LIST_COLS} from products p where ${where} order by p.id desc limit ${limit + 1} offset ${offset}`, params);
+  const hasMore = rows.length > limit;
+  if (hasMore) rows.pop();
+  const total = offset === 0 ? (await one(`select count(*)::int n from products p where ${where}`, params)).n : undefined;
+  const types = offset === 0 ? (await many("select distinct product_type from products where active and availability <> 'unavailable' order by 1")).map((t) => t.product_type) : undefined;
+  res.setHeader('Cache-Control', 'private, max-age=60');
+  res.json({ products: rows, types, total, has_more: hasMore, offset });
 });
 
 r.get('/products/:id', needLogin, async (req, res) => {
@@ -36,6 +42,13 @@ r.get('/products/:id', needLogin, async (req, res) => {
   if (!p) throw notFound('المنتج غير متوفر');
   res.json(p);
 });
+
+// أعمدة القائمة: صورة الغلاف فقط وبدون تفاصيل الألماس (تُجلب في صفحة المنتج)
+const LIST_COLS = `p.id, p.sku, p.name, p.product_type, p.karats, p.colors, p.approx_weight::text, p.final_weight::text, p.sizes, p.availability,
+  case when p.availability = 'available' and p.stock_qty > 0 then true else false end as in_stock,
+  coalesce((select json_build_array(json_build_object('path', m.path, 'kind', m.kind)) from product_media m where m.product_id=p.id order by m.sort, m.id limit 1), '[]') as media,
+  jsonb_array_length(p.diamonds) > 0 as has_diamond, coalesce(p.pearl_weight, 0) > 0 as has_pearl, coalesce(p.stone_weight, 0) > 0 as has_stone,
+  (jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight, 0) = 0 and coalesce(p.stone_weight, 0) = 0) as is_gold`;
 
 /**
  * تتبع الطلب برابط خاص (بدون تسجيل دخول): عرض فقط للمرحلة التي وصل لها الطلب.

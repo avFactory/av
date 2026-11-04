@@ -34,3 +34,26 @@ export function laborAmount(method, rate, weight, qty) {
 export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 export const METHOD_LABELS = { per_gram: 'لكل جرام', per_piece: 'لكل قطعة', fixed: 'ثابتة للطلب', manual: 'يدوية معتمدة' };
+
+/**
+ * أجور عدة منتجات دفعة واحدة (نفس قواعد resolveLabor): استعلامان فقط بدل 3 لكل منتج.
+ * products: [{ id, product_type, labor_method, labor_rate }]
+ */
+export async function resolveLaborMany(db, customerId, products) {
+  const cust = customerId ? (await db.query('select tier_id from customers where id=$1', [customerId])).rows[0] : null;
+  const tier = cust?.tier_id ?? null;
+  const rules = (await db.query(
+    `select *, (case when customer_id is not null then 100 else 0 end + case when tier_id is not null then 50 else 0 end
+              + case when product_id is not null then 20 else 0 end + case when product_type is not null then 10 else 0 end) as score
+     from labor_rates where active and scope <> 'stage' and (customer_id is null or customer_id = $1) and (tier_id is null or tier_id = $2)
+     order by score desc, id desc`,
+    [customerId ?? null, tier]
+  )).rows;
+  const out = new Map();
+  for (const p of products) {
+    let best = rules.find((r) => (r.product_id == null || r.product_id === p.id) && (r.product_type == null || r.product_type === p.product_type)) || null;
+    if (p.labor_method && p.labor_rate != null && (!best || best.score < 20)) best = { method: p.labor_method, rate: p.labor_rate, score: 20 };
+    out.set(p.id, best ? { method: best.method, rate: String(best.rate) } : null);
+  }
+  return out;
+}

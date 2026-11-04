@@ -25,11 +25,11 @@ export default function WOrder() {
     <div className="wk-body">
       <Link to="/w" className="back">→ مهامي</Link>
       <Card title={o.order_no}>
-        {files.find((f) => f.mime?.startsWith('image')) && (() => { const im = files.find((f) => f.mime?.startsWith('image')); return <a href={fileUrl(im.path)} target="_blank" rel="noreferrer" className="wk-hero-img"><img src={fileUrl(im.path)} alt={o.title} /></a>; })()}
+        {files.find((f) => f.mime?.startsWith('image')) && (() => { const im = files.find((f) => f.mime?.startsWith('image')); return <a href={fileUrl(im.path)} target="_blank" rel="noreferrer" className="wk-hero-img"><img src={fileUrl(im.path, 800)} alt={o.title} /></a>; })()}
         <Kv items={[['الوصف', o.title], ['المرحلة', o.stage?.name], ['المادة', o.material], o.color && ['اللون', COLORS[o.color] || o.color], ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن التقريبي', o.approx_weight], ...stoneItems(o), ['ملاحظات', o.notes]]} />
       </Card>
       <Card title="الملفات والتصاميم">
-        <div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
+        <div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
         {o.assigned_to_me && <label className="btn btn-outline-secondary mt">{isDesign ? 'رفع ملفات التصميم (صور / 3D)' : 'رفع صور التنفيذ'}<input type="file" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>}
       </Card>
       {o.assigned_to_me && (

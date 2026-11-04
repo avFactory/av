@@ -16,7 +16,7 @@ export default function WHome() {
         <Link key={c.id} to={`/w/custody/${c.id}`} className="task">
           <div className="task-h">
             <div className="hrow gap">
-              {c.thumb ? <img src={fileUrl(c.thumb)} alt="" /> : null}
+              {c.thumb ? <img src={fileUrl(c.thumb, 400)} alt="" /> : null}
               <div><b>{c.order_no}</b><div className="muted small">{c.title}</div></div>
             </div>
             {c.status === 'under_review' ? <Badge tone="warn">تحت المراجعة</Badge> : !c.worker_ack_at ? <Badge tone="bad">{c.worker_rejected_at ? 'رفضتها - بانتظار المشرف' : 'بانتظار قبولك'}</Badge> : <Badge tone={c.work_state === 'finished' ? 'ok' : 'gold'}>{WORK_STATE[c.work_state]}</Badge>}
@@ -27,7 +27,7 @@ export default function WHome() {
       ))}
       {tasks.map((t) => (
         <Link key={t.order_id} to={`/w/orders/${t.order_id}`} className="task">
-          <div className="task-h"><div className="hrow gap">{t.thumb ? <img src={fileUrl(t.thumb)} alt="" /> : null}<div><b>{t.order_no}</b><div className="muted small">{t.title}</div></div></div><Badge tone="info">{t.stage_name}</Badge></div>
+          <div className="task-h"><div className="hrow gap">{t.thumb ? <img src={fileUrl(t.thumb, 400)} alt="" /> : null}<div><b>{t.order_no}</b><div className="muted small">{t.title}</div></div></div><Badge tone="info">{t.stage_name}</Badge></div>
           {t.stage_state === 'pending_approval' && <span className="small muted">بانتظار اعتماد المشرف</span>}
         </Link>
       ))}

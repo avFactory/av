@@ -44,7 +44,7 @@ export default function Products() {
   return (
     <Page title="منتجات المتجر" actions={<Btn onClick={() => setF({ karats: [21], colors: ['yellow'], sizes: [], availability: 'made_to_order', active: true, labor_method: 'per_gram' })}>منتج جديد</Btn>}>
       <div className="card"><Table rows={data} onRow={(p) => setF({ ...p, karats: p.karats, colors: p.colors, sizes: p.sizes, files: null })} columns={[
-        ['', (p) => (p.media[0] ? <img src={fileUrl(p.media[0].path)} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }} /> : null)],
+        ['', (p) => (p.media[0] ? <img src={fileUrl(p.media[0].path, 400)} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }} /> : null)],
         ['رقم المنتج', 'sku'], ['الاسم', (p) => <b>{p.name}</b>], ['النوع', 'product_type'], ['العيارات', (p) => p.karats.join('، ')], ['الألوان', (p) => p.colors.map((c) => COLORS[c]).join('، ')],
         ['الوزن', (p) => fmtW(p.final_weight || p.approx_weight)], ['الأجرة', (p) => (p.labor_method ? `${fmtMoney(p.labor_rate)} ${METHODS[p.labor_method]}` : 'حسب القواعد')], ['المخزون', 'stock_qty'],
         ['التوفر', (p) => AV[p.availability]], ['', (p) => (p.active ? <Badge tone="ok">ظاهر</Badge> : <Badge>مخفي</Badge>)],
@@ -78,7 +78,7 @@ export default function Products() {
             const isMain = f.main ? f.main.media === m.id : i === 0;
             return (
               <span key={m.id} className={`media-item ${isMain ? 'main' : ''}`}>
-                {m.kind === 'video' ? <span className="doc">فيديو</span> : <img src={fileUrl(m.path)} alt="" />}
+                {m.kind === 'video' ? <span className="doc">فيديو</span> : <img src={fileUrl(m.path, 400)} alt="" />}
                 {isMain ? <span className="media-main-tag">★ الرئيسية</span> : <button type="button" className="link small" onClick={() => setF({ ...f, main: { media: m.id } })}>☆ تعيين رئيسية</button>}
                 <button type="button" className="link small text-danger" onClick={() => setF({ ...f, remove_media: [...(f.remove_media || []), m.id], media: f.media.filter((x) => x.id !== m.id), main: f.main?.media === m.id ? null : f.main })}>حذف</button>
               </span>

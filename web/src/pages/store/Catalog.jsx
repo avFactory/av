@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fileUrl, qs } from '../../api.js';
+import { api, fileUrl, qs } from '../../api.js';
 import { fmtW, fmtMoney, METHODS } from '../../format.js';
 import { Loader, Search, useFetch, Empty, LinkBtn } from '../../ui.jsx';
+
+const PAGE = 48;
 import { useCart } from '../../components/StoreLayout.jsx';
 
 const CATS = [['', 'الكل', '✦'], ['gold', 'ذهب', '◯'], ['diamond', 'ألماس مخبري', '💎'], ['pearl', 'لؤلؤ', '⚪'], ['stone', 'أحجار', '◆']];
@@ -11,7 +13,29 @@ const catBadges = (p) => [p.has_diamond && 'ألماس مخبري', p.has_pearl 
 export default function Catalog() {
   const [f, setF] = useState({ q: '', type: '', karat: '', cat: '' });
   const { apiBase, approved, loginUrl } = useCart();
-  const { data } = useFetch(`${apiBase}/products${qs(f)}`, { deps: [apiBase] });
+  // الصفحة الأولى ثم تحميل المزيد تلقائياً عند الوصول لآخر القائمة
+  const { data: first } = useFetch(`${apiBase}/products${qs({ ...f, limit: PAGE })}`, { deps: [apiBase] });
+  const [more, setMore] = useState({ key: '', items: [], hasMore: false, loading: false });
+  const key = `${apiBase}${qs(f)}`;
+  const items = first ? [...first.products, ...(more.key === key ? more.items : [])] : [];
+  const hasMore = first ? (more.key === key && more.items.length ? more.hasMore : first.has_more) : false;
+  const sentinel = useRef(null);
+  const loadMore = async () => {
+    if (more.loading || !hasMore) return;
+    setMore((m) => ({ ...m, loading: true }));
+    try {
+      const r = await api.get(`${apiBase}/products${qs({ ...f, limit: PAGE, offset: items.length })}`);
+      setMore((m) => ({ key, items: [...(m.key === key ? m.items : []), ...r.products], hasMore: r.has_more, loading: false }));
+    } catch { setMore((m) => ({ ...m, loading: false })); }
+  };
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasMore) return undefined;
+    const io = new IntersectionObserver((e) => { if (e[0].isIntersecting) loadMore(); }, { rootMargin: '600px' });
+    io.observe(el);
+    return () => io.disconnect();
+  });
+  const data = first;
   return (
     <div className="page">
       <div className="hero mb d-none d-md-flex">
@@ -34,11 +58,12 @@ export default function Catalog() {
         </div>
         <div className="chips">{['', '18', '21', '24'].map((k) => <button key={k} className={`chip ${f.karat === k ? 'on' : ''}`} onClick={() => setF({ ...f, karat: k })}>{k ? `عيار ${k}` : 'كل العيارات'}</button>)}</div>
       </div>
-      {!data ? <Loader /> : !data.products.length ? <Empty>لا توجد منتجات مطابقة</Empty> : (
-        <div className="products">
-          {data.products.map((p) => (
+      {data && data.total != null && <div className="small text-body-secondary mb-2">{data.total} منتج</div>}
+      {!data ? <Loader /> : !items.length ? <Empty>لا توجد منتجات مطابقة</Empty> : (
+        <><div className="products">
+          {items.map((p) => (
             <Link key={p.id} to={`/store/products/${p.id}`} className="product">
-              <div className="img">{p.media[0]?.kind === 'image' ? <img src={fileUrl(p.media[0].path)} alt={p.name} loading="lazy" /> : '◇'}</div>
+              <div className="img">{p.media[0]?.kind === 'image' ? <img src={fileUrl(p.media[0].path, 400)} alt={p.name} loading="lazy" decoding="async" /> : '◇'}</div>
               <div className="info">
                 <b>{p.name}</b>
                 <span className="small muted">{p.sku} · {p.product_type} · عيار {p.karats.join('/')}</span>
@@ -51,6 +76,8 @@ export default function Catalog() {
             </Link>
           ))}
         </div>
+        {hasMore && <div ref={sentinel} className="text-center py-4">{more.loading ? <Loader /> : <button type="button" className="btn btn-outline-secondary" onClick={loadMore}>عرض المزيد</button>}</div>}
+        </>
       )}
     </div>
   );

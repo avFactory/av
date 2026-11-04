@@ -89,7 +89,7 @@ export default function OrderDetail() {
           </div>
         </Card>
         <div className="card card-body d-grid gap-2" style={{ textAlign: 'center', alignContent: 'start' }}>
-          {o.thumb && <a href={fileUrl(o.thumb)} target="_blank" rel="noreferrer" className="order-hero"><img src={fileUrl(o.thumb)} alt={o.title} /></a>}
+          {o.thumb && <a href={fileUrl(o.thumb)} target="_blank" rel="noreferrer" className="order-hero"><img src={fileUrl(o.thumb, 800)} alt={o.title} /></a>}
           <img src={qrUrl(o.qr_token)} alt="QR" style={{ width: 110, height: 110, justifySelf: 'center' }} /><div className="small muted">QR الطلب</div>
         </div>
       </div>
@@ -148,7 +148,7 @@ export default function OrderDetail() {
               </div>
             )}>
               <div className="files">{files.map((x) => (
-                <a key={x.id} href={fileUrl(x.path)} target="_blank" rel="noreferrer">{x.mime?.startsWith('image') ? <img src={fileUrl(x.path)} alt="" /> : <div className="doc">{(x.original_name || '').split('.').pop()?.toUpperCase()}</div>}
+                <a key={x.id} href={fileUrl(x.path)} target="_blank" rel="noreferrer">{x.mime?.startsWith('image') ? <img src={fileUrl(x.path, 400)} alt="" /> : <div className="doc">{(x.original_name || '').split('.').pop()?.toUpperCase()}</div>}
                   <span>{x.original_name}<br /><span className="muted">{x.kind}{x.customer_visible ? ' · ظاهر للعميل' : ''}</span></span></a>
               ))}</div>
             </Card>

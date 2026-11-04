@@ -20,7 +20,7 @@ export default function Scan() {
       <ScanInput onScan={scan} />
       {o && (
         <Card className="mt" title={<span>{o.order_no} — {o.title}</span>} actions={<Badge tone="gold">{o.stage_name || o.status}</Badge>}>
-          {o.thumb && <a href={fileUrl(o.thumb)} target="_blank" rel="noreferrer" className="order-hero mb-3" style={{ maxWidth: 360 }}><img src={fileUrl(o.thumb)} alt={o.title} /></a>}
+          {o.thumb && <a href={fileUrl(o.thumb)} target="_blank" rel="noreferrer" className="order-hero mb-3" style={{ maxWidth: 360 }}><img src={fileUrl(o.thumb, 800)} alt={o.title} /></a>}
           <Kv items={[['المادة', o.material_name], ['الكمية', o.quantity], ['رصيد ذهب الطلب', `${fmtW(o.order_balance)} جم`], ['حالة التصميم', DESIGN_STATUS[o.design_status]],
             ['لدى العمال', o.open_custodies.map((c) => `${c.full_name} (${fmtW(c.weight_issued)})`).join('، ') || '—']]} />
           <div className="hrow gap wrap mt">
