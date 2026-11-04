@@ -551,3 +551,24 @@ test('الصورة الرئيسية للمنتج: عند الإضافة أو ا�
   assert.equal((await call('PUT', `/catalog/products/${p.id}`, null, u)).status, 200);
   assert.equal((await media())[0], all[1], 'تغيير الرئيسية لصورة محفوظة');
 });
+
+test('مدير المتجر بدون صلاحية المخزون يرى أنواع الألماس المخبري في نموذج المنتج (بدون الكميات)', async () => {
+  const { hashPassword } = await import('../src/lib/auth.js');
+  await pool.query("insert into roles(code, name) values ('store_mgr_t','مدير متجر اختبار') on conflict do nothing");
+  await pool.query("insert into role_permissions values ('store_mgr_t','products.manage') on conflict do nothing");
+  await pool.query("insert into users(username, password_hash, full_name, role_code, must_change_password) values ('storemgr',$1,'مدير المتجر','store_mgr_t',false)", [hashPassword('Store#2026m')]);
+  const shape = (await call('GET', '/stones/shapes')).data[0];
+  const fl = new FormData(); for (const [k, v] of Object.entries({ shape_id: shape.id, size_label: '7.77 mm', carats: '2' })) fl.append(k, v);
+  const lot = (await call('POST', '/stones', null, fl)).data;
+  let ck = '';
+  const sm = async (m, p, body, form) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, ...(form ? {} : { 'content-type': 'application/json' }) }, body: form || (body ? JSON.stringify(body) : undefined) }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  assert.equal((await sm('POST', '/auth/login', { username: 'storemgr', password: 'Store#2026m' })).status, 200);
+  assert.equal((await sm('GET', '/stones')).status, 403, 'لا يدخل المخزون');
+  const lots = (await sm('GET', '/catalog/diamond-lots')).data;
+  const l = lots.find((x) => x.id === lot.id);
+  assert.ok(l && l.available === true && l.stock_carats === undefined, JSON.stringify({ lot, l }));
+  const f = new FormData();
+  for (const [k, v] of Object.entries({ name: 'خاتم ألماس', product_type: 'خاتم', karats: '18', colors: 'white', diamonds: JSON.stringify([{ lot_id: lot.id, carats: '0.5', count: '1' }]) })) f.append(k, v);
+  const p = await sm('POST', '/catalog/products', null, f);
+  assert.equal(p.status, 200, JSON.stringify(p.data));
+});

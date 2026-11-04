@@ -99,13 +99,13 @@ const STONE_FIELDS = [['pearl_weight', 'اللؤلؤ', 'وزن اللؤلؤ (ج�
 
 /** تفاصيل أحجار المنتج: الألماس يُختار من مخزون الألماس ويُحجز عند اعتماد الطلب، والباقي للعرض فقط */
 function StonesSection({ f, setF }) {
-  const { data: lots } = useFetch('/stones');
+  const { data: lots } = useFetch('/catalog/diamond-lots');
   const has = f.has_diamonds ?? (f.diamonds || []).length > 0;
   const list = f.diamonds || [];
   const setList = (l) => setF({ ...f, diamonds: l, has_diamonds: true });
   const upd = (i, k, v) => setList(list.map((d, j) => (j === i ? { ...d, [k]: v } : d)));
   const num = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
-  const opts = (lots || []).map((l) => [l.id, `${l.shape_name} — ${l.size_label || ''}${l.color ? ` ${l.color}` : ''}${l.clarity ? ` ${l.clarity}` : ''} (متوفر ${Number(l.stock_carats)} ct)`]);
+  const opts = (lots || []).map((l) => [l.id, `${l.shape_name} — ${l.size_label || ''}${l.color ? ` ${l.color}` : ''}${l.clarity ? ` ${l.clarity}` : ''} ${l.stock_carats != null ? ` (متوفر ${Number(l.stock_carats)} ct)` : l.available ? ' (متوفر)' : ' (غير متوفر حالياً)'}`]);
   const shown = (k) => f[`show_${k}`] ?? (f[k] != null && f[k] !== '');
   return (
     <div className="card mb-3">

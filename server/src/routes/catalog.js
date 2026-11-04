@@ -36,6 +36,15 @@ function productVals(b) {
 
 
 /** أنواع القطع وبادئاتها، ومعاينة رقم المنتج التالي لنوع معيّن */
+/** أنواع الألماس المخبري لنموذج المنتج: متاحة لمدير المتجر بدون صلاحية المخزون (الكميات فقط لمن لديه صلاحية المخزون) */
+r.get('/diamond-lots', requirePerm('products.manage', 'stones.view'), async (req, res) => {
+  const full = req.user.perms.has('stones.view');
+  const rows = await many(`select l.id, l.size_label, l.color, l.clarity, s.name as shape_name, b.stock_carats::text, (b.stock_carats > 0) as available
+    from stone_lots l join stone_lot_balances b on b.lot_id=l.id join stone_shapes s on s.id=l.shape_id
+    where l.active order by s.sort_order, s.name, (l.size_unit='mm') desc, l.size_value nulls last, l.size_label, l.id`);
+  res.json(full ? rows : rows.map(({ stock_carats, ...x }) => x)); // eslint-disable-line no-unused-vars
+});
+
 r.get('/product-types', requirePerm('products.manage', 'orders.view'), async (_req, res) => {
   res.json(PRODUCT_TYPES.map(([name, prefix]) => ({ name, prefix })));
 });
