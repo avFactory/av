@@ -618,3 +618,33 @@ test('طلب السلة برقم واحد وبنود، وبدء إنتاج ال�
   assert.equal(det.items.length, 3, 'تفاصيل الطلب تعرض كل منتجاته');
   assert.equal(det.history, undefined, 'لا يُرسل سجل المراحل');
 });
+
+test('العميل: حذف الطلب الذي لم يُقبل، وملاحظة على الطلب قيد التصنيع', async () => {
+  let ck = '';
+  const cu = async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  assert.equal((await cu('POST', '/auth/login', { username: 'grpshop', password: 'Group#2026s' })).status, 200);
+  const prods = (await cu('GET', '/store/products?limit=2')).data.products;
+  const sent = (await cu('POST', '/store/orders', { items: prods.map((p) => ({ product_id: p.id, karat: 21, quantity: 1 })) })).data;
+  const [a, b] = sent.orders;
+  // ملاحظة على طلب لم يبدأ تصنيعه: غير متاحة
+  assert.equal((await cu('POST', `/store/orders/${a.id}/note`, { note: 'x' })).status, 409);
+  // حذف بند واحد
+  assert.equal((await cu('POST', `/store/orders/${a.id}/cancel`, {})).status, 200);
+  let mine = (await cu('GET', '/store/orders')).data.filter((o) => o.cart_ref === sent.cart_ref);
+  assert.deepEqual(mine.map((o) => o.id), [b.id], 'المحذوف لا يظهر في طلباتي');
+  // بعد بدء الإنتاج لا يُحذف، وتُرسل ملاحظة
+  assert.equal((await call('POST', `/orders/${b.id}/start`, {})).status, 200);
+  assert.equal((await cu('POST', `/store/orders/${b.id}/cancel`, {})).status, 409, 'لا حذف بعد القبول');
+  assert.equal((await cu('POST', `/store/orders/${b.id}/note`, { note: '' })).status, 400);
+  assert.equal((await cu('POST', `/store/orders/${b.id}/note`, { note: 'نرجو تلميع إضافي' })).status, 200);
+  const det = (await cu('GET', `/store/orders/${b.id}`)).data;
+  assert.equal(det.notes[0].note, 'نرجو تلميع إضافي');
+  const staff = (await call('GET', `/orders/${b.id}`)).data;
+  assert.ok(staff.log.some((l) => l.event === 'customer_note' && l.note === 'نرجو تلميع إضافي'), 'الملاحظة تظهر للمصنع');
+  // حذف الطلب كاملاً
+  const s2 = (await cu('POST', '/store/orders', { items: prods.map((p) => ({ product_id: p.id, karat: 21, quantity: 1 })) })).data;
+  const r = await cu('POST', `/store/orders/${s2.orders[0].id}/cancel`, { all: true });
+  assert.equal(r.data.cancelled.length, 2);
+  mine = (await cu('GET', '/store/orders')).data.filter((o) => o.cart_ref === s2.cart_ref);
+  assert.equal(mine.length, 0);
+});

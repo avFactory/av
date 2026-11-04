@@ -2,7 +2,7 @@
 // لا تظهر للعميل أي معلومات داخلية: العهد، نسب العجز، أسماء العمال، حركات الذهب.
 import { Router } from 'express';
 import { pool, tx, many, one } from '../db.js';
-import { requirePerm } from '../lib/auth.js';
+import { requirePerm, loginThrottle } from '../lib/auth.js';
 import { HttpError, bad, conflict, forbidden, notFound, int, str, oneOf, weight as W } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyPerm } from '../lib/notify.js';
@@ -11,7 +11,7 @@ import { resolveLabor, resolveLaborMany, laborAmount } from '../lib/labor.js';
 import * as prod from '../lib/production.js';
 import * as ledger from '../lib/ledger.js';
 import { materialFor, orderColor } from './orders.js';
-import { parseDiamonds, optW } from '../lib/stoneReserve.js';
+import { parseDiamonds, optW, releaseDiamonds } from '../lib/stoneReserve.js';
 import { invoiceDetail } from './finance.js';
 import { newGroupNo, nextItemNo } from '../lib/orderGroups.js';
 import { listBranches, createBranch, updateBranch, assertMainAccount } from '../lib/branches.js';
@@ -205,7 +205,9 @@ r.get('/orders', async (req, res) => {
       (select f.path from order_files f where f.order_id=o.id and f.customer_visible and f.mime like 'image/%' order by f.id desc limit 1) as image,
       (select pm.path from product_media pm where pm.product_id=o.product_id order by pm.sort, pm.id limit 1) as product_image
     from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id left join customer_branches br on br.id=o.branch_id
-    where o.customer_id=$1 and ($2::int is null or o.branch_id=$2) order by o.id desc`, [req.user.customer_id, req.user.branch_id || null]));
+    where o.customer_id=$1 and ($2::int is null or o.branch_id=$2)
+      and not (o.status='cancelled' and o.production_started_at is null) -- المحذوفة قبل القبول لا تظهر
+    order by o.id desc`, [req.user.customer_id, req.user.branch_id || null]));
 });
 
 /** متابعة الطلب: بيانات العميل فقط (بدون عمال أو عهد أو نسب عجز) */
@@ -222,8 +224,10 @@ r.get('/orders/:id', async (req, res) => {
                (select f.path from order_files f where f.order_id=o.id and f.customer_visible and f.mime like 'image/%' order by f.id limit 1)) as image
     from orders o join materials m on m.id=o.material_id left join stages s on s.id=o.current_stage_id
     where o.customer_id=$1 and ($2::int is null or o.branch_id=$2) and (o.id=$3 or ($4::text is not null and o.cart_ref=$4))
+      and (o.id=$3 or not (o.status='cancelled' and o.production_started_at is null))
     order by o.id`, [req.user.customer_id, req.user.branch_id || null, o.id, o.cart_ref || null]);
   const files = await many("select id, kind, path, original_name, mime from order_files where order_id=$1 and customer_visible order by id", [o.id]);
+  const notes = await many("select note, created_at from order_stage_log where order_id=$1 and event='customer_note' order by id desc", [o.id]);
   const designs = await many('select id, file_ids, message, sent_at, status, customer_note, decided_at from design_reviews where order_id=$1 order by id desc', [o.id]);
   const invoices = await many(`select distinct i.id, i.invoice_no, i.total::text, i.invoice_type from invoice_lines l join invoices i on i.id=l.invoice_id where l.order_id=$1`, [o.id]);
   const stones = await one(`select o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text,
@@ -242,7 +246,7 @@ r.get('/orders/:id', async (req, res) => {
       product_image: productImage, cart_ref: o.cart_ref,
       ...stones,
     },
-    stages, current_seq: o.stage_seq, items, files, designs, invoices,
+    stages, current_seq: o.stage_seq, items, files, designs, invoices, notes,
   });
 });
 
@@ -291,6 +295,47 @@ r.post('/orders/:id/design', async (req, res) => {
     await prod.logStage(db, o.id, o.current_stage_id, 'design', req.user.id, `${label}${note ? ': ' + note : ''}`, true);
     await notifyPerm(db, 'design.manage', { kind: 'design', title: `${label} - ${o.order_no}`, body: note, link: `/orders/${o.id}` });
     await audit(db, req, `design.${decision}`, 'order', o.id, { review: d.id, note, at: new Date().toISOString() });
+    return { ok: true };
+  }));
+});
+
+/**
+ * حذف طلب لم يُقبل بعد (بانتظار المراجعة أو عرض الأجور): يُلغى ويختفي من طلباتي.
+ * all: true يحذف كل بنود الطلب التي لم تُقبل بعد.
+ */
+r.post('/orders/:id/cancel', async (req, res) => {
+  res.json(await tx(async (db) => {
+    const o = await myOrder(db, req, req.params.id, true);
+    const ids = req.body.all && o.cart_ref
+      ? (await db.query(`select id from orders where cart_ref=$1 and customer_id=$2 and ($3::int is null or branch_id=$3) and status in ('pending_review','quoted') order by id for update`,
+          [o.cart_ref, req.user.customer_id, req.user.branch_id || null])).rows.map((x) => x.id)
+      : [o.id];
+    const done = [];
+    for (const id of ids) {
+      const x = (await db.query('select * from orders where id=$1 for update', [id])).rows[0];
+      if (!['pending_review', 'quoted'].includes(x.status)) throw conflict(`الطلب ${x.order_no} قُبل وبدأ تجهيزه - لا يمكن حذفه، تواصل مع المصنع`);
+      await db.query("update orders set status='cancelled', updated_at=now() where id=$1", [id]);
+      await releaseDiamonds(db, id, req.user.id, `حذف العميل للطلب ${x.order_no}`);
+      await prod.logStage(db, id, null, 'status', req.user.id, 'حذف العميل الطلب قبل قبوله', false);
+      done.push(x.order_no);
+    }
+    await notifyPerm(db, 'orders.manage', { kind: 'order', title: `حذف ${req.user.shop_name} طلباً قبل قبوله`, body: done.join('، '), link: `/orders?q=${encodeURIComponent(o.cart_ref || o.order_no)}` });
+    await audit(db, req, 'store.order_cancel', 'order', o.id, { orders: done });
+    return { ok: true, cancelled: done };
+  }));
+});
+
+/** ملاحظة من العميل على طلب قيد التصنيع (تصل للمصنع فوراً) */
+r.post('/orders/:id/note', async (req, res) => {
+  res.json(await tx(async (db) => {
+    const o = await myOrder(db, req, req.params.id);
+    if (!['approved', 'in_production'].includes(o.status)) throw conflict('الملاحظات متاحة للطلبات قيد التصنيع');
+    const note = str(req.body.note, 'الملاحظة', { required: true, max: 1000 });
+    loginThrottle(`cnote:${req.user.id}`, 30);
+    await prod.logStage(db, o.id, o.current_stage_id, 'customer_note', req.user.id, note, true);
+    await notifyPerm(db, 'orders.manage', { kind: 'order', title: `ملاحظة من ${req.user.shop_name} على ${o.order_no}`, body: note, link: `/orders/${o.id}` });
+    await notifyPerm(db, 'orders.advance', { kind: 'order', title: `ملاحظة من العميل على ${o.order_no}`, body: note, link: `/orders/${o.id}` });
+    await audit(db, req, 'store.order_note', 'order', o.id, { note });
     return { ok: true };
   }));
 });

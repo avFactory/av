@@ -116,6 +116,13 @@ export default function OrderDetail() {
         </Card>
       ) : null}
 
+      {log.some((l) => l.event === 'customer_note') && (
+        <Card className="mb" title={<span>💬 ملاحظات العميل على الطلب</span>}>
+          <div className="d-grid gap-2">{log.filter((l) => l.event === 'customer_note').map((l) => (
+            <div key={l.id} className="alert alert-warning py-2 mb-0"><div>{l.note}</div><div className="small text-body-secondary">{l.user_name} · {fmtDT(l.created_at)}</div></div>
+          ))}</div>
+        </Card>
+      )}
       {(siblings.length > 1 || (['pending_review', 'quoted'].includes(o.status) && o.quantity > 1 && can('orders.manage'))) && (
         <OrderItems o={o} siblings={siblings} canManage={can('orders.manage')} busy={busy} routes={lookups?.routes || []}
           onSplit={() => open('split', { quantity: '', route_id: o.route_id ? String(o.route_id) : '' })}
@@ -164,7 +171,7 @@ export default function OrderDetail() {
           </div>
         )}
         {tab === 'stones' && <div className="card"><Table rows={stones} empty="لا توجد أحجار مرتبطة" columns={[['الدفعة', 'lot_no'], ['النوع', 'stone_type'], ['الحركة', (s) => ({ issue: 'تسليم', return: 'مرتجع', used: 'مركب', lost: 'مفقود', reversal: 'عكس' }[s.kind] || s.kind)], ['قيراط', 'carats'], ['العدد', 'count'], ['العامل', 'worker_name'], ['التاريخ', (s) => fmtDT(s.created_at)]]} /></div>}
-        {tab === 'log' && <div className="card"><Table rows={log} columns={[['التاريخ', (l) => fmtDT(l.created_at)], ['المرحلة', 'stage_name'], ['الحدث', 'event'], ['العامل', 'worker_name'], ['المستخدم', 'user_name'], ['ملاحظة', 'note'], ['للعميل', (l) => (l.customer_visible ? '✓' : '')]]} /></div>}
+        {tab === 'log' && <div className="card"><Table rows={log} columns={[['التاريخ', (l) => fmtDT(l.created_at)], ['المرحلة', 'stage_name'], ['الحدث', (l) => (l.event === 'customer_note' ? <Badge tone="warn">ملاحظة العميل</Badge> : l.event)], ['العامل', 'worker_name'], ['المستخدم', 'user_name'], ['ملاحظة', 'note'], ['للعميل', (l) => (l.customer_visible ? '✓' : '')]]} /></div>}
         {tab === 'finance' && <div className="card"><Table rows={invoices} empty="لا توجد فواتير" columns={[['الفاتورة', (i) => <Link className="link" to={`/admin/invoices/${i.id}`}>{i.invoice_no}</Link>], ['النوع', (i) => (i.invoice_type === 'invoice' ? 'فاتورة' : 'إشعار دائن')], ['الإجمالي', (i) => fmtMoney(i.total)]]} /></div>}
         {tab === 'overview' && gold.length > 0 && <Card title="أرصدة ذهب الطلب" className="mt"><Kv items={gold.map((g) => [`${LOCS[g.loc_type]} - ${g.name}`, `${fmtW(g.balance, 4)} جم`])} /></Card>}
       </div>
