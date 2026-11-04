@@ -659,3 +659,19 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .page-tabs-row .tabs .nav-link { padding: 6px 12px; }
 .page-h.inline:has(.page-tabs-row) { margin-bottom: .75rem; gap: 1.25rem; }
 @media (max-width: 760px) { .page-tabs-row { flex-wrap: wrap; } }
+
+/* سجل التدقيق: صفوف مختصرة لا يتجاوز ارتفاعها 3 سم */
+.audit-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: 1; justify-content: flex-end; }
+.audit-filters > input { width: 240px; }
+.audit-filters label { display: inline-flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; }
+.audit-filters label input { width: 150px; }
+.audit-table td { vertical-align: top; }
+.audit-sum { max-height: 3cm; overflow: hidden; display: grid; gap: 2px; max-width: 560px; }
+.audit-lines { overflow: hidden; }
+.audit-lines > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.audit-sum .btn-link { justify-self: start; font-size: .78rem; }
+.audit-act { font-weight: 600; white-space: nowrap; }
+.audit-act.bad { color: #b42318; }
+.audit-val { white-space: pre-wrap; word-break: break-word; display: block; max-height: 9rem; overflow: auto; }
+.audit-raw { max-height: 50vh; overflow: auto; font-size: .75rem; background: var(--bs-tertiary-bg); padding: 10px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+@media (max-width: 760px) { .audit-filters > input, .audit-filters label input { width: 100%; } .audit-filters label { flex: 1; } }
