@@ -190,16 +190,16 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
   // 7) الحساب التلقائي
   const pv = await sup.post('/api/sup/preview', { custody_id: cid, returned_weight: '99.7', scrap_weight: '0' });
   assert.equal(n(pv.actual_loss), 0.3);
-  assert.equal(n(pv.allowed_loss), 0.2);
-  assert.equal(n(pv.abnormal_loss), 0.1);
-  // 8) العجز غير الطبيعي يتطلب سبباً
-  const noReason = await sup.req('POST', '/api/sup/receive', { worker_id: ids.w1, items: [{ custody_id: cid, returned_weight: '99.7', scrap_weight: '0' }] });
+  assert.equal(n(pv.allowed_loss), 0.1994); // 99.7 × 0.2%
+  assert.equal(n(pv.abnormal_loss), 0.1006);
+  // 8) الإحالة للمراجعة تتطلب سبباً
+  const noReason = await sup.req('POST', '/api/sup/receive', { worker_id: ids.w1, items: [{ custody_id: cid, returned_weight: '99.7', scrap_weight: '0', review: true }] });
   assert.equal(noReason.status, 400);
-  const rcv = await sup.post('/api/sup/receive', { worker_id: ids.w1, items: [{ custody_id: cid, returned_weight: '99.7', scrap_weight: '0', reason: 'تطاير أثناء الصب' }], signature: PNG, idempotency_key: 'r-cast-1' });
+  const rcv = await sup.post('/api/sup/receive', { worker_id: ids.w1, items: [{ custody_id: cid, returned_weight: '99.7', scrap_weight: '0', review: true, reason: 'تطاير أثناء الصب' }], signature: PNG, idempotency_key: 'r-cast-1' });
   const stl = rcv.results[0].settlement;
   assert.equal(stl.status, 'pending_review');
-  assert.equal(n(stl.normal_loss), 0.2);
-  assert.equal(n(stl.abnormal_loss), 0.1);
+  assert.equal(n(stl.normal_loss), 0.1994);
+  assert.equal(n(stl.abnormal_loss), 0.1006);
   // منع تكرار تسجيل الوزن
   const dup = await sup.req('POST', '/api/sup/receive', { worker_id: ids.w1, items: [{ custody_id: cid, returned_weight: '99.7', scrap_weight: '0', reason: 'x' }] });
   assert.equal(dup.status, 409, 'منع تكرار تسجيل الوزن');
@@ -493,10 +493,10 @@ test('عهدة عامة: تحويل ذهب من الخزنة لعامل بدون
   const c = open.find((x) => x.id === g.custody_id);
   assert.equal(c.order_no, 'عهدة عامة');
   assert.equal((await sup.get('/api/inventory/reconciliation')).ok, true, 'المطابقة سليمة مع العهدة العامة');
-  // إرجاع 24.9: عجز 0.1، المسموح 0.05 → غير طبيعي 0.05 يتطلب سبباً
-  const noReason = await sup.req('POST', '/api/sup/receive', { worker_id: ids.w3, items: [{ custody_id: g.custody_id, returned_weight: '24.9', scrap_weight: '0' }] });
+  // إرجاع 24.9 مع إحالة للمراجعة يتطلب سبباً
+  const noReason = await sup.req('POST', '/api/sup/receive', { worker_id: ids.w3, items: [{ custody_id: g.custody_id, returned_weight: '24.9', scrap_weight: '0', review: true }] });
   assert.equal(noReason.status, 400);
-  const r = await sup.post('/api/sup/receive', { worker_id: ids.w3, items: [{ custody_id: g.custody_id, returned_weight: '24.9', scrap_weight: '0', reason: 'لحام' }] });
+  const r = await sup.post('/api/sup/receive', { worker_id: ids.w3, items: [{ custody_id: g.custody_id, returned_weight: '24.9', scrap_weight: '0', review: true, reason: 'لحام' }] });
   assert.equal(r.results[0].settlement.status, 'pending_review');
   assert.equal(r.results[0].order_no, 'عهدة عامة - رصيد لحام وتصليحات');
   await admin.post(`/api/sup/reviews/${r.results[0].settlement.id}`, { decision: 'approve', notes: 'مقبول' });

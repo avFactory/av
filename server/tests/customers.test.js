@@ -485,21 +485,39 @@ test('العجز على حساب العامل: الوزن الفعلي من ال
   assert.equal((await w('POST', '/auth/login', { username: 'losswk', password: 'Loss#2026w' })).status, 200);
   await w('POST', `/w/custody/${cid}/ack`); await w('POST', `/w/custody/${cid}/start`);
   assert.equal((await w('POST', `/w/custody/${cid}/finish`)).status, 200, 'إنهاء المرحلة بدون أوزان من العامل');
-  // المشرف يستلم 9.8 جم: العجز 0.2، المسموح 0.1 (1%)، على حساب العامل 0.1
-  const rc = await call('POST', '/sup/receive', { worker_id: wk, items: [{ custody_id: cid, returned_weight: '9.8', scrap_weight: '0', reason: 'عجز زائد' }] });
+  // المشرف يستلم 9.8 جم (بدون بقايا ولا سبب): العجز 0.2، المسموح 9.8×1% = 0.098، على حساب العامل 0.102
+  const rc = await call('POST', '/sup/receive', { worker_id: wk, items: [{ custody_id: cid, returned_weight: '9.8' }] });
+  assert.equal(rc.data.results[0].settlement.status, 'approved', 'العجز يُسجَّل تلقائياً بدون مراجعة');
   assert.equal(rc.status, 200, JSON.stringify(rc.data));
   const L = (await w('GET', '/w/losses')).data;
   const row = L.rows.find((r) => r.order_id === o.id);
-  assert.deepEqual([Number(row.actual_loss), Number(row.normal_loss), Number(row.charged)], [0.2, 0.1, 0.1]);
-  assert.equal(Number(L.totals.charged.toFixed(4)), 0.1);
-  // الإدارة: ملخص الشهر وتسجيل السلفة (0.1 جم عيار 21 = 0.0875 صافي × 400 = 35 ر.س)
+  assert.deepEqual([Number(row.actual_loss), Number(row.allowed), Number(row.net)], [0.2, 0.098, 0.102]);
+  assert.equal(L.totals.charged, 0.102);
+  // الإدارة: ملخص الشهر وتسجيل السلفة (0.102 جم عيار 21 = 0.0893 صافي × 400 = 35.72 ر.س)
   const A = (await call('GET', `/admin/loss-advances?month=${L.month}`)).data;
   const sw = A.workers.find((x) => x.worker_id === wk);
-  assert.equal(Number(sw.charged), 0.1);
+  assert.equal(Number(sw.charged), 0.102);
   const adv = await call('POST', '/admin/loss-advances', { worker_id: wk, month: L.month, price_per_gram: '400', include_pending: true });
   assert.equal(adv.status, 200, JSON.stringify(adv.data));
-  assert.equal(Number(adv.data.amount), 35);
+  assert.equal(Number(adv.data.amount), 35.72);
   assert.equal((await call('POST', '/admin/loss-advances', { worker_id: wk, month: L.month, price_per_gram: '400', include_pending: true })).status, 409, 'لا تتكرر سلفة نفس الشهر');
-  assert.equal(Number((await w('GET', '/w/losses')).data.advance.amount), 35, 'العامل يرى السلفة');
+  assert.equal(Number((await w('GET', '/w/losses')).data.advance.amount), 35.72, 'العامل يرى السلفة');
   assert.equal((await w('GET', '/admin/loss-advances')).status, 403, 'العامل لا يدخل صفحة السلف');
+
+  // نسبة حسب مهنة العامل: عامل تشبيك 0.1% بدلاً من نسبة المرحلة 1%
+  const sr = (await call('GET', '/admin/specialty-rates')).data;
+  assert.ok(sr.some((r) => r.specialty === 'تشبيك' && Number(r.rate_percent) === 0.1));
+  await pool.query("update users set specialty='تشبيك' where id=$1", [wk]);
+  const o2 = (await call('POST', '/orders', { title: 'طلب تشبيك', product_type: 'خاتم', karat: 21, color: 'yellow', quantity: 1, material_id: mat.id, route_id: 2 })).data;
+  let d2 = (await call('GET', `/orders/${o2.id}`)).data;
+  for (let i = 0; i < 4 && !d2.order.handles_gold; i++) { await call('POST', `/orders/${o2.id}/advance`, { force: true, reason: 'اختبار' }); d2 = (await call('GET', `/orders/${o2.id}`)).data; }
+  const iss2 = (await call('POST', '/sup/issue', { worker_id: wk, items: [{ order_id: o2.id, weight: '10' }] })).data;
+  assert.equal(Number(iss2.custodies[0].loss_rate_snapshot), 0.1);
+  // زيادة الوزن تحتاج ملاحظة ومراجعة
+  assert.equal((await call('POST', '/sup/receive', { worker_id: wk, items: [{ custody_id: iss2.custodies[0].id, returned_weight: '10.5' }] })).status, 400);
+  const g = await call('POST', '/sup/receive', { worker_id: wk, items: [{ custody_id: iss2.custodies[0].id, returned_weight: '10.5', reason: 'زيادة' }] });
+  assert.equal(g.data.results[0].settlement.status, 'pending_review');
+  // تعديل النسب
+  assert.equal((await call('PUT', '/admin/specialty-rates', { rates: [...sr.map((r) => ({ specialty: r.specialty, rate_percent: r.rate_percent })), { specialty: 'صب', rate_percent: '0.3' }] })).status, 200);
+  assert.ok((await call('GET', '/admin/specialty-rates')).data.some((r) => r.specialty === 'صب'));
 });

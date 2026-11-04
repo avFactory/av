@@ -34,7 +34,7 @@ export default function Receive() {
 
   const lineFrom = (c) => ({
     returned: c.worker_declared_returned != null ? String(+(Number(c.worker_declared_returned) + Number(c.stones_now || 0)).toFixed(4)) : '',
-    scrap: c.worker_declared_scrap != null ? String(+c.worker_declared_scrap) : '', stones: c.stones_now || '0', reason: '', pieces: String(c.pieces), notes: '', showStones: Number(c.stones_now) > 0,
+    stones: c.stones_now || '0', reason: '', pieces: String(c.pieces), notes: '', showStones: Number(c.stones_now) > 0,
   });
   const toggle = (c) => setLines((l) => { const n = { ...l }; if (n[c.id]) delete n[c.id]; else n[c.id] = lineFrom(c); return n; });
   const upd = (id, k, v) => setLines((l) => ({ ...l, [id]: { ...l[id], [k]: v } }));
@@ -54,19 +54,19 @@ export default function Receive() {
       const l = lines[c.id];
       if (!l || l.returned === '') continue;
       const ret = sub(l.returned, l.stones || 0);
-      out[c.id] = { ...calcLoss(c.weight_issued, ret, l.scrap || 0, c.loss_rate_snapshot), ret };
+      out[c.id] = { ...calcLoss(c.weight_issued, ret, 0, c.loss_rate_snapshot), ret };
     }
     return out;
   }, [open, lines]);
   const selected = (open || []).filter((c) => lines[c.id]);
-  const problems = selected.filter((c) => calc[c.id] && (calc[c.id].abnormal > 0 || calc[c.id].gain > 0));
+  const problems = selected.filter((c) => calc[c.id] && calc[c.id].gain > 0);
   const valid = selected.length && selected.every((c) => lines[c.id].returned !== '' && calc[c.id] && calc[c.id].ret >= 0)
     && problems.every((c) => lines[c.id].reason.trim());
 
   const submit = () => run(async () => {
     const r = await api.post('/sup/receive', {
       worker_id: worker.id, idempotency_key: key.current,
-      items: selected.map((c) => ({ custody_id: c.id, returned_weight: lines[c.id].returned, scrap_weight: lines[c.id].scrap || '0', stones_weight: lines[c.id].stones || '0', reason: lines[c.id].reason, pieces_returned: lines[c.id].pieces, notes: lines[c.id].notes })),
+      items: selected.map((c) => ({ custody_id: c.id, returned_weight: lines[c.id].returned, scrap_weight: '0', stones_weight: lines[c.id].stones || '0', reason: lines[c.id].reason, pieces_returned: lines[c.id].pieces, notes: lines[c.id].notes })),
     });
     setDone(r);
   }, 'تم الاستلام وتسجيل التسويات');
@@ -86,9 +86,9 @@ export default function Receive() {
                 </div>
                 <div className="calc">
                   <div><span>المرتجع</span><b>{fmtW(r.settlement.returned_weight)}</b></div>
-                  <div><span>البقايا</span><b>{fmtW(r.settlement.scrap_weight)}</b></div>
                   <div><span>العجز الفعلي</span><b>{fmtW(r.settlement.actual_loss)}</b></div>
-                  <div className={Number(r.settlement.abnormal_loss) > 0 ? 'bad' : 'ok'}><span>غير الطبيعي</span><b>{fmtW(r.settlement.abnormal_loss)}</b></div>
+                  <div><span>المسموح</span><b>{fmtW(r.settlement.allowed_loss)}</b></div>
+                  <div className={Number(r.settlement.abnormal_loss) > 0 ? 'bad' : 'ok'}><span>على حساب العامل</span><b>{fmtW(r.settlement.abnormal_loss)}</b></div>
                 </div>
                 {r.advanced?.stage && <span className="small muted">انتقل الطلب إلى: {r.advanced.stage.name}</span>}
                 {r.advanced?.blocked && <span className="small muted">{r.advanced.blocked}</span>}
@@ -124,7 +124,7 @@ export default function Receive() {
               {open.map((c) => {
                 const l = lines[c.id];
                 const k = calc[c.id];
-                const alarm = k && (k.abnormal > 0 || k.gain > 0);
+                const alarm = k && k.gain > 0;
                 return (
                   <div key={c.id} id={`c-${c.id}`} className={`line-item ${l ? 'sel' : ''} ${alarm ? 'alarm' : ''}`}>
                     <label className="line-head check" style={{ cursor: 'pointer' }}>
@@ -143,8 +143,6 @@ export default function Receive() {
                       <div><span>الوزن المستلم من المصنع</span><b>{fmtW(c.weight_issued)}</b></div>
                       <div><span>المادة</span><b style={{ direction: 'rtl' }}>{c.material_name}</b></div>
                       <div><span>نسبة العجز المسموح</span><b>{fmtPct(c.loss_rate_snapshot)}</b></div>
-                      <div><span>العجز المسموح</span><b>{fmtW(calcLoss(c.weight_issued, 0, 0, c.loss_rate_snapshot).allowed)}</b></div>
-                      {c.worker_declared_returned != null && <div><span>تصريح العامل (مرتجع/بقايا)</span><b>{fmtW(c.worker_declared_returned)} / {fmtW(c.worker_declared_scrap)}</b></div>}
                     </div>
                     {l && (
                       <>
@@ -152,7 +150,6 @@ export default function Receive() {
                           <Field label="الوزن الفعلي المرتجع (جم)" hint={Number(l.stones) > 0 ? `صافي الذهب: ${fmtW(k?.ret ?? 0, 4)}` : 'الوزن على الميزان'}>
                             <WeightInput big value={l.returned} onChange={(v) => upd(c.id, 'returned', v)} autoFocus />
                           </Field>
-                          <Field label="بقايا ذهب قابلة للاسترداد (جم)"><WeightInput big value={l.scrap} onChange={(v) => upd(c.id, 'scrap', v)} /></Field>
                           <Field label="عدد القطع المستلمة"><Input inputMode="numeric" value={l.pieces} onChange={(e) => upd(c.id, 'pieces', e.target.value.replace(/\D/g, ''))} /></Field>
                         </div>
                         {l.showStones ? (
@@ -161,16 +158,15 @@ export default function Receive() {
                         {k && (
                           <div className="calc">
                             <div><span>العجز الفعلي</span><b>{fmtW(k.actual, 4)}</b></div>
-                            <div><span>العجز الطبيعي المسموح</span><b>{fmtW(k.allowed, 4)}</b></div>
-                            <div className="ok"><span>عجز طبيعي</span><b>{fmtW(k.normal, 4)}</b></div>
-                            <div className={k.abnormal > 0 ? 'bad' : 'ok'}><span>عجز غير طبيعي</span><b>{fmtW(k.abnormal, 4)}</b></div>
+                            <div className="ok"><span>المسموح (المستلم × النسبة)</span><b>{fmtW(k.allowed, 4)}</b></div>
+                            <div className={k.abnormal > 0 ? 'bad' : 'ok'}><span>يبقى على حساب العامل</span><b>{fmtW(k.abnormal, 4)}</b></div>
                             {k.gain > 0 && <div className="bad"><span>زيادة في الوزن</span><b>{fmtW(k.gain, 4)}</b></div>}
                           </div>
                         )}
                         {alarm && (
                           <>
-                            <div className="alert alert-danger">{k.gain > 0 ? 'الوزن المرتجع أكبر من المستلم' : 'تجاوز العجز الطبيعي المسموح للمرحلة'} — سجّل السبب وستحال الحالة للاعتماد قبل إغلاق التسوية. (لا يعني ذلك تلقائياً مسؤولية العامل)</div>
-                            <Field label="سبب العجز / الملاحظة *"><Textarea value={l.reason} onChange={(e) => upd(c.id, 'reason', e.target.value)} /></Field>
+                            <div className="alert alert-danger">الوزن المرتجع أكبر من المسلَّم للعامل — سجّل ملاحظة وستحال الحالة للاعتماد.</div>
+                            <Field label="الملاحظة *"><Textarea value={l.reason} onChange={(e) => upd(c.id, 'reason', e.target.value)} /></Field>
                           </>
                         )}
                       </>
@@ -183,7 +179,7 @@ export default function Receive() {
                   <div className="sticky-foot">
                     <Kv items={[['طلبات مختارة', selected.length], ['تحتاج مراجعة', problems.length]]} />
                     <Btn size="lg" kind={problems.length ? 'danger' : 'primary'} loading={busy} disabled={!valid} onClick={submit}>
-                      {problems.length ? 'تأكيد الاستلام وإحالة العجز' : 'تأكيد الاستلام'}
+                      {problems.length ? 'تأكيد الاستلام وإحالة للمراجعة' : 'تأكيد الاستلام'}
                     </Btn>
                   </div>
                 </>

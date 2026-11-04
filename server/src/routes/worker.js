@@ -1,6 +1,6 @@
 // واجهة العامل: لا يرى إلا عهده وطلباته
 import { Router } from 'express';
-import { workerLossRows, monthStart } from '../lib/workerLoss.js';
+import { workerLossRows, monthTotals, monthStart } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm } from '../lib/auth.js';
 import { bad, conflict, forbidden, notFound, int, str, weight as W } from '../lib/http.js';
@@ -199,11 +199,10 @@ r.post('/orders/:id/note', async (req, res) => {
 r.get('/losses', async (req, res) => {
   const month = monthStart(req.query.month);
   const rows = await workerLossRows(pool, req.user.id, month);
-  const sum = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
   const advance = await one('select amount::text, grams::text, price_per_gram::text, created_at from worker_advances where worker_id=$1 and month=$2', [req.user.id, month]);
   const months = await many(`select distinct to_char(date_trunc('month', st.received_at at time zone 'Asia/Riyadh'), 'YYYY-MM') as m
     from settlements st join custodies c on c.id=st.custody_id where c.worker_id=$1 and st.status <> 'reversed' order by 1 desc limit 12`, [req.user.id]);
-  res.json({ month: month.slice(0, 7), rows, totals: { actual: sum('actual_loss'), normal: sum('normal_loss'), charged: sum('charged') }, advance, months: months.map((x) => x.m) });
+  res.json({ month: month.slice(0, 7), rows, totals: monthTotals(rows), advance, months: months.map((x) => x.m) });
 });
 
 r.get('/history', async (req, res) => {

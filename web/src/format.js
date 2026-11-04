@@ -11,7 +11,7 @@ const U = (v) => Math.round(Number(String(v || 0).replace(/[٠-٩]/g, (d) => '٠
 export function calcLoss(issued, returned, scrap, rate) {
   const i = U(issued), r = U(returned), s = U(scrap);
   const actual = i - r - s;
-  const allowed = Math.round((i * Number(rate || 0)) / 100);
+  const allowed = Math.round((Math.max(0, r) * Number(rate || 0)) / 100);
   const normal = Math.max(0, Math.min(actual, allowed));
   const abnormal = Math.max(0, actual - allowed);
   const gain = Math.max(0, -actual);

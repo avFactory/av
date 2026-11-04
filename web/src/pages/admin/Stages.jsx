@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtDT, fmtPct } from '../../format.js';
@@ -39,6 +39,7 @@ export default function Stages() {
               <Btn size="sm" kind="ghost" onClick={() => window.confirm(`حذف مرحلة ${x.name}؟`) && run(async () => { await api.del(`/admin/stages/${x.id}`); reload(); reloadRoutes(); }, 'تم الحذف')}>حذف</Btn>
             </div>],
           ]} /></div>
+          <SpecialtyRates />
         </>
       )}
       {tab === 'routes' && (
@@ -97,5 +98,32 @@ export default function Stages() {
         </>}
       </Modal>
     </Page>
+  );
+}
+
+/** نسب العجز حسب مهنة العامل: المسموح = الوزن المستلم من العامل × نسبة مهنته (تتقدم على نسبة المرحلة) */
+function SpecialtyRates() {
+  const { can } = useAuth();
+  const { data, reload } = useFetch('/admin/specialty-rates');
+  const [rows, setRows] = useState(null);
+  const [run, busy] = useAction();
+  useEffect(() => { if (data) setRows(data.map((r) => ({ specialty: r.specialty, rate_percent: String(+r.rate_percent), workers: r.workers }))); }, [data]);
+  if (!rows) return null;
+  const edit = can('loss_rates.manage');
+  const upd = (i, k, v) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <Card title="نسب العجز حسب مهنة العامل" className="mt-3">
+      <div className="small text-body-secondary mb-2">العجز المسموح = الوزن المستلم من العامل × نسبة مهنته. على حساب العامل = إجمالي عجز الشهر − إجمالي المسموح. العامل الذي لا تطابق مهنته أي سطر تُطبق عليه نسبة المرحلة. (تُطبق على العهد الجديدة)</div>
+      <Table rows={rows.map((r, i) => ({ ...r, _i: i }))} empty="لا توجد نسب" columns={[
+        ['المهنة', (r) => (edit ? <Input value={r.specialty} onChange={(e) => upd(r._i, 'specialty', e.target.value)} style={{ maxWidth: 200 }} /> : <b>{r.specialty}</b>)],
+        ['النسبة %', (r) => (edit ? <Input dir="ltr" inputMode="decimal" value={r.rate_percent} onChange={(e) => upd(r._i, 'rate_percent', e.target.value.replace(/[^\d.]/g, ''))} style={{ maxWidth: 110 }} /> : <b dir="ltr">{fmtPct(r.rate_percent)}</b>)],
+        ['عدد العمال', (r) => r.workers ?? '—'],
+        ['', (r) => edit && <button type="button" className="link small text-danger" onClick={() => setRows(rows.filter((_, j) => j !== r._i))}>حذف</button>],
+      ]} />
+      {edit && <div className="hrow gap mt">
+        <Btn kind="ghost" onClick={() => setRows([...rows, { specialty: '', rate_percent: '' }])}>إضافة مهنة</Btn>
+        <Btn loading={busy} onClick={() => run(async () => { await api.put('/admin/specialty-rates', { rates: rows.filter((r) => r.specialty.trim()) }); reload(); }, 'تم حفظ النسب')}>حفظ النسب</Btn>
+      </div>}
+    </Card>
   );
 }

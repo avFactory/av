@@ -1,5 +1,6 @@
 // محرك العهدة: تسليم واستلام الذهب، حساب العجز، المراجعة والتحقيق والتصحيح
 import { bad, conflict, forbidden, notFound, weight as W, int, str } from './http.js';
+import { specialtyRate } from './workerLoss.js';
 import * as ledger from './ledger.js';
 import { audit } from './audit.js';
 import { notifyPerm, notifyUsers } from './notify.js';
@@ -68,7 +69,8 @@ export async function issue(db, req, body) {
     const net = await sub(db, gross, stones);
     if (Number(net) <= 0) throw bad(`صافي الذهب للطلب ${order.order_no} غير صالح`);
     const pieces = it.pieces != null && it.pieces !== '' ? int(it.pieces, 'عدد القطع', { min: 0 }) : order.quantity;
-    const rate = await currentRate(db, stage.id);
+    // نسبة العجز: حسب مهنة العامل إن حُددت (تشبيك/تفنيش/أسماء/تركيب…)، وإلا نسبة المرحلة
+    const rate = (await specialtyRate(db, workerId)) ?? (await currentRate(db, stage.id));
 
     // سحب الذهب: من رصيد الطلب، وإن لم يكفِ يُستكمل من الخزنة (عند السماح)
     await ledger.lockLocation(db, 'order', order.id, order.material_id);
@@ -109,7 +111,7 @@ export async function preview(db, custodyId, returnedGross, scrap, stonesW) {
   const gross = W(returnedGross, 'الوزن المرتجع', { allowZero: true });
   const returned = await sub(db, gross, stones);
   if (Number(returned) < 0) throw bad('الوزن المرتجع أقل من وزن الأحجار');
-  const s = W(scrap, 'البقايا', { allowZero: true });
+  const s = scrap == null || scrap === '' ? '0' : W(scrap, 'البقايا', { allowZero: true });
   const r = (await db.query('select * from calc_loss($1,$2,$3,$4)', [c.weight_issued, returned, s, c.loss_rate_snapshot])).rows[0];
   return { custody: c, returned, scrap: s, stones, gross, ...r };
 }
@@ -128,7 +130,6 @@ export async function receive(db, req, body) {
     if (dup.rows[0]) return { batch_id: dup.rows[0].receive_batch_id, duplicate: true };
   }
   await getWorker(db, workerId);
-  const threshold = (await db.query("select value::text v from settings where key='abnormal_threshold'")).rows[0]?.v || '0';
 
   const sig = await saveSignature(db, body.signature, req.user.id);
   const batch = (await db.query(
@@ -149,9 +150,12 @@ export async function receive(db, req, body) {
     const label = order ? order.order_no : `عهدة عامة${c.purpose ? ' - ' + c.purpose : ''}`;
 
     const p = await preview(db, c.id, it.returned_weight, it.scrap_weight, it.stones_weight);
-    const needsReview = Number(p.abnormal_loss) > Number(threshold) || Number(p.gain_weight) > 0;
+    // العجز يُسجَّل تلقائياً ويبقى الزائد على حساب العامل (يُحسب على إجمالي شغل الشهر).
+    // المراجعة فقط عند زيادة الوزن عن المسلَّم (حالة غير طبيعية تحتاج ملاحظة).
+    // أو إذا طلب المشرف صراحةً إحالة الحالة للمراجعة (review: true)
+    const needsReview = Number(p.gain_weight) > 0 || it.review === true;
     const reason = str(it.reason, 'سبب العجز');
-    if (needsReview && !reason) throw bad(`العهدة ${c.custody_no}: يوجد ${Number(p.gain_weight) > 0 ? 'زيادة في الوزن' : 'عجز غير طبيعي'} - يجب تسجيل السبب`, { custody_id: c.id, calc: p });
+    if (needsReview && !reason) throw bad(`العهدة ${c.custody_no}: ${Number(p.gain_weight) > 0 ? 'الوزن المستلم أكبر من المسلَّم' : 'الإحالة للمراجعة'} - سجّل ملاحظة`, { custody_id: c.id, calc: p });
 
     const st = (await db.query(
       `insert into settlements(settlement_no, custody_id, receive_batch_id, weight_issued, returned_weight, gross_returned, stones_weight, scrap_weight,
@@ -182,7 +186,7 @@ export async function receive(db, req, body) {
 
     let advanced = null;
     if (needsReview) {
-      await notifyPerm(db, 'loss.review', { kind: 'loss', title: `عجز غير طبيعي ${Number(p.abnormal_loss) > 0 ? p.abnormal_loss : ''} جم - ${label}`, body: reason, link: '/sup/review' });
+      await notifyPerm(db, 'loss.review', { kind: 'loss', title: `${Number(p.gain_weight) > 0 ? `زيادة وزن ${p.gain_weight}` : `عجز ${p.actual_loss}`} جم - ${label}`, body: reason, link: '/sup/review' });
     } else if (it.advance !== false && c.order_id) {
       advanced = await tryAdvance(db, req, c.order_id);
     }

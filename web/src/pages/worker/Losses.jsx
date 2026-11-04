@@ -19,11 +19,11 @@ export default function WLosses() {
       <div className="card card-body loss-sum">
         <div><span>العجز على حسابي</span><b dir="ltr" className={data.totals.charged > 0 ? 'text-danger' : ''}>{fmtW(data.totals.charged)} <small>جم</small></b></div>
         <div><span>إجمالي العجز</span><b dir="ltr">{fmtW(data.totals.actual)} <small>جم</small></b></div>
-        <div><span>المسموح (على المصنع)</span><b dir="ltr">{fmtW(data.totals.normal)} <small>جم</small></b></div>
+        <div><span>المسموح (حسب نسبة مهنتك)</span><b dir="ltr">{fmtW(data.totals.allowed)} <small>جم</small></b></div>
       </div>
       {data.advance
         ? <div className="alert alert-warning py-2 small mb-2">سُجّل عجز هذا الشهر سلفة بقيمة <b>{fmtMoney(data.advance.amount)}</b> تُخصم من الراتب.</div>
-        : data.totals.charged > 0 && <div className="small text-body-secondary mb-2">العجز الزائد عن نسبة المرحلة يبقى على حسابك حتى نهاية الشهر، ثم يُسجَّل سلفة تُخصم من الراتب.</div>}
+        : data.totals.charged > 0 && <div className="small text-body-secondary mb-2">إجمالي العجز ناقص المسموح على مجموع شغل الشهر يبقى على حسابك حتى نهاية الشهر، ثم يُسجَّل سلفة تُخصم من الراتب.</div>}
       {!data.rows.length && <div className="text-center text-body-secondary py-5">لا يوجد عجز في هذا الشهر</div>}
       <div className="loss-list">
         {data.rows.map((r) => {
@@ -37,9 +37,9 @@ export default function WLosses() {
                 <span className="small text-body-secondary">العجز</span>
                 <b dir="ltr">{fmtW(r.actual_loss)}</b>
               </div>
-              <div className={`loss-val ${Number(r.charged) > 0 ? 'bad' : 'ok'}`}>
-                <span className="small">{Number(r.charged) > 0 ? 'على حسابي' : 'ضمن المسموح'}</span>
-                <b dir="ltr">{Number(r.charged) > 0 ? fmtW(r.charged) : '✓'}</b>
+              <div className="loss-val ok">
+                <span className="small">المسموح</span>
+                <b dir="ltr">{fmtW(r.allowed)}</b>
               </div>
             </>
           );

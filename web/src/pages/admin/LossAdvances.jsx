@@ -27,7 +27,7 @@ export default function LossAdvances() {
   };
   const cancel = (a) => { if (window.confirm('إلغاء هذه السلفة؟')) run(async () => { await api.del(`/admin/loss-advances/${a.id}`); reload(); }, 'تم الإلغاء').catch(() => {}); };
   return (
-    <Page title="سلف العجز" subtitle="العجز الزائد عن نسبة كل مرحلة يبقى على حساب العامل حتى نهاية الشهر، ثم يُسجَّل سلفة تُخصم من الراتب"
+    <Page title="سلف العجز" subtitle="إجمالي عجز الشهر ناقص المسموح (الوزن المستلم × نسبة مهنة العامل) يبقى على حسابه، ثم يُسجَّل سلفة تُخصم من الراتب"
       actions={<div className="d-flex gap-2 align-items-end">
         <label className="d-grid small">الشهر<Input type="month" value={month} onChange={(e) => setMonth(e.target.value || thisMonth())} /></label>
         <label className="d-grid small">سعر جرام عيار 24 (ر.س)<Input dir="ltr" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ''))} style={{ width: 140 }} /></label>
@@ -42,7 +42,7 @@ export default function LossAdvances() {
           ['العامل', (w) => <Link className="link" to={`/sup/workers/${w.worker_id}`}><b>{w.full_name}</b> <span className="text-body-secondary small">{w.employee_no}</span></Link>],
           ['التسويات', 'settlements'],
           ['إجمالي العجز', (w) => <span className="n">{fmtW(w.actual)}</span>],
-          ['المسموح', (w) => <span className="n">{fmtW(w.normal)}</span>],
+          ['المسموح', (w) => <span className="n">{fmtW(w.allowed)}</span>],
           ['على حساب العامل', (w) => <b className={`n ${Number(w.charged) > 0 ? 'text-danger' : ''}`}>{fmtW(w.charged)}</b>],
           ['صافي عيار 24', (w) => <span className="n">{fmtW(w.charged_pure)}</span>],
           ['القيمة', (w) => (Number(w.charged) > 0 ? fmtMoney(adv(w) ? adv(w).amount : value(w)) : '—')],

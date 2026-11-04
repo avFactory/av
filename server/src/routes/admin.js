@@ -1,6 +1,6 @@
 // لوحة الإدارة: الإحصائيات، الموظفون، الأدوار، العملاء، المراحل ونسب العجز، المسارات، الإعدادات، التدقيق
 import { Router } from 'express';
-import { monthlyLossSummary, workerLossRows, monthStart } from '../lib/workerLoss.js';
+import { monthlyLossSummary, workerLossRows, monthTotals, monthStart } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, hashPassword } from '../lib/auth.js';
 import { bad, conflict, notFound, int, str, oneOf } from '../lib/http.js';
@@ -665,15 +665,16 @@ r.post('/loss-advances', requirePerm('loss.advances'), async (req, res) => {
     if (!(price > 0) || price > 100000) throw bad('سعر الجرام عيار 24 غير صالح');
     await db.query('select pg_advisory_xact_lock(hashtext($1))', [`adv:${workerId}:${month}`]);
     if ((await db.query('select 1 from worker_advances where worker_id=$1 and month=$2', [workerId, month])).rowCount) throw conflict('سُجّلت سلفة هذا الشهر لهذا العامل مسبقاً');
-    const rows = (await workerLossRows(db, workerId, month)).filter((r) => Number(r.charged) > 0);
-    if (!rows.length) throw bad('لا يوجد عجز على حساب العامل في هذا الشهر');
+    const rows = await workerLossRows(db, workerId, month);
+    const t = monthTotals(rows);
+    if (!(t.charged > 0)) throw bad('لا يوجد عجز على حساب العامل في هذا الشهر');
     if (rows.some((r) => ['pending_review', 'investigating'].includes(r.status)) && !req.body.include_pending) throw conflict('يوجد عجز تحت المراجعة لهذا العامل - اعتمده أولاً أو أكد التسجيل');
-    const grams = rows.reduce((a, r) => a + Number(r.charged), 0);
-    const pure = rows.reduce((a, r) => a + Number(r.charged) * Number(r.karat) / 24, 0);
+    const grams = t.charged;
+    const pure = t.charged_pure;
     const amount = Math.round(pure * price * 100) / 100;
     const a = (await db.query(`insert into worker_advances(worker_id, month, grams, pure_grams, price_per_gram, amount, details, notes, created_by)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`, [workerId, month, grams.toFixed(4), pure.toFixed(4), price, amount,
-      JSON.stringify(rows.map((r) => ({ order_no: r.order_no, settlement_no: r.settlement_no, charged: r.charged, karat: r.karat }))), str(req.body.notes, 'ملاحظات'), req.user.id])).rows[0];
+      JSON.stringify(rows.map((r) => ({ order_no: r.order_no, settlement_no: r.settlement_no, actual: r.actual_loss, allowed: r.allowed, karat: r.karat }))), str(req.body.notes, 'ملاحظات'), req.user.id])).rows[0];
     await notifyUsers(db, [workerId], { kind: 'loss', title: `سُجّلت سلفة عجز شهر ${month.slice(0, 7)}`, body: `${grams.toFixed(3)} جم = ${amount.toFixed(2)} ر.س تُخصم من الراتب`, link: '/w/losses' });
     await audit(db, req, 'loss.advance', 'worker_advance', a.id, { worker_id: workerId, month, grams, pure, price, amount });
     return a;
@@ -685,6 +686,29 @@ r.delete('/loss-advances/:id', requirePerm('loss.advances'), async (req, res) =>
     if (!a) throw notFound();
     await db.query('delete from worker_advances where id=$1', [a.id]);
     await audit(db, req, 'loss.advance_cancel', 'worker_advance', a.id, a);
+    return { ok: true };
+  }));
+});
+
+// ------------------------------------------------------------------ نسب العجز حسب مهنة العامل
+r.get('/specialty-rates', requirePerm('loss_rates.manage', 'stages.manage'), async (_req, res) => {
+  res.json(await many(`select r.specialty, r.rate_percent::text, r.updated_at,
+      (select count(*) from users u where u.role_code='worker' and u.active and u.specialty like '%' || r.specialty || '%')::int as workers
+    from specialty_loss_rates r order by r.specialty`));
+});
+r.put('/specialty-rates', requirePerm('loss_rates.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const list = Array.isArray(req.body.rates) ? req.body.rates : [];
+    const before = (await db.query('select specialty, rate_percent::text from specialty_loss_rates')).rows;
+    await db.query('delete from specialty_loss_rates');
+    for (const x of list) {
+      const sp = str(x.specialty, 'المهنة', { max: 60 });
+      if (!sp) continue;
+      const rate = Number(x.rate_percent);
+      if (!(rate >= 0 && rate < 100)) throw bad(`نسبة غير صالحة للمهنة ${sp}`);
+      await db.query('insert into specialty_loss_rates(specialty, rate_percent, updated_by) values ($1,$2,$3) on conflict (specialty) do update set rate_percent=$2', [sp, rate, req.user.id]);
+    }
+    await audit(db, req, 'specialty_rates.update', 'settings', 'specialty_loss_rates', { before, after: list });
     return { ok: true };
   }));
 });
