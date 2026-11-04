@@ -96,7 +96,7 @@ test('0) التهيئة: موظفون، عميل، نسب عجز، مخزون، 
 
   await admin.post('/api/admin/settings', {}).catch(() => {});
   await admin.put('/api/admin/settings', { company: { name: 'مصنع الاختبار', vat_number: '310000000000003', cr_number: '1010101010', address: 'الرياض' } });
-  ids.m21 = (await pool.query("select id from materials where karat=21 and color='yellow'")).rows[0].id;
+  ids.m21 = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
   await admin.post('/api/inventory/gold/in', { material_id: ids.m21, weight: '5000', note: 'رصيد افتتاحي للخزنة' });
   await admin.post('/api/catalog/labor-rates', { name: 'أجرة افتراضية', scope: 'default', method: 'per_gram', rate: '15' });
 });

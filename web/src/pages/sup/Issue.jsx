@@ -295,7 +295,7 @@ function GeneralIssue({ sp }) {
     if (wid) api.get(`/sup/workers/${wid}`).then((p) => setWorker(p.worker)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const materialId = f.material_id || mats.find((m) => m.karat === 21 && m.color === 'yellow')?.id || mats[0]?.id;
+  const materialId = f.material_id || mats.find((m) => m.karat === 21)?.id || mats[0]?.id;
   const valid = worker && materialId && Number(f.weight) > 0 && f.purpose.trim();
   const submit = () => run(async () => {
     const r = await api.post('/inventory/gold/to-worker', { ...f, material_id: materialId, worker_id: worker.id, idempotency_key: key.current });

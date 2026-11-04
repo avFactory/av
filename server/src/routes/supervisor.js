@@ -107,7 +107,7 @@ r.get('/lookup', requirePerm('scan.use', 'custody.issue', 'custody.receive', 'or
   const token = code.includes('/') ? code.split('/').pop() : code;
   const o = await one(`
     select o.id, o.order_no, o.title, o.status, o.quantity, o.material_id, o.current_stage_id, o.design_status, o.design_approval_required,
-           o.assigned_worker_id, s.name as stage_name, s.handles_gold, m.name as material_name, m.karat, m.color
+           o.assigned_worker_id, s.name as stage_name, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color
     from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
     where ($2::int is not null and o.id=$2) or ($2::int is null and (o.qr_token=lower($1) or upper(o.order_no)=upper($1) or (length($1) >= 10 and regexp_replace(o.order_no, '[^0-9]', '', 'g')=$1) or o.order_no ilike '%-' || lpad($1, 6, '0')))`, [token, byId]);
   if (!o) throw notFound('لم يتم العثور على الطلب');

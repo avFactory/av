@@ -14,17 +14,21 @@ import { resolveLabor, laborAmount } from '../lib/labor.js';
 
 const r = Router();
 
-export async function materialFor(db, karat, color) {
-  const m = (await db.query("select id from materials where metal='gold' and karat=$1 and (color=$2 or (karat=24)) and active order by (color=$2) desc limit 1", [int(karat, 'العيار'), color || 'yellow'])).rows[0];
-  if (!m) throw bad('العيار/اللون غير معرّف في المواد');
+/** مادة المخزون حسب العيار فقط (المخزون بدون ألوان: ذهب عيار 18 / 21 / 24) */
+export async function materialFor(db, karat) {
+  const m = (await db.query("select id from materials where metal='gold' and karat=$1 and active order by id limit 1", [int(karat, 'العيار')])).rows[0];
+  if (!m) throw bad('العيار غير معرّف في المواد');
   return m.id;
 }
+const COLORS_OK = ['yellow', 'white', 'rose'];
+/** لون القطعة المطلوبة (خاصية للطلب وليست مادة مخزون) */
+export const orderColor = (c) => (COLORS_OK.includes(c) ? c : null);
 
 /** إنشاء طلب تصنيع (داخلي أو نيابة عن عميل) */
 r.post('/', requirePerm('orders.manage'), async (req, res) => {
   const b = req.body;
   const out = await tx(async (db) => {
-    const materialId = b.material_id ? int(b.material_id) : await materialFor(db, b.karat, b.color);
+    const materialId = b.material_id ? int(b.material_id) : await materialFor(db, b.karat);
     const customerId = b.customer_id ? int(b.customer_id) : null;
     const productId = b.product_id ? int(b.product_id) : null;
     const product = productId ? (await db.query('select * from products where id=$1', [productId])).rows[0] : null;
@@ -36,12 +40,12 @@ r.post('/', requirePerm('orders.manage'), async (req, res) => {
     const approx = b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : product?.approx_weight || null;
     const o = (await db.query(
       `insert into orders(order_no, customer_id, source, product_id, product_type, title, material_id, approx_weight, size, quantity, due_date, notes,
-         status, route_id, design_approval_required, labor_method, labor_rate, labor_estimate, created_by)
-       values (next_doc_no('ORD'),$1,'internal',$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',$11,$12,$13,$14,$15,$16) returning *`,
+         status, route_id, design_approval_required, labor_method, labor_rate, labor_estimate, created_by, color)
+       values (next_doc_no('ORD'),$1,'internal',$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',$11,$12,$13,$14,$15,$16,$17) returning *`,
       [customerId, productId, productType, str(b.title, 'وصف الطلب') || product?.name || productType || 'طلب تصنيع', materialId, approx,
        str(b.size, 'المقاس'), qty, b.due_date || null, str(b.notes, 'ملاحظات'),
        b.route_id ? int(b.route_id) : await prod.pickRoute(db, productType, product?.route_id), !!b.design_approval_required,
-       labor?.method || null, labor?.rate || null, labor && labor.method !== 'manual' ? laborAmount(labor.method, labor.rate, approx, qty) : (b.labor_rate || null), req.user.id]
+       labor?.method || null, labor?.rate || null, labor && labor.method !== 'manual' ? laborAmount(labor.method, labor.rate, approx, qty) : (b.labor_rate || null), req.user.id, orderColor(b.color) || 'yellow']
     )).rows[0];
     await prod.logStage(db, o.id, null, 'created', req.user.id, 'إنشاء الطلب', true);
     if (b.start !== false) await prod.startProduction(db, o, req.user.id);
@@ -64,7 +68,7 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
   res.json(await many(`
     select o.id, o.order_no, o.title, o.status, o.quantity, o.due_date, o.created_at, o.source, o.design_status, o.stage_state,
            o.final_weight::text, o.approx_weight::text, o.labor_estimate::text,
-           c.shop_name, br.name as branch_name, s.name as stage_name, m.name as material_name, w.full_name as worker_name,
+           c.shop_name, br.name as branch_name, s.name as stage_name, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, w.full_name as worker_name,
            (o.due_date < current_date and o.status not in ('delivered','cancelled','rejected')) as late
     from orders o left join customers c on c.id=o.customer_id left join stages s on s.id=o.current_stage_id
     join materials m on m.id=o.material_id left join users w on w.id=o.assigned_worker_id left join customer_branches br on br.id=o.branch_id
@@ -74,7 +78,7 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
 
 export async function orderDetail(db, id) {
   const o = (await db.query(`select o.*, o.approx_weight::text, o.final_weight::text, o.final_gold_weight::text, o.labor_rate::text, o.labor_estimate::text,
-      c.shop_name, c.owner_name, c.phone as customer_phone, s.name as stage_name, s.kind as stage_kind, s.handles_gold, m.name as material_name, m.karat, m.color,
+      c.shop_name, c.owner_name, c.phone as customer_phone, s.name as stage_name, s.kind as stage_kind, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color,
       w.full_name as worker_name, r.name as route_name, p.name as product_name, p.sku, br.name as branch_name, br.address as branch_address, br.phone as branch_phone
     from orders o left join customers c on c.id=o.customer_id left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
     left join users w on w.id=o.assigned_worker_id left join routes r on r.id=o.route_id left join products p on p.id=o.product_id left join customer_branches br on br.id=o.branch_id where o.id=$1`, [id])).rows[0];
@@ -85,7 +89,7 @@ export async function orderDetail(db, id) {
 r.get('/labels', requirePerm('orders.view'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 200).map((x) => int(x));
   if (!ids.length) throw bad('لم يتم تحديد طلبات');
-  const rows = await many(`select o.id, o.order_no, o.qr_token, o.title, o.quantity, o.size, m.name as material_name, c.shop_name, c.short_name
+  const rows = await many(`select o.id, o.order_no, o.qr_token, o.title, o.quantity, o.size, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, c.shop_name, c.short_name
     from orders o join materials m on m.id=o.material_id left join customers c on c.id=o.customer_id where o.id = any($1::int[])`, [ids]);
   const byId = new Map(rows.map((r) => [r.id, r]));
   const out = [];
@@ -148,11 +152,12 @@ r.put('/:id', requirePerm('orders.manage'), async (req, res) => {
     const custodyCount = (await db.query('select count(*)::int n from custodies where order_id=$1', [o.id])).rows[0].n;
     let materialId = o.material_id;
     if (b.karat || b.material_id) {
-      const m = b.material_id ? int(b.material_id) : await materialFor(db, b.karat, b.color);
+      const m = b.material_id ? int(b.material_id) : await materialFor(db, b.karat);
       if (m !== o.material_id && custodyCount) throw conflict('لا يمكن تغيير العيار/اللون بعد بدء حركات الذهب - التحويل بين المواد يتم عبر تحويل موثق في المخزون');
       materialId = m;
     }
     if (b.route_id && int(b.route_id) !== o.route_id && o.status === 'in_production') throw conflict('لا يمكن تغيير المسار أثناء التصنيع');
+    if (b.color !== undefined && orderColor(b.color)) await db.query('update orders set color=$2 where id=$1', [o.id, orderColor(b.color)]);
     if (b.labor_method === 'manual' && !has(req, 'labor.approve_manual')) {
       // الأجرة اليدوية تحتاج اعتماد الإدارة
       await notifyPerm(db, 'labor.approve_manual', { kind: 'labor', title: `أجرة يدوية بانتظار الاعتماد - ${o.order_no}`, link: `/orders/${o.id}` });

@@ -35,7 +35,7 @@ r.get('/track/:token', async (req, res) => {
   const token = String(req.params.token || '').toLowerCase();
   if (!/^[0-9a-f]{16,64}$/.test(token)) throw notFound('رابط التتبع غير صحيح');
   const o = await one(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, o.status, o.route_id, o.stage_seq, o.due_date, o.created_at, o.ready_at, o.delivered_at,
-      m.karat, m.color, s.name as stage_name
+      m.karat, coalesce(o.color, m.color) as color, s.name as stage_name
     from orders o join materials m on m.id=o.material_id left join stages s on s.id=o.current_stage_id where o.qr_token=$1`, [token]);
   if (!o) throw notFound('رابط التتبع غير صحيح أو الطلب غير موجود');
   const diamond = await hasDiamonds(pool, o.id);

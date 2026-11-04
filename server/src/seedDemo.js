@@ -19,8 +19,8 @@ async function main() {
   await call('POST', '/auth/login', { username: ADMIN_USER, password: ADMIN_PW });
   const lookups = await call('GET', '/lookups');
   const stage = (name) => lookups.stages.find((s) => s.name === name).id;
-  const m21 = lookups.materials.find((m) => m.karat === 21 && m.color === 'yellow').id;
-  const m18 = lookups.materials.find((m) => m.karat === 18 && m.color === 'white').id;
+  const m21 = lookups.materials.find((m) => m.karat === 21).id;
+  const m18 = lookups.materials.find((m) => m.karat === 18).id;
 
   await call('POST', '/admin/employees', { username: 'demo_sup', password: PW, full_name: 'المشرف (تجريبي)', role_code: 'supervisor', employee_no: 'SUP-01' });
   await call('POST', '/admin/employees', { username: 'demo_pm', password: PW, full_name: 'مدير الإنتاج (تجريبي)', role_code: 'production_manager' });
