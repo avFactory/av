@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api, newKey } from '../../api.js';
+import { api, newKey, fileUrl } from '../../api.js';
 import { calcLoss, fmtW, fmtPct, sub, WORK_STATE, SETTLEMENT_STATUS } from '../../format.js';
 import { Btn, Card, Field, Input, Page, PageActions, ScanInput, WeightInput, useAction, useToast, Badge, Kv, Loader, Empty, StatusBadge, Textarea } from '../../ui.jsx';
 import WorkerPicker from '../../components/WorkerPicker.jsx';
@@ -130,6 +130,7 @@ export default function Receive() {
                     <label className="line-head check" style={{ cursor: 'pointer' }}>
                       <span className="hrow gap">
                         <input type="checkbox" checked={!!l} onChange={() => toggle(c)} />
+                        {c.thumb && <img src={fileUrl(c.thumb)} alt="" className="order-thumb" />}
                         <span><b>{c.order_no}</b> <span className="muted">— {c.title}</span></span>
                       </span>
                       <span className="hrow gap wrap">

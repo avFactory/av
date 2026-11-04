@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api, newKey } from '../../api.js';
+import { api, newKey, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, sub } from '../../format.js';
 import { Btn, Card, Field, Input, Page, PageActions, ScanInput, WeightInput, useAction, useFetch, useToast, Badge, Kv, Tabs, Select, Table } from '../../ui.jsx';
@@ -110,7 +110,7 @@ function SingleIssue({ sp }) {
           {items.map((it, i) => (
             <div key={it.order.id} className="line-item sel">
               <div className="line-head">
-                <div><b>{it.order.order_no}</b> <span className="muted">— {it.order.title}</span><OrderBadges o={it.order} /></div>
+                <div className="hrow gap">{it.order.thumb && <img src={fileUrl(it.order.thumb)} alt="" className="order-thumb" />}<div><b>{it.order.order_no}</b> <span className="muted">— {it.order.title}</span><OrderBadges o={it.order} /></div></div>
                 <Btn kind="ghost" size="sm" onClick={() => setItems((x) => x.filter((_, j) => j !== i))}>إزالة</Btn>
               </div>
               <div className="grid g3">
@@ -128,6 +128,7 @@ function SingleIssue({ sp }) {
               <div className="card-body pick-grid">
                 {(waiting || []).map((o) => (
                   <button key={o.id} className="pick" onClick={() => scan(o.order_no)}>
+                    {o.thumb && <img src={fileUrl(o.thumb)} alt="" className="pick-img" loading="lazy" />}
                     <b>{o.order_no}</b><span className="muted">{o.title}</span><span className="small">{o.stage_name} · {o.material_name}</span>
                     {o.assigned_worker_name && <span className="small">مقترح: {o.assigned_worker_name}</span>}
                   </button>

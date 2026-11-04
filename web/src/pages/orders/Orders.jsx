@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { qs } from '../../api.js';
+import { qs, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
 import { fmtW, fmtDate, STATUS, DESIGN_STATUS } from '../../format.js';
@@ -29,6 +29,7 @@ export default function Orders() {
       {!data ? <Loader /> : (
         <div className="card"><Table rows={data} onRow={(o) => nav(`/orders/${o.id}`)} rowClass={(o) => (o.late ? 'row-warn' : '')} columns={[
           ['', (o) => <input type="checkbox" checked={sel.includes(o.id)} onClick={(e) => e.stopPropagation()} onChange={(e) => setSel((s) => (e.target.checked ? [...s, o.id] : s.filter((x) => x !== o.id)))} />],
+          ['', (o) => (o.thumb ? <img src={fileUrl(o.thumb)} alt="" className="order-thumb" loading="lazy" /> : <span className="order-thumb empty" aria-hidden="true">◇</span>)],
           ['رقم الطلب', (o) => <b>{o.order_no}</b>], ['الوصف', 'title'], ['العميل', (o) => (o.shop_name ? <>{o.shop_name}{o.branch_name && <div className="small text-body-secondary">{o.branch_name}</div>}</> : <span className="muted">داخلي</span>)], ['المادة', 'material_name'],
           ['الحالة', (o) => <StatusBadge map={STATUS} value={o.status} />], ['المرحلة', (o) => o.stage_name || '—'], ['العامل', 'worker_name'],
           ['التصميم', (o) => (o.design_status !== 'not_required' ? <Badge tone={o.design_status === 'approved' ? 'ok' : 'warn'}>{DESIGN_STATUS[o.design_status]}</Badge> : '—')],

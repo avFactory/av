@@ -88,7 +88,10 @@ export default function OrderDetail() {
             {o.labor_method === 'manual' && !o.labor_manual_approved_by && can('labor.approve_manual') && <Btn size="sm" onClick={() => act('approve-manual-labor', {}, 'تم اعتماد الأجرة')}>اعتماد الأجرة اليدوية</Btn>}
           </div>
         </Card>
-        <div className="card card-body" style={{ textAlign: 'center' }}><img src={qrUrl(o.qr_token)} alt="QR" style={{ width: 130, height: 130 }} /><div className="small muted">QR الطلب</div></div>
+        <div className="card card-body d-grid gap-2" style={{ textAlign: 'center', alignContent: 'start' }}>
+          {o.thumb && <a href={fileUrl(o.thumb)} target="_blank" rel="noreferrer" className="order-hero"><img src={fileUrl(o.thumb)} alt={o.title} /></a>}
+          <img src={qrUrl(o.qr_token)} alt="QR" style={{ width: 110, height: 110, justifySelf: 'center' }} /><div className="small muted">QR الطلب</div>
+        </div>
       </div>
 
       {inProd || o.status === 'ready' ? (

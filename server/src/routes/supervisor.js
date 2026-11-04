@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { orderThumb } from '../lib/orderThumb.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, has } from '../lib/auth.js';
 import { bad, notFound, forbidden, int, str } from '../lib/http.js';
@@ -32,7 +33,7 @@ r.get('/summary', SUP, async (_req, res) => {
 r.get('/awaiting-issue', SUP, async (_req, res) => {
   res.json(await many(`
     select o.id, o.order_no, o.title, o.quantity, o.due_date, o.assigned_worker_id, s.name as stage_name, m.name as material_name,
-           u.full_name as assigned_worker_name,
+           u.full_name as assigned_worker_name, ${orderThumb()} as thumb,
            coalesce((select balance from gold_balances b where b.loc_type='order' and b.loc_ref=o.id and b.material_id=o.material_id),0)::text as order_balance
     from orders o join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
     left join users u on u.id=o.assigned_worker_id
@@ -107,7 +108,7 @@ r.get('/lookup', requirePerm('scan.use', 'custody.issue', 'custody.receive', 'or
   const token = code.includes('/') ? code.split('/').pop() : code;
   const o = await one(`
     select o.id, o.order_no, o.title, o.status, o.quantity, o.material_id, o.current_stage_id, o.design_status, o.design_approval_required,
-           o.assigned_worker_id, s.name as stage_name, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color
+           o.assigned_worker_id, ${orderThumb()} as thumb, s.name as stage_name, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color
     from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
     where ($2::int is not null and o.id=$2) or ($2::int is null and (o.qr_token=lower($1) or upper(o.order_no)=upper($1) or (length($1) >= 10 and regexp_replace(o.order_no, '[^0-9]', '', 'g')=$1) or o.order_no ilike '%-' || lpad($1, 6, '0')))`, [token, byId]);
   if (!o) throw notFound('لم يتم العثور على الطلب');
@@ -164,7 +165,8 @@ r.get('/workers/:id/open', requirePerm('custody.receive', 'custody.view_all'), a
   const rows = await many(`
     select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.gross_weight::text, c.stones_weight::text, c.pieces, c.loss_rate_snapshot::text,
            c.issued_at, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text,
-           coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name
+           coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name,
+           ${orderThumb()} as thumb
     from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
     where c.worker_id=$1 and c.status='open' order by c.issued_at`, [id]);
   for (const x of rows) x.stones_now = (await embeddedStonesGrams(pool, x.order_id, id)).total;

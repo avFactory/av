@@ -1,5 +1,6 @@
 // إدارة الطلبات وأوامر الإنتاج (الإدارة / مدير الإنتاج / المشرف)
 import { Router } from 'express';
+import { orderThumb } from '../lib/orderThumb.js';
 import { releaseDiamonds, parseDiamonds, optW } from '../lib/stoneReserve.js';
 import { autoShortName } from '../lib/shortName.js';
 import QRCode from 'qrcode';
@@ -72,7 +73,7 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
     select o.id, o.order_no, o.title, o.status, o.quantity, o.due_date, o.created_at, o.source, o.design_status, o.stage_state,
            o.final_weight::text, o.approx_weight::text, o.labor_estimate::text,
            c.shop_name, br.name as branch_name, s.name as stage_name, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, w.full_name as worker_name,
-           (o.due_date < current_date and o.status not in ('delivered','cancelled','rejected')) as late
+           (o.due_date < current_date and o.status not in ('delivered','cancelled','rejected')) as late, ${orderThumb()} as thumb
     from orders o left join customers c on c.id=o.customer_id left join stages s on s.id=o.current_stage_id
     join materials m on m.id=o.material_id left join users w on w.id=o.assigned_worker_id left join customer_branches br on br.id=o.branch_id
     ${where.length ? 'where ' + where.join(' and ') : ''}
@@ -80,7 +81,7 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
 });
 
 export async function orderDetail(db, id) {
-  const o = (await db.query(`select o.*, o.approx_weight::text, o.final_weight::text, o.final_gold_weight::text, o.labor_rate::text, o.labor_estimate::text,
+  const o = (await db.query(`select o.*, o.approx_weight::text, o.final_weight::text, o.final_gold_weight::text, o.labor_rate::text, o.labor_estimate::text, ${orderThumb()} as thumb,
       c.shop_name, c.owner_name, c.phone as customer_phone,
       coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
         from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details, s.name as stage_name, s.kind as stage_kind, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color,
