@@ -72,6 +72,7 @@ export default function Stones() {
   return (
     <Page title="مخزون الألماس والأحجار" subtitle="مصنّف حسب القصّة · الوزن بالقيراط · كل حركة مرتبطة بطلب وعامل ومرحلة"
       actions={<>
+        {can('stones.manage') && <ShareStock />}
         {can('stones.manage') && <Btn kind="ghost" onClick={() => setImp({ step: 1 })}>استيراد من Excel</Btn>}
         <a className="btn btn-outline-secondary" href="/api/stones/inventory.xlsx">تصدير Excel</a>
         {can('stones.manage') && <Btn kind="ghost" onClick={() => setShapesOpen(true)}>التصنيفات</Btn>}
@@ -285,5 +286,34 @@ function ShapesModal({ open, onClose, shapes, busy, run, reload }) {
         <Btn kind="ghost" disabled={!nw.name} onClick={() => run(async () => { await api.post('/stones/shapes', nw); setNw({ name: '', icon: 'round' }); setRows(null); reload(); }, 'تمت الإضافة')}>إضافة</Btn>
       </div>
     </Modal>
+  );
+}
+
+/** رابط خارجي لعرض مخزون الألماس بدون تسجيل دخول */
+function ShareStock() {
+  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState(null);
+  const [run, busy] = useAction();
+  const show = () => { setOpen(true); if (!token) api.get('/stones/share').then((r) => setToken(r.token)).catch(() => {}); };
+  const url = token ? `${location.origin}/s/${token}` : '';
+  const copy = async () => { try { await navigator.clipboard.writeText(url); } catch { window.prompt('انسخ الرابط', url); } };
+  const rotate = () => {
+    if (!window.confirm('إنشاء رابط جديد؟ الرابط الحالي سيتوقف فوراً لكل من لديه.')) return;
+    run(async () => setToken((await api.post('/stones/share/rotate')).token), 'تم إنشاء رابط جديد').catch(() => {});
+  };
+  return (
+    <>
+      <Btn kind="ghost" onClick={show}>رابط عرض المخزون</Btn>
+      <Modal open={open} onClose={() => setOpen(false)} title="رابط عرض مخزون الألماس">
+        <p className="small text-body-secondary">من لديه هذا الرابط يرى المتوفر في المخزن لكل قصّة ومقاس (القيراط وعدد الحبات والحالة) بدون تسجيل دخول. لا يرى الأسعار ولا العمال ولا الطلبات، ولا يستطيع تعديل أي شيء.</p>
+        <input className="form-control mb-3" dir="ltr" readOnly value={url || 'جارٍ التحميل…'} onFocus={(e) => e.target.select()} />
+        <div className="hrow gap wrap">
+          <Btn disabled={!url} onClick={copy}>نسخ الرابط</Btn>
+          <a className={`btn btn-success${url ? '' : ' disabled'}`} href={`https://wa.me/?text=${encodeURIComponent(`مخزون الألماس — مصنع AV للمجوهرات:\n${url}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
+          <a className={`btn btn-outline-secondary${url ? '' : ' disabled'}`} href={url} target="_blank" rel="noreferrer">فتح كما يراه الزائر</a>
+          <Btn kind="danger" loading={busy} onClick={rotate}>إيقاف الرابط وإنشاء رابط جديد</Btn>
+        </div>
+      </Modal>
+    </>
   );
 }

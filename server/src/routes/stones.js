@@ -1,6 +1,7 @@
 // إدارة الألماس والأحجار الكريمة: الدفعات، التسليم للعمال، الاستخدام، المرتجع، المتبقي
 import { Router } from 'express';
 import { reservedFor } from '../lib/stoneReserve.js';
+import { getShareToken, rotateShareToken } from '../lib/shareLinks.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm } from '../lib/auth.js';
 import { bad, conflict, notFound, int, str, oneOf } from '../lib/http.js';
@@ -25,6 +26,18 @@ r.get('/', requirePerm('stones.view'), async (_req, res) => {
     from stone_lots l join stone_lot_balances b on b.lot_id=l.id join stone_shapes s on s.id=l.shape_id
     where l.active
     order by s.sort_order, s.name, (l.size_unit='mm') desc, l.size_value nulls last, l.size_label, l.id`));
+});
+
+// ------------------------------------------------------------------ رابط عرض المخزون الخارجي
+r.get('/share', requirePerm('stones.manage'), async (_req, res) => {
+  res.json({ token: await getShareToken(pool, 'stones_share') });
+});
+r.post('/share/rotate', requirePerm('stones.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const token = await rotateShareToken(db, 'stones_share');
+    await audit(db, req, 'stones.share_rotate', 'settings', 'stones_share', {});
+    return { token };
+  }));
 });
 
 // ------------------------------------------------------------------ تصنيفات القصّة

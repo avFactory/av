@@ -415,3 +415,23 @@ test('تصنيفات المتجر: ذهب (يشمل الزركون) / ألماس
   assert.deepEqual(await list('cat=stone&type=' + encodeURIComponent('خاتم')), [ids.stone]);
   assert.equal((await list('')).length, 5);
 });
+
+test('رابط مخزون الألماس الخارجي: عرض فقط بدون أسعار أو بيانات داخلية', async () => {
+  const shape = (await call('GET', '/stones/shapes')).data[0];
+  const fl = new FormData(); for (const [k, v] of Object.entries({ shape_id: shape.id, size_label: '4.4 mm', carats: '2.5', count: '30', unit_price: '999', min_carats: '3' })) fl.append(k, v);
+  const lot = (await call('POST', '/stones', null, fl)).data;
+  const { token } = (await call('GET', '/stones/share')).data;
+  assert.match(token, /^[0-9a-f]{32}$/);
+  const r = await fetch(`${base}/api/public/stones/${token}`);
+  assert.equal(r.status, 200);
+  const raw = await r.text();
+  for (const w of ['999', 'unit_price', 'lot_no', lot.lot_no, 'worker', 'order']) assert.ok(!raw.includes(w), `لا يكشف ${w}`);
+  const d = JSON.parse(raw);
+  const it = d.shapes.flatMap((s) => s.items).find((x) => x.size === '4.4 mm');
+  assert.deepEqual([it.carats, it.count, it.status], [2.5, 30, 'low'], 'أقل من حد التنبيه = كمية محدودة');
+  assert.equal((await fetch(`${base}/api/public/stones/${'0'.repeat(32)}`)).status, 404);
+  assert.equal((await fetch(`${base}/api/stones/share`)).status, 401, 'إدارة الرابط تتطلب دخول');
+  const t2 = (await call('POST', '/stones/share/rotate')).data.token;
+  assert.equal((await fetch(`${base}/api/public/stones/${token}`)).status, 404, 'الرابط القديم يتوقف');
+  assert.equal((await fetch(`${base}/api/public/stones/${t2}`)).status, 200);
+});

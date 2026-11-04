@@ -8,6 +8,7 @@ import StoreLayout from './components/StoreLayout.jsx';
 import Login from './pages/Login.jsx';
 import PublicTrack from './pages/PublicTrack.jsx';
 import PublicPricing from './pages/PublicPricing.jsx';
+import PublicStones from './pages/PublicStones.jsx';
 import Register from './pages/Register.jsx';
 import ForcePassword from './pages/ForcePassword.jsx';
 
@@ -76,6 +77,8 @@ export default function App() {
   if (loc.pathname.startsWith('/t/')) return <Suspense fallback={<Loader />}><Routes><Route path="/t/:token" element={<PublicTrack />} /></Routes></Suspense>;
   // التسعيرة برابط خارجي: بدون تسجيل دخول
   if (loc.pathname.startsWith('/p/')) return <Suspense fallback={<Loader />}><Routes><Route path="/p/:token" element={<PublicPricing />} /></Routes></Suspense>;
+  // مخزون الألماس برابط خارجي: بدون تسجيل دخول
+  if (loc.pathname.startsWith('/s/')) return <Suspense fallback={<Loader />}><Routes><Route path="/s/:token" element={<PublicStones />} /></Routes></Suspense>;
   if (me === undefined) return <Loader />;
   if (me?.must_change_password) return <ForcePassword />;
   const S = (el, perms) => <Guard perms={perms}>{el}</Guard>;

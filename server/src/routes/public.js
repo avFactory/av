@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { many, one, pool } from '../db.js';
 import { routeStages, hasDiamonds } from '../lib/production.js';
 import { getPricing, checkToken, shortView } from '../lib/pricingSheet.js';
+import { checkShareToken } from '../lib/shareLinks.js';
 import { notFound, int } from '../lib/http.js';
 
 const r = Router();
@@ -84,6 +85,35 @@ r.post('/pricing/:token/calc', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const p = await getPricing(pool);
   res.json({ sections: shortView(p, req.body?.weights || {}) });
+});
+
+/**
+ * مخزون الألماس برابط خارجي (عرض فقط): المتوفر في المخزن لكل قصّة ومقاس.
+ * لا يكشف الأسعار ولا العمال ولا الطلبات ولا أرقام الدفعات.
+ */
+r.get('/stones/:token', async (req, res) => {
+  if (!(await checkShareToken(pool, 'stones_share', req.params.token))) throw notFound('الرابط غير صحيح أو تم إيقافه');
+  const rows = await many(`select s.id as shape_id, s.name as shape, s.icon, s.sort_order, l.size_label, l.size_value, l.size_unit, l.stone_type, l.color, l.clarity,
+      greatest(b.stock_carats, 0)::numeric(14,3)::text as carats, greatest(b.stock_count, 0) as count, l.min_carats::text as min_carats
+    from stone_lots l join stone_lot_balances b on b.lot_id=l.id join stone_shapes s on s.id=l.shape_id
+    where l.active order by s.sort_order, s.name, (l.size_unit='mm') desc, l.size_value nulls last, l.size_label`);
+  const last = (await one('select max(created_at) as t from stone_movements')).t;
+  const shapes = [];
+  for (const x of rows) {
+    let g = shapes.find((s) => s.id === x.shape_id);
+    if (!g) { g = { id: x.shape_id, name: x.shape, icon: x.icon, carats: 0, count: 0, items: [] }; shapes.push(g); }
+    const c = Number(x.carats);
+    const status = c <= 0 ? 'out' : x.min_carats != null && c <= Number(x.min_carats) ? 'low' : 'ok';
+    g.items.push({ size: x.size_label, type: x.stone_type, color: x.color, clarity: x.clarity, carats: c, count: Number(x.count), status });
+    g.carats += c; g.count += Number(x.count);
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.json({
+    generated_at: new Date().toISOString(), last_movement_at: last,
+    totals: { carats: shapes.reduce((a, s) => a + s.carats, 0), count: shapes.reduce((a, s) => a + s.count, 0), types: rows.length, available: rows.filter((x) => Number(x.carats) > 0).length },
+    shapes,
+  });
 });
 
 export default r;
