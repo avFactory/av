@@ -362,3 +362,35 @@ test('أحجار المنتج: الألماس يُحجز من المخزون ع�
   const pub = (await call('GET', `/public/products/${p.id}`)).data;
   assert.equal(pub.diamond_details[0].carats, 0.5);
 });
+
+test('اطلب تصميمك مع الألماس والأحجار: يُحجز الألماس عند موافقة العميل على العرض', async () => {
+  const mk = () => { let ck = ''; return async (m, p, b, form) => { const r = await fetch(base + '/api' + p, { method: m, headers: form ? { cookie: ck } : { 'content-type': 'application/json', cookie: ck }, body: form || (b ? JSON.stringify(b) : undefined) }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; }; };
+  await call('POST', '/admin/customers', { shop_name: 'محل الألماس', username: 'dshop', password: 'Dshop#2026' });
+  await pool.query("update users set must_change_password=false where username='dshop'");
+  const cu = mk();
+  assert.equal((await cu('POST', '/auth/login', { username: 'dshop', password: 'Dshop#2026' })).status, 200);
+  const shape = (await call('GET', '/stones/shapes')).data[0];
+  const fl = new FormData(); for (const [k, v] of Object.entries({ shape_id: shape.id, size_label: '2.1 mm', carats: '3', count: '50' })) fl.append(k, v);
+  const lot = (await call('POST', '/stones', null, fl)).data;
+  const types = (await cu('GET', '/store/diamond-types')).data;
+  const t = types.find((x) => x.id === lot.id);
+  assert.ok(t && t.available && t.stock_carats === undefined, 'الأنواع بدون كميات المخزون');
+  const fd = new FormData();
+  for (const [k, v] of Object.entries({ product_type: 'خاتم', title: 'خاتم سوليتير', karat: '18', color: 'white', quantity: '2', diamonds: JSON.stringify([{ lot_id: lot.id, carats: '0.7', count: '10' }]), pearl_weight: '', stone_weight: '0.4', zircon_weight: '' })) fd.append(k, v);
+  const o = (await cu('POST', '/store/custom', null, fd)).data;
+  assert.ok(o.id, JSON.stringify(o));
+  const tr = (await cu('GET', `/store/orders/${o.id}`)).data.order;
+  assert.equal(tr.diamond_details[0].carats, 0.7);
+  assert.equal(Number(tr.stone_weight), 0.4);
+  await call('POST', `/orders/${o.id}/quote`, { labor_method: 'per_gram', labor_rate: '20' });
+  assert.equal((await cu('POST', `/store/orders/${o.id}/quote`, { decision: 'accept' })).status, 200);
+  const b = (await call('GET', '/stones')).data.find((l) => l.id === lot.id);
+  assert.deepEqual([Number(b.stock_carats), Number(b.reserved_carats)], [1.6, 1.4], '0.7 × 2 محجوز');
+  // مخزون غير كافٍ: موافقة العميل تُسجل ولا يبدأ الإنتاج
+  const fd2 = new FormData();
+  for (const [k, v] of Object.entries({ product_type: 'خاتم', karat: '18', quantity: '5', diamonds: JSON.stringify([{ lot_id: lot.id, carats: '1', count: '' }]) })) fd2.append(k, v);
+  const o2 = (await cu('POST', '/store/custom', null, fd2)).data;
+  await call('POST', `/orders/${o2.id}/quote`, { labor_method: 'per_gram', labor_rate: '20' });
+  assert.equal((await cu('POST', `/store/orders/${o2.id}/quote`, { decision: 'accept' })).status, 200);
+  assert.equal((await pool.query('select status from orders where id=$1', [o2.id])).rows[0].status, 'approved', 'موافق عليه وينتظر توفر الألماس');
+});

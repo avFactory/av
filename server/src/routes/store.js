@@ -11,6 +11,7 @@ import { resolveLabor, laborAmount } from '../lib/labor.js';
 import * as prod from '../lib/production.js';
 import * as ledger from '../lib/ledger.js';
 import { materialFor, orderColor } from './orders.js';
+import { parseDiamonds, optW } from '../lib/stoneReserve.js';
 import { invoiceDetail } from './finance.js';
 import { listBranches, createBranch, updateBranch, assertMainAccount } from '../lib/branches.js';
 
@@ -118,11 +119,11 @@ r.post('/orders', async (req, res) => {
       const labor = await resolveLabor(db, { customer_id: req.user.customer_id, product_id: p.id, product_type: p.product_type });
       const w = p.final_weight || p.approx_weight;
       const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_id, product_type, title, material_id, approx_weight, size, quantity, notes,
-          status, labor_method, labor_rate, labor_estimate, created_by, route_id, branch_id, color)
-        values (next_doc_no('ORD'),$1,'store_catalog',$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',$11,$12,$13,$14,$15,$16,$17) returning *`,
+          status, labor_method, labor_rate, labor_estimate, created_by, route_id, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight)
+        values (next_doc_no('ORD'),$1,'store_catalog',$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *`,
         [req.user.customer_id, cartRef, p.id, p.product_type, p.name, await materialFor(db, karat), w ? (await db.query('select ($1::numeric * $2)::text v', [w, qty])).rows[0].v : null,
          str(it.size, 'المقاس'), qty, str(it.notes, 'ملاحظات'), labor?.method || null, labor?.rate || null,
-         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null, orderColor(color)])).rows[0];
+         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null, orderColor(color), JSON.stringify(p.diamonds || []), p.pearl_weight, p.stone_weight, p.zircon_weight])).rows[0];
       await prod.logStage(db, o.id, null, 'created', req.user.id, `طلب من المتجر (${cartRef})`, true);
       created.push(o);
     }
@@ -132,16 +133,24 @@ r.post('/orders', async (req, res) => {
   }));
 });
 
+/** أنواع الألماس للاختيار في "اطلب تصميمك" (بدون كميات المخزون) */
+r.get('/diamond-types', async (_req, res) => {
+  res.json(await many(`select l.id, s.name as shape, s.icon, s.sort_order, l.size_label, l.color, l.clarity, (b.stock_carats > 0) as available
+    from stone_lots l join stone_shapes s on s.id=l.shape_id join stone_lot_balances b on b.lot_id=l.id
+    where l.active order by s.sort_order, s.name, (l.size_unit='mm') desc, l.size_value nulls last, l.size_label`));
+});
+
 /** اطلب تصميمك: تصنيع حسب الطلب مع رفع الصور والرسومات وملفات 3D */
 r.post('/custom', upload.array('files', 10), async (req, res) => {
   const b = req.body;
   res.json(await tx(async (db) => {
     const karat = oneOf(int(b.karat, 'العيار'), [18, 21, 24], 'العيار');
-    const o = (await db.query(`insert into orders(order_no, customer_id, source, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id, color)
-      values (next_doc_no('ORD'),$1,'store_custom',$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11,$12) returning *`,
+    const o = (await db.query(`insert into orders(order_no, customer_id, source, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight)
+      values (next_doc_no('ORD'),$1,'store_custom',$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11,$12,$13,$14,$15,$16) returning *`,
       [req.user.customer_id, str(b.product_type, 'نوع القطعة', { required: true }), str(b.title, 'اسم التصميم') || `تصميم خاص - ${b.product_type}`,
        await materialFor(db, karat), b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : null, str(b.size, 'المقاس'),
-       int(b.quantity ?? 1, 'الكمية', { min: 1 }), b.due_date || null, str(b.notes, 'الملاحظات', { max: 5000 }), req.user.id, req.user.branch_id || null, orderColor(b.color) || 'yellow'])).rows[0];
+       int(b.quantity ?? 1, 'الكمية', { min: 1 }), b.due_date || null, str(b.notes, 'الملاحظات', { max: 5000 }), req.user.id, req.user.branch_id || null, orderColor(b.color) || 'yellow',
+       JSON.stringify(parseDiamonds(b.diamonds)), optW(b.pearl_weight, 'وزن اللؤلؤ'), optW(b.stone_weight, 'وزن الحجر'), optW(b.zircon_weight, 'وزن الزركون')])).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
     for (const f of files) {
       const kind = /\.(stl|obj|3dm|step|stp|glb|gltf)$/i.test(f.path) ? 'model3d' : (b.file_kind === 'sketch' ? 'sketch' : 'reference');
@@ -184,6 +193,10 @@ r.get('/orders/:id', async (req, res) => {
   const files = await many("select id, kind, path, original_name, mime from order_files where order_id=$1 and customer_visible order by id", [o.id]);
   const designs = await many('select id, file_ids, message, sent_at, status, customer_note, decided_at from design_reviews where order_id=$1 order by id desc', [o.id]);
   const invoices = await many(`select distinct i.id, i.invoice_no, i.total::text, i.invoice_type from invoice_lines l join invoices i on i.id=l.invoice_id where l.order_id=$1`, [o.id]);
+  const stones = await one(`select o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text,
+      coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
+        from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details
+    from orders o where o.id=$1`, [o.id]);
   const productImage = o.product_id ? (await one('select path from product_media where product_id=$1 order by sort, id limit 1', [o.product_id]))?.path : null;
   const stageName = o.current_stage_id ? (await one('select name from stages where id=$1', [o.current_stage_id])).name : null;
   res.json({
@@ -194,6 +207,7 @@ r.get('/orders/:id', async (req, res) => {
       design_status: o.design_status, design_approval_required: o.design_approval_required, stage_name: stageName, created_at: o.created_at,
       progress: total && o.stage_seq ? Math.round((100 * (o.status === 'delivered' ? total : o.stage_seq - 1)) / total) : 0, delivered_at: o.delivered_at,
       product_image: productImage,
+      ...stones,
     },
     stages, current_seq: o.stage_seq, history, files, designs, invoices,
   });
@@ -212,8 +226,17 @@ r.post('/orders/:id/quote', async (req, res) => {
     } else {
       await db.query("update orders set customer_accepted_at=now(), status='approved' where id=$1", [o.id]);
       await prod.logStage(db, o.id, null, 'quote', req.user.id, 'وافق العميل على عرض الأجور', true);
-      await prod.startProduction(db, { ...o, status: 'approved' }, req.user.id);
-      await notifyPerm(db, 'orders.manage', { kind: 'quote', title: `وافق العميل على عرض ${o.order_no} - تحول لأمر إنتاج`, link: `/orders/${o.id}` });
+      // إن لم يكفِ مخزون الألماس: تبقى موافقة العميل مسجلة، ويُنبَّه المصنع لاعتماد الطلب بعد توفير الألماس
+      await db.query('savepoint start_prod');
+      try {
+        await prod.startProduction(db, { ...o, status: 'approved' }, req.user.id);
+        await db.query('release savepoint start_prod');
+        await notifyPerm(db, 'orders.manage', { kind: 'quote', title: `وافق العميل على عرض ${o.order_no} - تحول لأمر إنتاج`, link: `/orders/${o.id}` });
+      } catch (e) {
+        if (e.status !== 409) throw e;
+        await db.query('rollback to savepoint start_prod');
+        await notifyPerm(db, 'orders.manage', { kind: 'quote', title: `وافق العميل على عرض ${o.order_no} — لم يبدأ الإنتاج`, body: e.message, link: `/orders/${o.id}` });
+      }
     }
     await audit(db, req, `store.quote.${decision}`, 'order', o.id, { note: req.body.note });
     return { ok: true };

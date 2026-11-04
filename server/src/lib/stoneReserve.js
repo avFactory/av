@@ -2,7 +2,7 @@
 // - allocate: يخصم من مخزن الألماس لصالح الطلب (كمية المنتج × عدد القطع)
 // - عند صرف الألماس للعامل على نفس الطلب: يُفك الحجز أولاً ثم يُصرف (فلا يُخصم مرتين)
 // - عند إلغاء الطلب: يُعاد المحجوز للمخزن (deallocate)
-import { conflict } from './http.js';
+import { bad, conflict, int, weight as W } from './http.js';
 
 const rnd = (x) => Math.round(Number(x) * 10000) / 10000;
 
@@ -15,9 +15,11 @@ export async function reservedFor(db, lotId, orderId) {
 }
 
 export async function reserveDiamonds(db, order, userId) {
-  if (!order.product_id) return [];
-  const p = (await db.query('select name, diamonds from products where id=$1', [order.product_id])).rows[0];
-  const list = Array.isArray(p?.diamonds) ? p.diamonds.filter((d) => d && d.lot_id && Number(d.carats) > 0) : [];
+  // ألماس الطلب نفسه (من "اطلب تصميمك" أو المنسوخ من المنتج)، وإلا ألماس المنتج
+  const own = (await db.query('select diamonds from orders where id=$1', [order.id])).rows[0]?.diamonds;
+  const p = order.product_id ? (await db.query('select name, diamonds from products where id=$1', [order.product_id])).rows[0] : { name: order.title };
+  const src = Array.isArray(own) && own.length ? own : p?.diamonds;
+  const list = Array.isArray(src) ? src.filter((d) => d && d.lot_id && Number(d.carats) > 0) : [];
   if (!list.length) return [];
   // لا يُحجز مرتين لنفس الطلب
   if ((await db.query("select 1 from stone_movements where order_id=$1 and kind='allocate' limit 1", [order.id])).rowCount) return [];
@@ -50,4 +52,19 @@ export async function releaseDiamonds(db, orderId, userId, note) {
         [lotId, Math.max(0, r.carats), Math.max(0, r.count), orderId, note, userId]);
     }
   }
+}
+
+// ------------------------------------------------------------- إدخال تفاصيل الأحجار
+export const optW = (v, name) => (v === undefined || v === null || v === '' ? null : W(v, name));
+/** ألماس المنتج: [{lot_id, carats, count}] لكل قطعة — يُحجز من المخزون عند اعتماد الطلب */
+export function parseDiamonds(v) {
+  let list = v;
+  if (typeof v === 'string') { try { list = v ? JSON.parse(v) : []; } catch { throw bad('بيانات الألماس غير صالحة'); } }
+  if (!Array.isArray(list)) return [];
+  return list.filter((d) => d && d.lot_id).slice(0, 20).map((d) => {
+    const carats = Number(d.carats);
+    if (!(carats > 0) || carats > 10000) throw bad('وزن الألماس (قيراط) مطلوب لكل نوع');
+    const count = d.count === '' || d.count == null ? 0 : int(d.count, 'عدد الحبات', { min: 0 });
+    return { lot_id: int(d.lot_id, 'نوع الألماس'), carats: Math.round(carats * 10000) / 10000, count };
+  });
 }

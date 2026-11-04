@@ -1,6 +1,6 @@
 // إدارة الطلبات وأوامر الإنتاج (الإدارة / مدير الإنتاج / المشرف)
 import { Router } from 'express';
-import { releaseDiamonds } from '../lib/stoneReserve.js';
+import { releaseDiamonds, parseDiamonds, optW } from '../lib/stoneReserve.js';
 import { autoShortName } from '../lib/shortName.js';
 import QRCode from 'qrcode';
 import { pool, tx, many, one } from '../db.js';
@@ -41,12 +41,14 @@ r.post('/', requirePerm('orders.manage'), async (req, res) => {
     const approx = b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : product?.approx_weight || null;
     const o = (await db.query(
       `insert into orders(order_no, customer_id, source, product_id, product_type, title, material_id, approx_weight, size, quantity, due_date, notes,
-         status, route_id, design_approval_required, labor_method, labor_rate, labor_estimate, created_by, color)
-       values (next_doc_no('ORD'),$1,'internal',$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',$11,$12,$13,$14,$15,$16,$17) returning *`,
+         status, route_id, design_approval_required, labor_method, labor_rate, labor_estimate, created_by, color, diamonds, pearl_weight, stone_weight, zircon_weight)
+       values (next_doc_no('ORD'),$1,'internal',$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *`,
       [customerId, productId, productType, str(b.title, 'وصف الطلب') || product?.name || productType || 'طلب تصنيع', materialId, approx,
        str(b.size, 'المقاس'), qty, b.due_date || null, str(b.notes, 'ملاحظات'),
        b.route_id ? int(b.route_id) : await prod.pickRoute(db, productType, product?.route_id), !!b.design_approval_required,
-       labor?.method || null, labor?.rate || null, labor && labor.method !== 'manual' ? laborAmount(labor.method, labor.rate, approx, qty) : (b.labor_rate || null), req.user.id, orderColor(b.color) || 'yellow']
+       labor?.method || null, labor?.rate || null, labor && labor.method !== 'manual' ? laborAmount(labor.method, labor.rate, approx, qty) : (b.labor_rate || null), req.user.id, orderColor(b.color) || 'yellow',
+       JSON.stringify(b.diamonds !== undefined ? parseDiamonds(b.diamonds) : product?.diamonds || []), b.pearl_weight !== undefined ? optW(b.pearl_weight, 'وزن اللؤلؤ') : product?.pearl_weight ?? null,
+       b.stone_weight !== undefined ? optW(b.stone_weight, 'وزن الحجر') : product?.stone_weight ?? null, b.zircon_weight !== undefined ? optW(b.zircon_weight, 'وزن الزركون') : product?.zircon_weight ?? null]
     )).rows[0];
     await prod.logStage(db, o.id, null, 'created', req.user.id, 'إنشاء الطلب', true);
     if (b.start !== false) await prod.startProduction(db, o, req.user.id);
@@ -79,7 +81,9 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
 
 export async function orderDetail(db, id) {
   const o = (await db.query(`select o.*, o.approx_weight::text, o.final_weight::text, o.final_gold_weight::text, o.labor_rate::text, o.labor_estimate::text,
-      c.shop_name, c.owner_name, c.phone as customer_phone, s.name as stage_name, s.kind as stage_kind, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color,
+      c.shop_name, c.owner_name, c.phone as customer_phone,
+      coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
+        from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details, s.name as stage_name, s.kind as stage_kind, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color,
       w.full_name as worker_name, r.name as route_name, p.name as product_name, p.sku, br.name as branch_name, br.address as branch_address, br.phone as branch_phone
     from orders o left join customers c on c.id=o.customer_id left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
     left join users w on w.id=o.assigned_worker_id left join routes r on r.id=o.route_id left join products p on p.id=o.product_id left join customer_branches br on br.id=o.branch_id where o.id=$1`, [id])).rows[0];

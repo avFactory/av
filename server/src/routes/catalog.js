@@ -6,6 +6,7 @@ import { bad, notFound, int, str, oneOf, weight as W, money } from '../lib/http.
 import { audit } from '../lib/audit.js';
 import { upload, registerFiles } from '../lib/uploads.js';
 import { nextSku, PRODUCT_TYPES } from '../lib/sku.js';
+import { parseDiamonds, optW } from '../lib/stoneReserve.js';
 
 const r = Router();
 const arr = (v) => (Array.isArray(v) ? v : typeof v === 'string' && v ? v.split(',').map((x) => x.trim()).filter(Boolean) : []);
@@ -33,19 +34,6 @@ function productVals(b) {
   ];
 }
 
-const optW = (v, name) => (v === undefined || v === null || v === '' ? null : W(v, name));
-/** ألماس المنتج: [{lot_id, carats, count}] لكل قطعة — يُحجز من المخزون عند اعتماد الطلب */
-function parseDiamonds(v) {
-  let list = v;
-  if (typeof v === 'string') { try { list = v ? JSON.parse(v) : []; } catch { throw bad('بيانات الألماس غير صالحة'); } }
-  if (!Array.isArray(list)) return [];
-  return list.filter((d) => d && d.lot_id).slice(0, 20).map((d) => {
-    const carats = Number(d.carats);
-    if (!(carats > 0) || carats > 10000) throw bad('وزن الألماس (قيراط) مطلوب لكل نوع');
-    const count = d.count === '' || d.count == null ? 0 : int(d.count, 'عدد الحبات', { min: 0 });
-    return { lot_id: int(d.lot_id, 'نوع الألماس'), carats: Math.round(carats * 10000) / 10000, count };
-  });
-}
 
 /** أنواع القطع وبادئاتها، ومعاينة رقم المنتج التالي لنوع معيّن */
 r.get('/product-types', requirePerm('products.manage', 'orders.view'), async (_req, res) => {

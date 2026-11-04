@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl, qrUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
-import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS } from '../../format.js';
+import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal } from '../../ui.jsx';
 
 /** رابط تتبع عام للطلب (عرض فقط بدون تسجيل دخول): نسخ أو إرسال واتساب */
@@ -73,7 +73,7 @@ export default function OrderDetail() {
         <Card title="الطلب">
           <Kv items={[o.shop_name && ['العميل', o.branch_name ? `${o.shop_name} — ${o.branch_name}` : o.shop_name],
             o.shop_name && ['رقم التواصل', (o.branch_phone || o.customer_phone) ? <a href={`tel:${o.branch_phone || o.customer_phone}`} dir="ltr">{o.branch_phone || o.customer_phone}</a> : null],
-            ['المادة', o.material_name], ['العيار / اللون', `${o.karat} · ${COLORS[o.color] || o.color}`], ['الكمية', o.quantity], ['المقاس', o.size], ['نوع القطعة', o.product_type],
+            ['المادة', o.material_name], ['العيار / اللون', `${o.karat} · ${COLORS[o.color] || o.color}`], ['الكمية', o.quantity], ['المقاس', o.size], ['نوع القطعة', o.product_type], ...stoneItems(o),
             ['الوزن التقريبي', fmtW(o.approx_weight)], ['الوزن النهائي', o.final_weight ? `${fmtW(o.final_weight)} (ذهب ${fmtW(o.final_gold_weight)})` : '—'], ['موعد التسليم', fmtDate(o.due_date)],
             ['المسار', o.route_name], ['تصميم', DESIGN_STATUS[o.design_status]], ['المصدر', { internal: 'داخلي', store_catalog: 'المتجر - منتج', store_custom: 'المتجر - تصميم خاص' }[o.source]], ['ملاحظات', o.notes]]} />
         </Card>
