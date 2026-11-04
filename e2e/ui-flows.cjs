@@ -82,11 +82,13 @@ async function sign(page) {
   await wk.waitForSelector('button:has-text("قبول الاستلام"), button:has-text("بدء العمل")');
   if (await wk.locator('button:has-text("قبول الاستلام")').count()) { await wk.click('button:has-text("قبول الاستلام")'); await wk.waitForSelector('button:has-text("بدء العمل")'); }
   await wk.click('button:has-text("بدء العمل")'); await wk.waitForTimeout(500);
-  await wk.locator('input.weight').nth(0).fill('12.48'); await wk.locator('input.weight').nth(1).fill('0.01');
-  await wk.click('button:has-text("حفظ الأوزان")'); await wk.waitForTimeout(400);
+  // العامل لا يسجل أوزاناً (لا يملك ميزاناً) — المشرف يعتمد الوزن الفعلي عند الاستلام
+  if (await wk.locator('text=تسجيل الأوزان').count()) problems.push('worker still sees weights section');
   wk.on('dialog', (d) => d.accept());
   await wk.click('button:has-text("إنهاء المرحلة وتسليمها")'); await wk.waitForTimeout(700);
   await wk.screenshot({ path: SHOTS + 'worker_custody.png', fullPage: true });
+  await wk.goto(BASE + '/w/losses'); await wk.waitForLoadState('networkidle');
+  await wk.screenshot({ path: SHOTS + 'worker_losses.png', fullPage: true });
   // 5) store
   const st = await newPage(browser, { width: 1280, height: 900 });
   await login(st, 'demo_shop', 'Demo#2026');
