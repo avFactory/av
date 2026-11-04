@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
 import { LinkBtn, ThemeToggle } from '../ui.jsx';
 import Bell from './Bell.jsx';
@@ -9,7 +9,7 @@ export const useCart = () => useContext(CartCtx);
 
 function loadCart() { try { return JSON.parse(localStorage.getItem('cart') || '[]'); } catch { return []; } }
 
-/** المتجر مفتوح للجميع للتصفح. إرسال الطلبات وعرض أجور التصنيع للعملاء المعتمدين فقط. */
+/** المتجر يتطلب تسجيل الدخول. إرسال الطلبات وعرض أجور التصنيع للعملاء المعتمدين فقط. */
 export default function StoreLayout() {
   const { me, logout } = useAuth();
   const [cart, setCart] = useState(loadCart);
@@ -22,6 +22,8 @@ export default function StoreLayout() {
   const next = encodeURIComponent(loc.pathname + loc.search);
   // مصدر بيانات المنتجات: أسعار العميل الخاصة للمعتمد، والكتالوج العام لغيره
   const apiBase = approved ? '/store' : '/public';
+  // المتجر لا يُتصفح بدون تسجيل دخول
+  if (me === null) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
   const count = cart.reduce((s, i) => s + Number(i.quantity), 0);
   return (
     <CartCtx.Provider value={{ cart, setCart, approved, apiBase, me, loginUrl: `/login?next=${next}` }}>

@@ -52,18 +52,12 @@ r.get('/files/*filepath', async (req, res) => {
   const rel = [].concat(req.params.filepath).join('/');
   const abs = path.resolve(UPLOAD_DIR, rel);
   if (!abs.startsWith(UPLOAD_DIR + path.sep)) throw forbidden();
-  // صور المنتجات عامة (المتجر مفتوح للزوار)
-  if (await one('select 1 from product_media pm join products p on p.id=pm.product_id where pm.path=$1 and p.active limit 1', [rel])) {
-    if (!fs.existsSync(abs)) throw notFound('الملف غير موجود');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    return res.sendFile(abs);
-  }
   if (!req.user) throw new HttpError(401, 'يجب تسجيل الدخول');
   const u = req.user;
   let allowed = false;
   const of = await one('select o.customer_id, o.assigned_worker_id, f.customer_visible, f.order_id from order_files f join orders o on o.id=f.order_id where f.path=$1 limit 1', [rel]);
   const pm = await one('select 1 from product_media where path=$1 limit 1', [rel]);
-  if (pm) allowed = u.role_code !== 'customer' || u.customer_status === 'approved';
+  if (pm) allowed = true; // صور المنتجات لأي مستخدم مسجل (موظف أو محل)
   else if (of) {
     if (u.role_code === 'customer') allowed = of.customer_id === u.customer_id && of.customer_visible;
     else if (u.role_code === 'worker') allowed = of.assigned_worker_id === u.id || !!(await one("select 1 from custodies where order_id=$1 and worker_id=$2 limit 1", [of.order_id, u.id]));

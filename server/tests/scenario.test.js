@@ -40,6 +40,16 @@ class Client {
   async login(username, password) { await this.ok('POST', '/api/auth/login', { username, password }); return this; }
 }
 
+
+// نموذج تسجيل محل مع المستندات الثلاث الإلزامية (صور PNG صغيرة)
+const PNG1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+function regForm(fields, skip = []) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+  for (const k of ['cr_doc', 'vat_doc', 'address_doc']) if (!skip.includes(k)) fd.append(k, new Blob([PNG1], { type: 'image/png' }), `${k}.png`);
+  return fd;
+}
+
 const admin = new Client('admin');
 const sup = new Client('supervisor');
 const w1 = new Client('worker1');
@@ -80,7 +90,7 @@ test('0) التهيئة: موظفون، عميل، نسب عجز، مخزون، 
   await acct.login('acct', 'Passw0rd!');
 
   // تسجيل محل من المتجر ثم موافقة الإدارة
-  await cust.ok('POST', '/api/auth/register-customer', { username: 'shop1', password: 'Passw0rd!', shop_name: 'محل الماسة', owner_name: 'خالد', phone: '0500000000', vat_number: '300000000000003' });
+  await cust.ok('POST', '/api/auth/register-customer', undefined, { form: regForm({ username: 'shop1', password: 'Passw0rd!', shop_name: 'محل الماسة', owner_name: 'خالد', phone: '0500000000', vat_number: '300000000000003' }) });
   const me = await cust.get('/api/auth/me');
   ids.customer = me.customer_id;
   const blocked = await cust.req('GET', '/api/store/products');
@@ -502,19 +512,24 @@ test('عهدة عامة: تحويل ذهب من الخزنة لعامل بدون
   assert.equal((await vault()).toFixed(4), before.toFixed(4));
 });
 
-test('المتجر العام: التصفح بدون تسجيل، والطلب يتطلب حساباً معتمداً', async () => {
+test('المتجر يتطلب تسجيل الدخول، والطلب يتطلب حساباً معتمداً، والتسجيل يتطلب 3 مستندات', async () => {
   const guest = new Client('guest');
-  const list = await guest.req('GET', '/api/public/products');
-  assert.equal(list.status, 200);
-  assert.ok(list.data.products.length >= 1);
-  const p = list.data.products[0];
-  assert.ok(!('labor' in p) && !('stock_qty' in p), 'لا أجور ولا كميات مخزون للزوار');
-  assert.equal((await guest.req('GET', `/api/public/products/${p.id}`)).status, 200);
+  assert.equal((await guest.req('GET', '/api/public/products')).status, 401, 'لا تصفح بدون تسجيل');
+  const p = (await admin.get('/api/catalog/products'))[0];
+  assert.equal((await guest.req('GET', `/api/public/products/${p.id}`)).status, 401);
   assert.equal((await guest.req('POST', '/api/store/orders', { items: [{ product_id: p.id, karat: 21, quantity: 1 }] })).status, 401, 'الزائر لا يرسل طلباً');
   assert.equal((await guest.req('GET', '/api/store/products')).status, 401, 'أسعار العملاء محمية');
   // عميل غير معتمد يتصفح العام لكن لا يطلب
   const pend = new Client('pending');
-  await pend.ok('POST', '/api/auth/register-customer', { username: 'pendshop', password: 'Passw0rd!', shop_name: 'محل قيد المراجعة', owner_name: 'م', phone: '0544444444' });
-  assert.equal((await pend.req('GET', '/api/public/products')).status, 200);
+  const bad = await pend.req('POST', '/api/auth/register-customer', undefined, { form: regForm({ username: 'pendshop', password: 'Passw0rd!', shop_name: 'محل قيد المراجعة', owner_name: 'م', phone: '0544444444' }, ['vat_doc']) });
+  assert.equal(bad.status, 400, 'الشهادة الضريبية إلزامية');
+  assert.match(bad.data.error, /الشهادة الضريبية/);
+  await pend.ok('POST', '/api/auth/register-customer', undefined, { form: regForm({ username: 'pendshop', password: 'Passw0rd!', shop_name: 'محل قيد المراجعة', owner_name: 'م', phone: '0544444444' }) });
+  const acc = await pend.get('/api/store/account').catch(() => null);
+  const cid = (await admin.get('/api/admin/customers')).find((c) => c.shop_name === 'محل قيد المراجعة').id;
+  const docs = (await admin.get(`/api/admin/customers/${cid}`)).docs;
+  assert.deepEqual(docs.map((d) => d.doc_type).sort(), ['cr', 'national_address', 'vat']);
+  assert.ok(acc === null || acc);
+  assert.equal((await pend.req('GET', '/api/public/products')).status, 200, 'المحل المسجل يتصفح');
   assert.equal((await pend.req('POST', '/api/store/orders', { items: [{ product_id: p.id, karat: 21, quantity: 1 }] })).status, 403);
 });

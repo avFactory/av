@@ -460,7 +460,7 @@ r.get('/customers/:id', requirePerm('customers.view'), async (req, res) => {
   const c = await one('select c.*, t.name as tier_name, t.color as tier_color from customers c left join customer_tiers t on t.id=c.tier_id where c.id=$1', [id]);
   if (!c) throw notFound();
   const users = await many('select id, username, full_name, active from users where customer_id=$1 and branch_id is null', [id]);
-  const docs = await many('select * from customer_documents where customer_id=$1', [id]);
+  const docs = await many('select * from customer_documents where customer_id=$1 order by id', [id]);
   const orders = await many(`select o.id, o.order_no, o.title, o.status, o.created_at, s.name as stage_name, br.name as branch_name from orders o left join stages s on s.id=o.current_stage_id left join customer_branches br on br.id=o.branch_id where o.customer_id=$1 order by o.id desc`, [id]);
   const invoices = await many('select id, invoice_no, invoice_type, total::text, status, issue_date from invoices where customer_id=$1 order by id desc', [id]);
   const payments = await many('select id, payment_no, kind, amount::text, method, received_at, invoice_id from payments where customer_id=$1 order by id desc', [id]);

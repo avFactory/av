@@ -5,6 +5,11 @@ import { bad, str, int } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyPerm } from '../lib/notify.js';
 import bcrypt from 'bcryptjs';
+import { upload, registerFiles } from '../lib/uploads.js';
+
+// مستندات تسجيل المحل الإلزامية (صورة أو PDF لكل منها)
+export const REG_DOCS = [['cr_doc', 'cr', 'السجل التجاري'], ['vat_doc', 'vat', 'الشهادة الضريبية'], ['address_doc', 'national_address', 'العنوان الوطني']];
+const regUpload = upload.fields(REG_DOCS.map(([f]) => ({ name: f, maxCount: 1 })));
 
 const r = Router();
 
@@ -62,9 +67,14 @@ r.post('/change-password', requireAuth, async (req, res) => {
 });
 
 /** تسجيل حساب محل ذهب جديد (يتطلب موافقة إدارة المصنع) */
-r.post('/register-customer', async (req, res) => {
+r.post('/register-customer', regUpload, async (req, res) => {
   loginThrottle(`reg:${req.ip}`);
   const b = req.body;
+  for (const [field, , label] of REG_DOCS) {
+    const f = req.files?.[field]?.[0];
+    if (!f) throw bad(`أرفق صورة ${label}`);
+    if (!/^(image\/|application\/pdf)/.test(f.mimetype)) throw bad(`${label}: الملف يجب أن يكون صورة أو PDF`);
+  }
   const username = str(b.username, 'اسم المستخدم', { required: true, max: 60 });
   if (!/^[A-Za-z0-9_.@-]{3,60}$/.test(username)) throw bad('اسم المستخدم يجب أن يكون بالأحرف الإنجليزية أو الأرقام');
   if (String(b.password || '').length < 8) throw bad('كلمة المرور يجب ألا تقل عن 8 أحرف');
@@ -81,6 +91,10 @@ r.post('/register-customer', async (req, res) => {
       "insert into users(username, password_hash, full_name, role_code, customer_id, phone) values ($1,$2,$3,'customer',$4,$5) returning *",
       [username, hashPassword(String(b.password)), str(b.owner_name, 'اسم المالك'), c.id, str(b.phone, 'الجوال')]
     )).rows[0];
+    for (const [field, type] of REG_DOCS) {
+      const [f] = await registerFiles(db, req.files[field], u.id);
+      await db.query('insert into customer_documents(customer_id, path, original_name, mime, doc_type) values ($1,$2,$3,$4,$5)', [c.id, f.path, f.original_name, f.mime, type]);
+    }
     await notifyPerm(db, 'customers.manage', { kind: 'customer', title: 'طلب تسجيل محل جديد', body: b.shop_name, link: `/admin/customers/${c.id}` });
     await audit(db, { user: u, ip: req.ip }, 'register', 'customer', c.id);
     return u;

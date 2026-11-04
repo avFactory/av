@@ -17,6 +17,16 @@ const call = async (method, path, body, form) => {
   const ct = r.headers.get('content-type') || '';
   return { status: r.status, data: ct.includes('json') ? await r.json() : await r.arrayBuffer() };
 };
+
+// نموذج تسجيل محل مع المستندات الثلاث الإلزامية (صور PNG صغيرة)
+const PNG1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+function regForm(fields, skip = []) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+  for (const k of ['cr_doc', 'vat_doc', 'address_doc']) if (!skip.includes(k)) fd.append(k, new Blob([PNG1], { type: 'image/png' }), `${k}.png`);
+  return fd;
+}
+
 before(async () => {
   await pool.query('drop schema public cascade; create schema public;');
   await migrate({ log: false });
@@ -63,7 +73,7 @@ test('استيراد العملاء: أعمدة بأي ترتيب، تجاوز �
 test('تصنيفات العملاء: ذهبي وفضي وعادي، والعادي افتراضي للعملاء الجدد', async () => {
   const tiers = (await call('GET', '/admin/tiers')).data;
   assert.deepEqual(tiers.slice(0, 3).map((t) => [t.name, t.color]), [['عميل ذهبي', 'gold'], ['عميل فضي', 'silver'], ['عميل عادي', 'normal']]);
-  const reg = await fetch(base + '/api/auth/register-customer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'newshop', password: 'Newshop#2026', shop_name: 'محل جديد', owner_name: 'م', phone: '0599999999' }) });
+  const reg = await fetch(base + '/api/auth/register-customer', { method: 'POST', body: regForm({ username: 'newshop', password: 'Newshop#2026', shop_name: 'محل جديد', owner_name: 'م', phone: '0599999999' }) });
   assert.equal(reg.status, 200);
   const list = (await call('GET', '/admin/customers')).data;
   const c = list.find((x) => x.shop_name === 'محل جديد');
@@ -81,7 +91,8 @@ test('تصنيفات العملاء: ذهبي وفضي وعادي، والعاد
 test('فروع العملاء: اختيار الفرع عند الدخول، كلمة مرور لكل فرع، وفصل الطلبات بين الفروع', async () => {
   const mk = () => { let ck = ''; return async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { 'content-type': 'application/json', cookie: ck }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; }; };
   const main = mk();
-  assert.equal((await main('POST', '/auth/register-customer', { username: 'brshop', password: 'Main#2026x', shop_name: 'مجوهرات الفروع', owner_name: 'م', phone: '0511111222' })).status, 200);
+  assert.equal((await fetch(base + '/api/auth/register-customer', { method: 'POST', body: regForm({ username: 'brshop', password: 'Main#2026x', shop_name: 'مجوهرات الفروع', owner_name: 'م', phone: '0511111222' }) })).status, 200);
+  await main('POST', '/auth/login', { username: 'brshop', password: 'Main#2026x' });
   const cid = (await call('GET', '/admin/customers')).data.find((c) => c.shop_name === 'مجوهرات الفروع').id;
   await call('PUT', `/admin/customers/${cid}`, { status: 'approved' });
   await main('POST', '/auth/login', { username: 'brshop', password: 'Main#2026x' });
@@ -407,7 +418,7 @@ test('تصنيفات المتجر: ذهب (يشمل الزركون) / ألماس
     pearl: await mk('تصنيف لؤلؤ', 'حلق', { pearl_weight: '2' }),
     stone: await mk('تصنيف حجر', 'خاتم', { stone_weight: '1' }),
   };
-  const list = async (q) => (await fetch(`${base}/api/public/products?q=${encodeURIComponent('تصنيف')}&${q}`).then((r) => r.json())).products.map((p) => p.id).sort();
+  const list = async (q) => (await call('GET', `/public/products?q=${encodeURIComponent('تصنيف')}&${q}`)).data.products.map((p) => p.id).sort();
   assert.deepEqual(await list('cat=gold'), [ids.gold, ids.zircon].sort(), 'الزركون مع الذهب');
   assert.deepEqual(await list('cat=diamond'), [ids.diamond]);
   assert.deepEqual(await list('cat=pearl'), [ids.pearl]);

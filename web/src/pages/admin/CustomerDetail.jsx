@@ -27,7 +27,16 @@ export default function CustomerDetail() {
       <div className="grid g2 mb">
         <Card title="بيانات المنشأة"><Kv items={[['الحالة', c.status], ['الجوال', c.phone], ['البريد', c.email], ['المدينة', c.city], ['العنوان', c.address], ['الرقم الضريبي', c.vat_number], ['السجل التجاري', c.cr_number], ['التصنيف', <TierBadge name={c.tier_name} color={c.tier_color} />], ['حسابات الدخول', data.users.map((u) => u.username).join('، ')]]} /></Card>
         <Card title="الرصيد"><Kv items={[['الرصيد المستحق', st ? fmtMoney(st.balance) : '—'], ['عدد الطلبات', data.orders.length], ['عدد الفواتير', data.invoices.length]]} />
-          {data.docs.length > 0 && <><b className="small mt">مستندات المنشأة</b><div className="files">{data.docs.map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer"><div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div><span>{d.original_name}</span></a>)}</div></>}
+          <b className="small mt d-block">مستندات المنشأة</b>
+          <div className="files">
+            {[['cr', 'السجل التجاري'], ['vat', 'الشهادة الضريبية'], ['national_address', 'العنوان الوطني']].map(([t, label]) => {
+              const d = data.docs.find((x) => x.doc_type === t);
+              return d
+                ? <a key={t} href={fileUrl(d.path)} target="_blank" rel="noreferrer">{d.mime?.startsWith('image') ? <img src={fileUrl(d.path)} alt="" /> : <div className="doc">PDF</div>}<span><b>{label}</b></span></a>
+                : <span key={t} className="text-body-secondary small border rounded-3 p-2">{label}: غير مرفق</span>;
+            })}
+            {data.docs.filter((d) => !d.doc_type).map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer">{d.mime?.startsWith('image') ? <img src={fileUrl(d.path)} alt="" /> : <div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{d.original_name}</span></a>)}
+          </div>
         </Card>
       </div>
       <Tabs value={tab} onChange={setTab} tabs={[['orders', 'الطلبات'], ['invoices', 'الفواتير'], ['payments', 'المدفوعات'], ['statement', 'كشف الحساب'], ['rates', 'أسعار المصنعية الخاصة'], ['branches', `الفروع (${data.branches.length})`]]} />

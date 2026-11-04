@@ -138,7 +138,7 @@ export default function App() {
           <Route path="/w/account" element={<Account />} />
         </Route>
 
-        {/* المتجر: التصفح عام للجميع، وصفحات الحساب والطلبات للعملاء فقط */}
+        {/* المتجر: يتطلب تسجيل الدخول، وصفحات الحساب والطلبات للعملاء فقط */}
         <Route element={<StoreLayout />}>
           <Route path="/store" element={<Catalog />} />
           <Route path="/store/products/:id" element={<Product />} />

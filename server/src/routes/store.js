@@ -23,7 +23,7 @@ r.get('/account', async (req, res) => {
   const bal = await one(`select
       coalesce((select sum(case when invoice_type='invoice' then total else -total end) from invoices where customer_id=$1 and status='issued'),0)::text as invoiced,
       coalesce((select sum(case when kind='refund' then -amount else amount end) from payments where customer_id=$1),0)::text as paid`, [req.user.customer_id]);
-  const docs = await many('select id, path, original_name, created_at from customer_documents where customer_id=$1', [req.user.customer_id]);
+  const docs = await many('select id, path, original_name, mime, doc_type, created_at from customer_documents where customer_id=$1 order by id', [req.user.customer_id]);
   const branch = req.user.branch_id ? await one('select id, name, city, address, phone from customer_branches where id=$1', [req.user.branch_id]) : null;
   res.json({ customer: c, balance: (Number(bal.invoiced) - Number(bal.paid)).toFixed(2), ...bal, docs, branch, is_main: !req.user.branch_id });
 });
