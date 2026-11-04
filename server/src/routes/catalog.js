@@ -43,7 +43,7 @@ r.get('/next-sku', requirePerm('products.manage'), async (req, res) => {
   res.json({ sku: await nextSku(pool, req.query.type) });
 });
 
-r.post('/products', requirePerm('products.manage'), upload.array('files', 10), async (req, res) => {
+r.post('/products', requirePerm('products.manage'), upload.array('files', 20), async (req, res) => {
   res.json(await tx(async (db) => {
     const vals = productVals(req.body);
     // رقم المنتج يُولَّد تلقائياً من نوع القطعة (RIN، SW، NK...) إذا لم يُدخل يدوياً
@@ -58,7 +58,7 @@ r.post('/products', requirePerm('products.manage'), upload.array('files', 10), a
   }));
 });
 
-r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 10), async (req, res) => {
+r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 20), async (req, res) => {
   res.json(await tx(async (db) => {
     const id = int(req.params.id);
     const before = (await db.query('select * from products where id=$1', [id])).rows[0];

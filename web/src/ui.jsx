@@ -411,3 +411,39 @@ export function ThemeToggle({ light = false, className = '' }) {
     </button>
   );
 }
+
+/** اختيار عدة ملفات بالتتابع (كل اختيار يُضاف للقائمة) مع معاينة وحذف */
+export function FilePicker({ label, value = [], onChange, accept = 'image/*', max = 20, hint }) {
+  const ref = useRef(null);
+  const [urls, setUrls] = useState([]);
+  useEffect(() => {
+    const u = value.map((f) => (f.type?.startsWith('image/') ? URL.createObjectURL(f) : null));
+    setUrls(u);
+    return () => u.forEach((x) => x && URL.revokeObjectURL(x));
+  }, [value]);
+  const add = (list) => {
+    const next = [...value, ...list].slice(0, max);
+    onChange(next);
+    if (ref.current) ref.current.value = '';
+  };
+  return (
+    <div className="field file-pick">
+      {label && <span className="form-label mb-0 field-l">{label}</span>}
+      <div className="file-pick-grid">
+        {value.map((f, i) => (
+          <div key={`${f.name}-${i}`} className="file-pick-item" title={f.name}>
+            {urls[i] ? <img src={urls[i]} alt="" /> : <span className="file-pick-name">{f.name.split('.').pop().toUpperCase()}<small>{f.name}</small></span>}
+            <button type="button" className="file-pick-x" aria-label="حذف" onClick={() => onChange(value.filter((_, j) => j !== i))}>×</button>
+          </div>
+        ))}
+        {value.length < max && (
+          <button type="button" className="file-pick-add" onClick={() => ref.current?.click()}>
+            <b>+</b><span>{value.length ? 'إضافة المزيد' : 'إضافة ملفات'}</span>
+          </button>
+        )}
+      </div>
+      <input ref={ref} type="file" hidden multiple accept={accept} onChange={(e) => add([...e.target.files])} />
+      {hint && <span className="form-text mt-0">{hint}</span>}
+    </div>
+  );
+}

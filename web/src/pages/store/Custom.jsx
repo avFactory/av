@@ -1,30 +1,33 @@
 import { useState } from 'react';
-import { useFetch } from '../../ui.jsx';
+import { putFiles } from '../../fileStore.js';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../../api.js';
 import { COLORS } from '../../format.js';
 import { useCart, OrderGate } from '../../components/StoreLayout.jsx';
-import { Btn, Card, Field, Input, Page, Textarea, WeightInput, useAction } from '../../ui.jsx';
+import { Btn, Card, Field, FilePicker, Input, Page, Textarea, WeightInput, useAction, useFetch, useToast } from '../../ui.jsx';
 
 /** اطلب تصميمك: رفع الصور والرسومات وملفات 3D */
 export default function Custom() {
-  const { approved } = useCart();
+  const { approved, cart, setCart } = useCart();
+  const toast = useToast();
   const nav = useNavigate();
   const [f, setF] = useState({ product_type: '', title: '', karat: '21', color: 'yellow', approx_weight: '', size: '', quantity: '1', due_date: '', notes: '' });
   const [files, setFiles] = useState({ reference: [], sketch: [], model: [] });
   const [run, busy] = useAction();
   const set = (k) => (e) => setF({ ...f, [k]: e?.target ? e.target.value : e });
+  // يُضاف طلب التصميم للسلة (الملفات تُحفظ في المتصفح) ويُرسل للمصنع مع بقية السلة
   const submit = (e) => {
     e.preventDefault();
+    if (!f.product_type.trim()) return toast('حدد نوع القطعة', 'bad');
     run(async () => {
-      const fd = new FormData();
-      Object.entries(f).forEach(([k, v]) => { if (k !== 'diamonds' && k !== 'has_diamonds' && !k.startsWith('show_')) fd.append(k, v ?? ''); });
-      fd.append('diamonds', JSON.stringify(f.has_diamonds ? (f.diamonds || []).filter((d) => d.lot_id) : []));
-      [...files.reference, ...files.sketch, ...files.model].forEach((x) => fd.append('files', x));
-      if (files.sketch.length && !files.reference.length) fd.append('file_kind', 'sketch');
-      const r = await api.post('/store/custom', fd);
-      nav(`/store/orders/${r.id}`);
-    }, 'تم إرسال طلب التصميم - سيصلكم عرض أجور التصنيع');
+      const key = `custom-${Date.now()}`;
+      const all = [...files.reference.map((x) => ({ file: x, kind: 'reference' })), ...files.sketch.map((x) => ({ file: x, kind: 'sketch' })), ...files.model.map((x) => ({ file: x, kind: 'model' }))];
+      if (all.length && !(await putFiles(key, all))) throw new Error('تعذر حفظ الملفات في المتصفح - جرّب متصفحاً آخر');
+      const fields = {};
+      Object.entries(f).forEach(([k, v]) => { if (k !== 'diamonds' && k !== 'has_diamonds' && !k.startsWith('show_')) fields[k] = v ?? ''; });
+      fields.diamonds = JSON.stringify(f.has_diamonds ? (f.diamonds || []).filter((d) => d.lot_id) : []);
+      setCart([...cart, { kind: 'custom', key, name: f.title || `تصميم خاص - ${f.product_type}`, karat: f.karat, color: f.color, size: f.size, quantity: Number(f.quantity) || 1, fields, file_count: all.length }]);
+      nav('/store/cart');
+    }, 'تمت إضافة طلب التصميم للسلة');
   };
   if (!approved) {
     return (
@@ -43,10 +46,11 @@ export default function Custom() {
       <form onSubmit={submit} className="grid">
         <Card title="الملفات">
           <div className="grid g3">
-            <Field label="صور التصميم"><input type="file" accept="image/*" multiple onChange={(e) => setFiles({ ...files, reference: [...e.target.files] })} /></Field>
-            <Field label="رسم يدوي (صورة/PDF)"><input type="file" accept="image/*,.pdf" multiple onChange={(e) => setFiles({ ...files, sketch: [...e.target.files] })} /></Field>
-            <Field label="ملفات 3D (STL, OBJ, 3DM, STEP, GLB)"><input type="file" accept=".stl,.obj,.3dm,.step,.stp,.glb,.gltf,.zip" multiple onChange={(e) => setFiles({ ...files, model: [...e.target.files] })} /></Field>
+            <FilePicker label="صور التصميم" accept="image/*" value={files.reference} onChange={(v) => setFiles({ ...files, reference: v })} />
+            <FilePicker label="رسم يدوي (صورة/PDF)" accept="image/*,.pdf" value={files.sketch} onChange={(v) => setFiles({ ...files, sketch: v })} />
+            <FilePicker label="ملفات 3D (STL, OBJ, 3DM, STEP, GLB)" accept=".stl,.obj,.3dm,.step,.stp,.glb,.gltf,.zip" value={files.model} onChange={(v) => setFiles({ ...files, model: v })} />
           </div>
+          <div className="form-text">يمكنك إضافة أكثر من صورة: اضغط «إضافة المزيد» بعد كل اختيار (حتى 20 ملفاً).</div>
         </Card>
         <Card title="المواصفات">
           <div className="grid g3">
@@ -62,7 +66,7 @@ export default function Custom() {
           <Field label="ملاحظات" className="mt"><Textarea value={f.notes} onChange={set('notes')} rows={4} /></Field>
         </Card>
         <StonesCard f={f} setF={setF} />
-        <div className="hrow end"><Btn size="lg" type="submit" loading={busy}>إرسال الطلب للمصنع</Btn></div>
+        <div className="hrow end"><Btn size="lg" type="submit" loading={busy}>🛒 أضف الطلب للسلة</Btn></div>
       </form>
     </Page>
   );

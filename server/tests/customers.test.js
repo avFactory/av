@@ -404,6 +404,20 @@ test('اطلب تصميمك مع الألماس والأحجار: يُحجز ا�
   await call('POST', `/orders/${o2.id}/quote`, { labor_method: 'per_gram', labor_rate: '20' });
   assert.equal((await cu('POST', `/store/orders/${o2.id}/quote`, { decision: 'accept' })).status, 200);
   assert.equal((await pool.query('select status from orders where id=$1', [o2.id])).rows[0].status, 'approved', 'موافق عليه وينتظر توفر الألماس');
+
+  // من السلة: عدة صور مع نوع كل ملف، ويُربط طلبان برقم سلة واحد
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const fd3 = new FormData();
+  for (const [k, v] of Object.entries({ product_type: 'حلق', karat: '21', from_cart: '1', cart_ref: '', file_kinds: JSON.stringify(['reference', 'reference', 'sketch']) })) fd3.append(k, v);
+  for (const n of ['a.png', 'b.png', 'c.png']) fd3.append('files', new Blob([png], { type: 'image/png' }), n);
+  const c1 = (await cu('POST', '/store/custom', null, fd3)).data;
+  assert.match(c1.cart_ref, /CART/);
+  const kinds = (await pool.query('select kind from order_files where order_id=$1 order by id', [c1.id])).rows.map((x) => x.kind);
+  assert.deepEqual(kinds, ['reference', 'reference', 'sketch']);
+  const fd4 = new FormData();
+  for (const [k, v] of Object.entries({ product_type: 'عقد', karat: '21', from_cart: '1', cart_ref: c1.cart_ref })) fd4.append(k, v);
+  const c2 = (await cu('POST', '/store/custom', null, fd4)).data;
+  assert.equal(c2.cart_ref, c1.cart_ref, 'نفس رقم السلة');
 });
 
 test('تصنيفات المتجر: ذهب (يشمل الزركون) / ألماس مخبري / لؤلؤ / أحجار + نوع القطعة', async () => {

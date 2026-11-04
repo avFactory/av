@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { COLORS, METHODS, fmtW, fmtMoney } from '../../format.js';
-import { Btn, Field, Input, Loader, Modal, Page, Select, Table, Textarea, useAction, useFetch, Badge } from '../../ui.jsx';
+import { Btn, Field, Input, Loader, Modal, Page, Select, Table, Textarea, useAction, useFetch, Badge, FilePicker } from '../../ui.jsx';
 
 const AV = { available: 'متوفر', made_to_order: 'حسب الطلب', unavailable: 'غير متوفر' };
 
@@ -70,7 +70,7 @@ export default function Products() {
           <Field label="العيارات"><div className="chips">{[18, 21, 24].map((k) => <button type="button" key={k} className={`chip ${(f.karats || []).includes(k) ? 'on' : ''}`} onClick={() => toggle('karats', k)}>{k}</button>)}</div></Field>
           <Field label="الألوان"><div className="chips">{Object.entries(COLORS).map(([k, v]) => <button type="button" key={k} className={`chip ${(f.colors || []).includes(k) ? 'on' : ''}`} onClick={() => toggle('colors', k)}>{v}</button>)}</div></Field>
           <Field label="الوصف"><Textarea value={f.description || ''} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
-          <Field label="الصور والفيديو"><input type="file" multiple accept="image/*,video/*" onChange={(e) => setF({ ...f, files: e.target.files })} /></Field>
+          <FilePicker label="الصور والفيديو" accept="image/*,video/*" value={f.files || []} onChange={(files) => setF({ ...f, files })} hint="أضف صورة بعد صورة — تُرفع كلها عند الحفظ" />
           {f.media?.length > 0 && <div className="files">{f.media.map((m) => <span key={m.id}><img src={fileUrl(m.path)} alt="" /><button className="link small" onClick={() => setF({ ...f, remove_media: [...(f.remove_media || []), m.id], media: f.media.filter((x) => x.id !== m.id) })}>حذف</button></span>)}</div>}
           <label className="check"><input type="checkbox" checked={f.active !== false} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ظاهر في المتجر</label>
           <div className="hrow end gap">

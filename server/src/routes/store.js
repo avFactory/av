@@ -146,25 +146,34 @@ r.get('/diamond-types', async (_req, res) => {
 });
 
 /** اطلب تصميمك: تصنيع حسب الطلب مع رفع الصور والرسومات وملفات 3D */
-r.post('/custom', upload.array('files', 10), async (req, res) => {
+r.post('/custom', upload.array('files', 20), async (req, res) => {
   const b = req.body;
   res.json(await tx(async (db) => {
+    // من السلة: يُربط برقم السلة نفسه مع بقية المنتجات (إن وُجد ويخص هذا العميل)، وإلا رقم سلة جديد
+    let cartRef = null;
+    if (b.from_cart) {
+      const ref = str(b.cart_ref, 'رقم السلة', { max: 40 });
+      cartRef = ref && (await db.query('select 1 from orders where cart_ref=$1 and customer_id=$2 limit 1', [ref, req.user.customer_id])).rows[0] ? ref
+        : (await db.query("select next_doc_no('CART') v")).rows[0].v;
+    }
     const karat = oneOf(int(b.karat, 'العيار'), [18, 21, 24], 'العيار');
-    const o = (await db.query(`insert into orders(order_no, customer_id, source, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight)
-      values (next_doc_no('ORD'),$1,'store_custom',$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11,$12,$13,$14,$15,$16) returning *`,
+    const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight)
+      values (next_doc_no('ORD'),$1,'store_custom',$17,$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11,$12,$13,$14,$15,$16) returning *`,
       [req.user.customer_id, str(b.product_type, 'نوع القطعة', { required: true }), str(b.title, 'اسم التصميم') || `تصميم خاص - ${b.product_type}`,
        await materialFor(db, karat), b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : null, str(b.size, 'المقاس'),
        int(b.quantity ?? 1, 'الكمية', { min: 1 }), b.due_date || null, str(b.notes, 'الملاحظات', { max: 5000 }), req.user.id, req.user.branch_id || null, orderColor(b.color) || 'yellow',
-       JSON.stringify(parseDiamonds(b.diamonds)), optW(b.pearl_weight, 'وزن اللؤلؤ'), optW(b.stone_weight, 'وزن الحجر'), optW(b.zircon_weight, 'وزن الزركون')])).rows[0];
+       JSON.stringify(parseDiamonds(b.diamonds)), optW(b.pearl_weight, 'وزن اللؤلؤ'), optW(b.stone_weight, 'وزن الحجر'), optW(b.zircon_weight, 'وزن الزركون'), cartRef])).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
-    for (const f of files) {
-      const kind = /\.(stl|obj|3dm|step|stp|glb|gltf)$/i.test(f.path) ? 'model3d' : (b.file_kind === 'sketch' ? 'sketch' : 'reference');
+    let kinds = [];
+    try { kinds = JSON.parse(b.file_kinds || '[]'); } catch { kinds = []; }
+    for (const [i, f] of files.entries()) {
+      const kind = /\.(stl|obj|3dm|step|stp|glb|gltf)$/i.test(f.path) ? 'model3d' : (kinds[i] === 'sketch' || (!kinds.length && b.file_kind === 'sketch') ? 'sketch' : 'reference');
       await db.query('insert into order_files(order_id, kind, path, original_name, mime, uploaded_by, customer_visible) values ($1,$2,$3,$4,$5,$6,true)', [o.id, kind, f.path, f.original_name, f.mime, req.user.id]);
     }
     await prod.logStage(db, o.id, null, 'created', req.user.id, 'طلب تصميم خاص', true);
     await notifyPerm(db, 'orders.quote', { kind: 'order', title: `طلب تصميم خاص من ${req.user.shop_name}`, body: o.order_no, link: `/orders/${o.id}` });
     await audit(db, req, 'store.custom', 'order', o.id, { files: files.length });
-    return { id: o.id, order_no: o.order_no };
+    return { id: o.id, order_no: o.order_no, cart_ref: cartRef };
   }));
 });
 
