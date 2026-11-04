@@ -744,10 +744,10 @@ r.put('/specialty-rates', requirePerm('loss_rates.manage'), async (req, res) => 
 });
 
 // ------------------------------------------------------------------ صفحة التسعيرة (رابط خارجي)
-r.get('/pricing', requirePerm('settings.manage', 'products.manage'), async (_req, res) => {
+r.get('/pricing', requirePerm('pricing.manage'), async (_req, res) => {
   res.json(await getPricing(pool, { withToken: true }));
 });
-r.put('/pricing', requirePerm('settings.manage', 'products.manage'), async (req, res) => {
+r.put('/pricing', requirePerm('pricing.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
     const before = await getPricing(db);
     await savePricing(db, req.body);
@@ -755,7 +755,7 @@ r.put('/pricing', requirePerm('settings.manage', 'products.manage'), async (req,
     return getPricing(db, { withToken: true });
   }));
 });
-r.post('/pricing/token', requirePerm('settings.manage'), async (req, res) => {
+r.post('/pricing/token', requirePerm('pricing.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
     const which = req.body?.which === 'short' ? 'short' : 'full';
     const token = await rotateToken(db, which);

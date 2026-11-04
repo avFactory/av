@@ -40,7 +40,7 @@ export default function Pricing() {
             <Btn onClick={copy}>نسخ الرابط</Btn>
             <a className="btn btn-success" href={`https://wa.me/?text=${encodeURIComponent(`التسعيرة الكاملة لمنتجات AV:\n${url}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
             <a className="btn btn-outline-secondary" href={url} target="_blank" rel="noreferrer">فتح كما يراه الزائر</a>
-            {can('settings.manage') && <Btn kind="danger" loading={busy} onClick={() => rotate('full')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
+            {can('pricing.manage') && <Btn kind="danger" loading={busy} onClick={() => rotate('full')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
           </div>
           </div>
         </details>
@@ -53,7 +53,7 @@ export default function Pricing() {
             <Btn onClick={() => copyText(shortUrl)}>نسخ الرابط</Btn>
             <a className="btn btn-success" href={`https://wa.me/?text=${encodeURIComponent(`التسعيرة المختصرة لمنتجات AV:\n${shortUrl}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
             <a className="btn btn-outline-secondary" href={shortUrl} target="_blank" rel="noreferrer">فتح كما يراه الزائر</a>
-            {can('settings.manage') && <Btn kind="danger" loading={busy} onClick={() => rotate('short')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
+            {can('pricing.manage') && <Btn kind="danger" loading={busy} onClick={() => rotate('short')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
           </div>
           </div>
         </details>

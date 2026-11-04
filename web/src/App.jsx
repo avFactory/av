@@ -117,7 +117,7 @@ export default function App() {
           <Route path="/admin/inventory" element={S(<Inventory />, ['inventory.view'])} />
           <Route path="/admin/stones" element={S(<Stones />, ['stones.view'])} />
           <Route path="/admin/products" element={S(<Products />, ['products.manage'])} />
-          <Route path="/admin/pricing" element={S(<Pricing />, ['settings.manage', 'products.manage'])} />
+          <Route path="/admin/pricing" element={S(<Pricing />, ['pricing.manage'])} />
           <Route path="/admin/loss-advances" element={S(<LossAdvances />, ['loss.advances', 'loss.approve'])} />
           <Route path="/admin/labor" element={S(<Labor />, ['labor.manage'])} />
           <Route path="/admin/invoices" element={S(<Invoices />, ['finance.view'])} />

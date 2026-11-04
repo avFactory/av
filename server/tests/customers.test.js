@@ -566,6 +566,8 @@ test('مدير المتجر بدون صلاحية المخزون يرى أنوا
   const sm = async (m, p, body, form) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, ...(form ? {} : { 'content-type': 'application/json' }) }, body: form || (body ? JSON.stringify(body) : undefined) }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
   assert.equal((await sm('POST', '/auth/login', { username: 'storemgr', password: 'Store#2026m' })).status, 200);
   assert.equal((await sm('GET', '/stones')).status, 403, 'لا يدخل المخزون');
+  assert.equal((await sm('GET', '/admin/pricing')).status, 403, 'مدير المتجر لا يرى التسعيرة');
+  assert.equal((await call('GET', '/admin/pricing')).status, 200, 'المدير يرى التسعيرة');
   const lots = (await sm('GET', '/catalog/diamond-lots')).data;
   const l = lots.find((x) => x.id === lot.id);
   assert.ok(l && l.available === true && l.stock_carats === undefined, JSON.stringify({ lot, l }));
