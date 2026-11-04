@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
+import { AppErrorBoundary } from './components/ErrorBoundary.jsx';
 import { AuthProvider } from './auth.jsx';
 import { LiveProvider, ToastProvider } from './ui.jsx';
 import 'bootstrap/dist/css/bootstrap.rtl.min.css';
@@ -17,7 +18,9 @@ createRoot(document.getElementById('root')).render(
       <ToastProvider>
         <AuthProvider>
           <LiveProvider>
-            <App />
+            <AppErrorBoundary>
+              <App />
+            </AppErrorBoundary>
           </LiveProvider>
         </AuthProvider>
       </ToastProvider>

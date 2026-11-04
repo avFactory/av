@@ -5,6 +5,7 @@ import { fmtW, fmtMoney, METHODS, COLORS } from '../../format.js';
 import { Btn, Field, Input, Loader, Page, Textarea, useFetch, useToast, ErrorBox } from '../../ui.jsx';
 import { useCart } from '../../components/StoreLayout.jsx';
 import ImageZoom from '../../components/ImageZoom.jsx';
+import { SafeBlock } from '../../components/ErrorBoundary.jsx';
 
 export default function Product() {
   const { id } = useParams();
@@ -30,8 +31,10 @@ export default function Product() {
       <div className="grid g2">
         <div>
           <div className="gallery">{media ? (media.kind === 'video' ? <video src={fileUrl(media.path)} controls /> : (
+            <SafeBlock resetKey={media.path} fallback={<img src={fileUrl(media.path)} alt={p.name} />}>
             <ImageZoom src={fileUrl(media.path)} alt={p.name} images={p.media.filter((m) => m.kind === 'image').map((m) => fileUrl(m.path))}
               onIndex={(n) => { const imgs = p.media.map((m, j) => [m, j]).filter(([m]) => m.kind === 'image'); if (imgs[n]) setImg(imgs[n][1]); }} />
+            </SafeBlock>
           )) : '◇'}</div>
           {media?.kind === 'image' && <div className="small text-body-secondary mt-1">للتكبير: الأزرار، عجلة الماوس، النقر المزدوج، أو بإصبعين على الجوال — واسحب للتحريك</div>}
           <div className="thumbs">{p.media.map((m, i) => (m.kind === 'image' ? <img key={i} src={fileUrl(m.path)} alt="" className={i === img ? 'on' : ''} onClick={() => setImg(i)} /> : <button key={i} className="chip" onClick={() => setImg(i)}>فيديو</button>))}</div>

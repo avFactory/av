@@ -9,20 +9,23 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
  * صورة قابلة للتكبير والتصغير:
  * أزرار + / − / إعادة، عجلة الماوس، النقر المزدوج، السحب للتحريك، والقرص بإصبعين على الجوال.
  */
-function useZoom() {
+function useZoom(fit = 'cover') {
   const [z, setZ] = useState({ s: 1, x: 0, y: 0 });
   const box = useRef(null);
+  const nat = useRef(null); // المقاس الأصلي للصورة
   const drag = useRef(null);
   const pinch = useRef(null);
 
   // يبقى التحريك داخل حدود الصورة المكبّرة
   const bound = useCallback((s, x, y) => {
+    if (!Number.isFinite(s) || !Number.isFinite(x) || !Number.isFinite(y)) return { s: 1, x: 0, y: 0 };
     const el = box.current;
     if (!el || s <= 1) return { s: Math.max(s, 1), x: 0, y: 0 };
     const w = el.clientWidth, h = el.clientHeight;
-    const mx = ((s - 1) * w) / 2, my = ((s - 1) * h) / 2;
+    const { dw, dh } = shown(w, h, nat.current, fit, s);
+    const mx = Math.max(0, (dw - w) / 2), my = Math.max(0, (dh - h) / 2);
     return { s, x: clamp(x, -mx, mx), y: clamp(y, -my, my) };
-  }, []);
+  }, [fit]);
 
   // تكبير حول نقطة (موضع الماوس أو منتصف الإصبعين)
   const zoomAt = useCallback((next, cx, cy) => {
@@ -56,8 +59,15 @@ function useZoom() {
       e.currentTarget.setPointerCapture(e.pointerId);
       drag.current = { x: e.clientX - z.x, y: e.clientY - z.y };
     },
-    onPointerMove: (e) => { if (drag.current) setZ((p) => bound(p.s, e.clientX - drag.current.x, e.clientY - drag.current.y)); },
+    // القيم تُحسب فوراً (وليس داخل دالة التحديث المؤجلة) حتى لا تُقرأ بعد رفع الإصبع/الماوس
+    onPointerMove: (e) => {
+      const d = drag.current;
+      if (!d) return;
+      const x = e.clientX - d.x, y = e.clientY - d.y;
+      setZ((p) => bound(p.s, x, y));
+    },
     onPointerUp: () => { drag.current = null; },
+    onPointerCancel: () => { drag.current = null; },
     onTouchStart: (e) => {
       if (e.touches.length === 2) {
         const [a, b] = e.touches;
@@ -71,15 +81,26 @@ function useZoom() {
         e.preventDefault();
         const [a, b] = e.touches;
         const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-        zoomAt(pinch.current.s * (d / pinch.current.d), (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
+        const target = pinch.current.s * (d / (pinch.current.d || 1));
+        zoomAt(target, (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
       } else if (drag.current && e.touches.length === 1) {
         e.preventDefault();
-        setZ((p) => bound(p.s, e.touches[0].clientX - drag.current.x, e.touches[0].clientY - drag.current.y));
+        const d = drag.current, t = e.touches[0];
+        const x = t.clientX - d.x, y = t.clientY - d.y;
+        setZ((p) => bound(p.s, x, y));
       }
     },
     onTouchEnd: () => { pinch.current = null; drag.current = null; },
+    onTouchCancel: () => { pinch.current = null; drag.current = null; },
   };
-  return { z, box, handlers, zoomAt, reset };
+  return { z, box, nat, fit, handlers, zoomAt, reset };
+}
+
+/** مقاس الصورة المعروضة (ملء الإطار أو احتواؤها) عند مستوى تكبير s */
+function shown(w, h, n, fit, s) {
+  if (!n || !n.w || !n.h) return { dw: w * s, dh: h * s };
+  const base = fit === 'contain' ? Math.min(w / n.w, h / n.h) : Math.max(w / n.w, h / n.h);
+  return { dw: n.w * base * s, dh: n.h * base * s };
 }
 
 function Controls({ z, zoomAt, reset, extra }) {
@@ -94,11 +115,37 @@ function Controls({ z, zoomAt, reset, extra }) {
   );
 }
 
+/**
+ * الصورة تُرسم كخلفية بمقاس محسوب (وليس تكبير طبقة كاملة بـ transform):
+ * المتصفح يرسم الجزء الظاهر فقط، فلا تختفي الصفحة مع الصور الكبيرة عالية الدقة.
+ */
 function Stage({ src, alt, zoom, className = '' }) {
-  const { z, box, handlers } = zoom;
+  const { z, box, nat, fit, handlers } = zoom;
+  const [, setReady] = useState(0);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    let alive = true;
+    nat.current = null;
+    const im = new Image();
+    im.onload = () => { if (alive) { nat.current = { w: im.naturalWidth, h: im.naturalHeight }; setReady((n) => n + 1); } };
+    im.src = src;
+    return () => { alive = false; };
+  }, [src]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    const upd = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    upd();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(upd) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [box]);
+  const { dw, dh } = shown(size.w, size.h, nat.current, fit, z.s);
+  const left = (size.w - dw) / 2 + z.x, top = (size.h - dh) / 2 + z.y;
   return (
     <div ref={box} className={`zoom-stage ${className} ${z.s > 1 ? 'zoomed' : ''}`} {...handlers}>
-      <img src={src} alt={alt} draggable={false} style={{ transform: `translate(${z.x}px, ${z.y}px) scale(${z.s})` }} />
+      <div className="zoom-img" role="img" aria-label={alt}
+        style={{ backgroundImage: `url("${src}")`, backgroundSize: `${dw}px ${dh}px`, backgroundPosition: `${left}px ${top}px` }} />
     </div>
   );
 }
@@ -123,7 +170,7 @@ export default function ImageZoom({ src, alt, images = [], index = 0, onIndex })
 /** عرض بملء الشاشة مع التنقل بين الصور */
 function Viewer({ images, index, alt, onClose, onIndex }) {
   const [i, setI] = useState(index);
-  const zoom = useZoom();
+  const zoom = useZoom('contain');
   const go = (d) => { const n = (i + d + images.length) % images.length; setI(n); zoom.reset(); onIndex?.(n); };
   useEffect(() => {
     const onKey = (e) => {
