@@ -652,3 +652,10 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .order-item-info { display: grid; gap: 2px; min-width: 0; }
 .order-item-info b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 480px) { .order-items { grid-template-columns: 1fr; } .order-item { grid-template-columns: 60px 1fr; } .order-item-img { width: 60px; height: 60px; } .order-item-st { grid-column: 2; } }
+
+/* راس صفحة مختصر: العنوان والتبويبات والزر في صف واحد */
+.page-tabs-row { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: space-between; min-width: 0; }
+.page-tabs-row .tabs { margin: 0 !important; border-bottom: 0; }
+.page-tabs-row .tabs .nav-link { padding: 6px 12px; }
+.page-h.inline:has(.page-tabs-row) { margin-bottom: .75rem; gap: 1.25rem; }
+@media (max-width: 760px) { .page-tabs-row { flex-wrap: wrap; } }

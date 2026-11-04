@@ -22,11 +22,15 @@ export default function Stages() {
   const move = (i, d) => { const ids = active.map((x) => x.id); [ids[i], ids[i + d]] = [ids[i + d], ids[i]]; run(async () => { await api.put('/admin/stages-order', { ids }); reload(); }); };
   const saveStage = () => run(async () => { if (s.id) await api.put(`/admin/stages/${s.id}`, s); else await api.post('/admin/stages', s); setS(null); reload(); }, 'تم الحفظ');
   return (
-    <Page title="مراحل الإنتاج ونسب العجز" subtitle="النسب تبدأ بصفر حتى يحددها مدير المصنع. تغيير النسبة لا يؤثر بأثر رجعي على العهد القائمة.">
+    <Page title="مراحل الإنتاج ونسب العجز" inline actions={<div className="page-tabs-row">
       <Tabs value={tab} onChange={setTab} tabs={[['stages', 'المراحل ونسب العجز'], ['routes', 'مسارات الإنتاج']]} />
+      {can('stages.manage') && (tab === 'stages'
+        ? <Btn onClick={() => setS({ name: '', kind: 'normal', handles_gold: true, requires_weight: true, requires_approval: false, required_fields: [], customer_visible: true, worker_ids: [] })}>إضافة مرحلة</Btn>
+        : <Btn onClick={() => setRoute({ name: '', product_type: '', stage_ids: active.map((x) => x.id), is_default: false })}>مسار جديد</Btn>)}
+    </div>}>
+      {tab === 'stages' && <div className="small text-body-secondary mb-2">النسب تبدأ بصفر حتى يحددها مدير المصنع. تغيير النسبة لا يؤثر بأثر رجعي على العهد القائمة.</div>}
       {tab === 'stages' && (
         <>
-          {can('stages.manage') && <div className="hrow end mb"><Btn onClick={() => setS({ name: '', kind: 'normal', handles_gold: true, requires_weight: true, requires_approval: false, required_fields: [], customer_visible: true, worker_ids: [] })}>إضافة مرحلة</Btn></div>}
           <div className="card"><Table rows={data} rowClass={(x) => (x.active ? '' : 'row-warn')} columns={[
             ['#', (x) => (x.active ? active.findIndex((a) => a.id === x.id) + 1 : '—')], ['المرحلة', (x) => <b>{x.name}</b>], ['النوع', (x) => KINDS.find((k) => k[0] === x.kind)?.[1]],
             ['نسبة العجز الطبيعي', (x) => <span className="hrow gap"><b dir="ltr">{fmtPct(x.loss_rate)}</b>{can('loss_rates.manage') && <button className="link small" onClick={() => setRate({ stage: x, rate_percent: x.loss_rate, note: '' })}>تعديل</button>}<button className="link small" onClick={() => run(async () => setHist({ stage: x, rows: await api.get(`/admin/stages/${x.id}/rates`) }))}>السجل</button></span>],
@@ -44,7 +48,6 @@ export default function Stages() {
       )}
       {tab === 'routes' && (
         <>
-          {can('stages.manage') && <div className="hrow end mb"><Btn onClick={() => setRoute({ name: '', product_type: '', stage_ids: active.map((x) => x.id), is_default: false })}>مسار جديد</Btn></div>}
           <div className="grid">
             {(routes || []).map((r) => (
               <Card key={r.id} title={<span>{r.name} {r.is_default && <Badge tone="gold">افتراضي</Badge>} {r.product_type && <Badge>{r.product_type === '__stock__' ? 'بيع من المخزون' : r.product_type}</Badge>}</span>}
