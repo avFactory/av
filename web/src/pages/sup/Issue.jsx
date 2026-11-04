@@ -14,9 +14,9 @@ export default function Issue() {
   const [sp] = useSearchParams();
   const { can } = useAuth();
   const [mode, setMode] = useState(['split', 'general', 'diamond'].includes(sp.get('mode')) ? sp.get('mode') : 'single');
-  const tabs = [['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال'], ['general', 'عهدة عامة (بدون طلب)'], ...(can('stones.manage') ? [['diamond', 'تسليم الألماس']] : [])];
+  const tabs = [['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال'], ['general', 'عهدة عامة (بدون طلب)'], ...(can('stones.manage') ? [['diamond', 'تسليم الألماس المخبري']] : [])];
   return (
-    <Page title={mode === 'diamond' ? 'تسليم الألماس' : 'تسليم ذهب'} inline>
+    <Page title={mode === 'diamond' ? 'تسليم الألماس المخبري' : 'تسليم ذهب'} inline>
       <Tabs value={mode} onChange={setMode} tabs={tabs} />
       {mode === 'single' ? <SingleIssue sp={sp} /> : mode === 'split' ? <SplitIssue sp={sp} /> : mode === 'diamond' ? <DiamondIssue /> : <GeneralIssue sp={sp} />}
     </Page>

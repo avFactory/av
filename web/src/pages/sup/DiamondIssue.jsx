@@ -32,7 +32,7 @@ export default function DiamondIssue() {
   const current = lot && (lots || []).find((l) => l.id === lot.id);
 
   if (!lots) return <Loader />;
-  if (!lots.length) return <Empty>لا توجد أصناف ألماس — أضفها من صفحة "الألماس والأحجار"</Empty>;
+  if (!lots.length) return <Empty>لا توجد أصناف ألماس مخبري — أضفها من صفحة "الألماس المخبري والأحجار"</Empty>;
   return (
     <div className="grid">
       {/* شريط القصّات */}
@@ -120,9 +120,9 @@ function IssueForm({ lot, onBack, onDone }) {
         </div>
         <div className="small text-body-secondary">{[lot.lot_no, lot.stone_type, lot.color, lot.clarity].filter(Boolean).join(' · ')}</div>
       </Card>
-      <Card title="صرف الألماس">
+      <Card title="صرف الألماس المخبري">
         <div className="grid">
-          <Field label="العامل *" hint={workers && allowed.length ? (workers.length ? `عمال الألماس: ${allowed.join('، ')}` : `لا يوجد عامل نشط بالأرقام ${allowed.join('، ')} — عدّلها من الإعدادات`) : undefined}>
+          <Field label="العامل *" hint={workers && allowed.length ? (workers.length ? `عمال الألماس المخبري: ${allowed.join('، ')}` : `لا يوجد عامل نشط بالأرقام ${allowed.join('، ')} — عدّلها من الإعدادات`) : undefined}>
             <Select value={workerId} onChange={(e) => { setWorkerId(e.target.value); setOrder(null); }} placeholder={workers ? 'اختر العامل' : 'جارٍ التحميل…'}
               options={(workers || []).map((w) => [w.id, `${w.full_name}${w.employee_no ? ` (${w.employee_no})` : ''}${w.open_count ? ` — لديه ${w.open_count} طلب` : ''}`])} />
           </Field>
@@ -142,7 +142,7 @@ function IssueForm({ lot, onBack, onDone }) {
           </div>
           <Field label="ملاحظة (اختياري)"><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
           {over && <div className="alert alert-warning small mb-0">الكمية أكبر من المتوفر في المخزن.</div>}
-          <Btn size="lg" loading={busy} disabled={!ok} onClick={submit}>صرف {f.carats ? `${f.carats} قيراط` : 'الألماس'}{worker ? ` إلى ${worker.full_name}` : ''}</Btn>
+          <Btn size="lg" loading={busy} disabled={!ok} onClick={submit}>صرف {f.carats ? `${f.carats} قيراط` : 'الألماس المخبري'}{worker ? ` إلى ${worker.full_name}` : ''}</Btn>
         </div>
       </Card>
     </div>

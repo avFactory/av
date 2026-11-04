@@ -70,13 +70,13 @@ export default function Stones() {
     .filter((g) => g.list.length || (!q && !hideEmpty && g.items.length));
 
   return (
-    <Page title="مخزون الألماس والأحجار" subtitle="مصنّف حسب القصّة · الوزن بالقيراط · كل حركة مرتبطة بطلب وعامل ومرحلة"
+    <Page title="مخزون الألماس المخبري والأحجار" subtitle="مصنّف حسب القصّة · الوزن بالقيراط · كل حركة مرتبطة بطلب وعامل ومرحلة"
       actions={<>
         {can('stones.manage') && <ShareStock />}
         {can('stones.manage') && <Btn kind="ghost" onClick={() => setImp({ step: 1 })}>استيراد من Excel</Btn>}
         <a className="btn btn-outline-secondary" href="/api/stones/inventory.xlsx">تصدير Excel</a>
         {can('stones.manage') && <Btn kind="ghost" onClick={() => setShapesOpen(true)}>التصنيفات</Btn>}
-        {can('stones.manage') && <Btn onClick={() => setNewItem({ shape_id: shapes[0]?.id, stone_type: 'ألماس' })}>صنف جديد</Btn>}
+        {can('stones.manage') && <Btn onClick={() => setNewItem({ shape_id: shapes[0]?.id, stone_type: 'ألماس مخبري' })}>صنف جديد</Btn>}
       </>}>
       <div className="stone-stats mb">
         <div className="stone-stat main"><span>إجمالي المخزون (غير مركّب)</span><b dir="ltr">{ct(total)}</b><small>قيراط</small></div>
@@ -124,7 +124,7 @@ export default function Stones() {
                   return (
                     <button key={l.id} className={`stone-tile ${st}`} onClick={() => openLot(l)}>
                       <span className="size" dir="ltr">{l.size_label || '—'}</span>
-                      {(l.stone_type !== 'ألماس' || l.color || l.clarity) && <span className="sub">{[l.stone_type !== 'ألماس' && l.stone_type, l.color, l.clarity].filter(Boolean).join(' · ')}</span>}
+                      {(l.stone_type !== 'ألماس مخبري' || l.color || l.clarity) && <span className="sub">{[l.stone_type !== 'ألماس مخبري' && l.stone_type, l.color, l.clarity].filter(Boolean).join(' · ')}</span>}
                       <span className="qty" dir="ltr">{stock > 0 ? ct(stock) : '—'}</span>
                       <span className="unit">{stock > 0 ? 'قيراط' : 'نفد'}</span>
                       <span className="bar"><i style={{ width: `${Math.max(2, (100 * stock) / max)}%` }} /></span>
@@ -236,7 +236,7 @@ function ImportModal({ imp, setImp, shapes, busy, run, onDone }) {
   });
   const totals = imp.plan ? { target: imp.plan.reduce((s, p) => s + Number(p.target), 0), create: imp.plan.filter((p) => p.action === 'create').length, adjust: imp.plan.filter((p) => p.action === 'adjust').length } : null;
   return (
-    <Modal open onClose={() => setImp(null)} title="استيراد مخزون الألماس من Excel" wide>
+    <Modal open onClose={() => setImp(null)} title="استيراد مخزون الألماس المخبري من Excel" wide>
       {imp.step === 1 && <>
         <div className="alert alert-info small">ارفع ملف Excel أو CSV فيه عمود باسم الصنف (مثل "راوند 1.3 mm" أو "اوفال 0.25") وعمود بالرصيد بالقيراط. يتعرف النظام على القصّة والمقاس تلقائياً، وتراجع النتيجة قبل الاعتماد. إعادة الاستيراد لاحقاً (جرد) تسوّي الفروقات فقط بحركات موثقة.</div>
         <label className="btn btn-primary btn-lg" style={{ justifySelf: 'start' }}>{busy ? 'جارٍ القراءة…' : 'اختيار الملف'}<input type="file" accept=".xlsx,.csv" hidden onChange={(e) => e.target.files[0] && parse(e.target.files[0])} /></label>
@@ -304,12 +304,12 @@ function ShareStock() {
   return (
     <>
       <Btn kind="ghost" onClick={show}>رابط عرض المخزون</Btn>
-      <Modal open={open} onClose={() => setOpen(false)} title="رابط عرض مخزون الألماس">
+      <Modal open={open} onClose={() => setOpen(false)} title="رابط عرض مخزون الألماس المخبري">
         <p className="small text-body-secondary">من لديه هذا الرابط يرى المتوفر في المخزن لكل قصّة ومقاس (القيراط وعدد الحبات والحالة) بدون تسجيل دخول. لا يرى الأسعار ولا العمال ولا الطلبات، ولا يستطيع تعديل أي شيء.</p>
         <input className="form-control mb-3" dir="ltr" readOnly value={url || 'جارٍ التحميل…'} onFocus={(e) => e.target.select()} />
         <div className="hrow gap wrap">
           <Btn disabled={!url} onClick={copy}>نسخ الرابط</Btn>
-          <a className={`btn btn-success${url ? '' : ' disabled'}`} href={`https://wa.me/?text=${encodeURIComponent(`مخزون الألماس — مصنع AV للمجوهرات:\n${url}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
+          <a className={`btn btn-success${url ? '' : ' disabled'}`} href={`https://wa.me/?text=${encodeURIComponent(`مخزون الألماس المخبري — مصنع AV للمجوهرات:\n${url}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
           <a className={`btn btn-outline-secondary${url ? '' : ' disabled'}`} href={url} target="_blank" rel="noreferrer">فتح كما يراه الزائر</a>
           <Btn kind="danger" loading={busy} onClick={rotate}>إيقاف الرابط وإنشاء رابط جديد</Btn>
         </div>

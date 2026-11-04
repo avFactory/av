@@ -61,7 +61,7 @@ test('استيراد العمال: معاينة، إنشاء، ربط بالمر
   assert.equal(sad.specialty, 'تشبيك');
   const stages = (await admin('GET', '/admin/stages')).data;
   assert.ok(stages.find((s) => s.name === 'التشبيك').worker_ids.includes(sad.id), 'ربط تشبيك بمرحلة التشبيك');
-  assert.ok(stages.find((s) => s.name === 'تركيب الأحجار والألماس').worker_ids.includes(emps.find((e) => e.username === 'NAIM').id));
+  assert.ok(stages.find((s) => s.name === 'تركيب الأحجار والألماس المخبري').worker_ids.includes(emps.find((e) => e.username === 'NAIM').id));
 });
 
 test('المكائن: تُعرف من الاسم، قسم المكائن، وربط البوليش بالتلميع، وتستلم عهدة', async () => {

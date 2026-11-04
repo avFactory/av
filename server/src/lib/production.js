@@ -97,7 +97,7 @@ async function enterStage(db, order, stage, userId) {
   }
   // مرحلة المختبر لإصدار الشهادة لطلبات الألماس فقط: تُتخطى تلقائياً إذا لم يكن في الطلب ألماس
   if (stage.code === 'lab' && !(await hasDiamonds(db, order.id))) {
-    await logStage(db, order.id, stage.id, 'completed', userId, 'تخطي تلقائي: الطلب بدون ألماس', false);
+    await logStage(db, order.id, stage.id, 'completed', userId, 'تخطي تلقائي: الطلب بدون ألماس مخبري', false);
     const fresh = (await db.query('select * from orders where id=$1', [order.id])).rows[0];
     await advance(db, fresh, userId, { auto: true });
     return;

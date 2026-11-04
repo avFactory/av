@@ -29,7 +29,7 @@ export default function PublicStones() {
   useEffect(() => {
     const m = document.createElement('meta'); m.name = 'robots'; m.content = 'noindex, nofollow';
     document.head.appendChild(m);
-    document.title = 'مخزون الألماس — مصنع AV';
+    document.title = 'مخزون الألماس المخبري — مصنع AV';
     return () => m.remove();
   }, []);
 
@@ -47,7 +47,7 @@ export default function PublicStones() {
       <header className="pricing-head">
         <div className="pricing-brand">
           <img src="/logo-white.png" alt="AV" />
-          <div><b>مصنع AV للمجوهرات</b><div className="small">مخزون الألماس</div></div>
+          <div><b>مصنع AV للمجوهرات</b><div className="small">مخزون الألماس المخبري</div></div>
         </div>
         {d && (
           <div className="pricing-head-gold">

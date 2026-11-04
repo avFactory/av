@@ -100,14 +100,14 @@ function StonesSection({ f, setF }) {
       <div className="card-header bg-transparent py-2"><b>تفاصيل الأحجار</b> <span className="small text-body-secondary">(اختياري — لكل قطعة)</span></div>
       <div className="card-body d-grid gap-3">
         <div className="d-flex flex-wrap gap-2">
-          <button type="button" className={`chip ${has ? 'on' : ''}`} onClick={() => setF({ ...f, has_diamonds: !has, diamonds: !has && !list.length ? [{ lot_id: '', carats: '', count: '' }] : list })}>💎 الألماس</button>
+          <button type="button" className={`chip ${has ? 'on' : ''}`} onClick={() => setF({ ...f, has_diamonds: !has, diamonds: !has && !list.length ? [{ lot_id: '', carats: '', count: '' }] : list })}>💎 الألماس المخبري</button>
           {STONE_FIELDS.map(([k, l]) => <button key={k} type="button" className={`chip ${shown(k) ? 'on' : ''}`} onClick={() => setF({ ...f, [`show_${k}`]: !shown(k), [k]: shown(k) ? null : f[k] })}>{l}</button>)}
         </div>
         {has && (
           <div className="d-grid gap-2">
             {list.map((d, i) => (
               <div key={i} className="grid g3 align-items-end">
-                <Field label={`نوع الألماس ${list.length > 1 ? i + 1 : ''}`}><Select value={d.lot_id || ''} onChange={(e) => upd(i, 'lot_id', e.target.value)} placeholder={lots ? 'اختر من مخزون الألماس' : 'جارٍ التحميل…'} options={opts} /></Field>
+                <Field label={`نوع الألماس المخبري ${list.length > 1 ? i + 1 : ''}`}><Select value={d.lot_id || ''} onChange={(e) => upd(i, 'lot_id', e.target.value)} placeholder={lots ? 'اختر من مخزون الألماس المخبري' : 'جارٍ التحميل…'} options={opts} /></Field>
                 <Field label="الوزن (قيراط)"><Input dir="ltr" inputMode="decimal" value={d.carats ?? ''} onChange={(e) => upd(i, 'carats', num(e.target.value))} /></Field>
                 <div className="d-flex gap-2 align-items-end">
                   <Field label="عدد الحبات" className="flex-grow-1"><Input dir="ltr" inputMode="numeric" value={d.count ?? ''} onChange={(e) => upd(i, 'count', e.target.value.replace(/\D/g, ''))} /></Field>
@@ -115,8 +115,8 @@ function StonesSection({ f, setF }) {
                 </div>
               </div>
             ))}
-            <div><Btn kind="ghost" size="sm" onClick={() => setList([...list, { lot_id: '', carats: '', count: '' }])}>+ نوع ألماس آخر</Btn></div>
-            <div className="small text-body-secondary">عند اعتماد أي طلب لهذا المنتج يُخصم الألماس من المخزون (الوزن × عدد القطع) ويُحجز للطلب، ويُعاد للمخزون إذا أُلغي الطلب.</div>
+            <div><Btn kind="ghost" size="sm" onClick={() => setList([...list, { lot_id: '', carats: '', count: '' }])}>+ نوع ألماس مخبري آخر</Btn></div>
+            <div className="small text-body-secondary">عند اعتماد أي طلب لهذا المنتج يُخصم الألماس المخبري من المخزون (الوزن × عدد القطع) ويُحجز للطلب، ويُعاد للمخزون إذا أُلغي الطلب.</div>
           </div>
         )}
         {STONE_FIELDS.some(([k]) => shown(k)) && (

@@ -80,9 +80,9 @@ function StonesCard({ f, setF }) {
   const shapes = [...new Map((types || []).map((t) => [t.shape, t])).values()];
   const shown = (k) => !!f[`show_${k}`];
   return (
-    <Card title={<span>الألماس والأحجار <span className="small text-body-secondary fw-normal">(اختياري — لكل قطعة)</span></span>}>
+    <Card title={<span>الألماس المخبري والأحجار <span className="small text-body-secondary fw-normal">(اختياري — لكل قطعة)</span></span>}>
       <div className="d-flex flex-wrap gap-2 mb-3">
-        <button type="button" className={`chip ${f.has_diamonds ? 'on' : ''}`} onClick={() => setF({ ...f, has_diamonds: !f.has_diamonds, diamonds: !f.has_diamonds && !list.length ? [{ shape: '', lot_id: '', carats: '', count: '' }] : list })}>💎 الألماس</button>
+        <button type="button" className={`chip ${f.has_diamonds ? 'on' : ''}`} onClick={() => setF({ ...f, has_diamonds: !f.has_diamonds, diamonds: !f.has_diamonds && !list.length ? [{ shape: '', lot_id: '', carats: '', count: '' }] : list })}>💎 الألماس المخبري</button>
         {STONES.map(([k, l]) => <button key={k} type="button" className={`chip ${shown(k) ? 'on' : ''}`} onClick={() => setF({ ...f, [`show_${k}`]: !shown(k), [k]: shown(k) ? '' : f[k] })}>{l}</button>)}
       </div>
       {f.has_diamonds && (
@@ -91,7 +91,7 @@ function StonesCard({ f, setF }) {
             const sizes = (types || []).filter((t) => t.shape === d.shape);
             return (
               <div key={i} className="border rounded-3 p-2 d-grid gap-2">
-                <div className="d-flex justify-content-between align-items-center"><b className="small">نوع الألماس {list.length > 1 ? i + 1 : ''}</b>
+                <div className="d-flex justify-content-between align-items-center"><b className="small">نوع الألماس المخبري {list.length > 1 ? i + 1 : ''}</b>
                   <button type="button" className="btn btn-sm btn-link text-danger" onClick={() => setList(list.filter((_, j) => j !== i))}>حذف</button></div>
                 <div className="chips">{shapes.map((s) => <button type="button" key={s.shape} className={`chip ${d.shape === s.shape ? 'on' : ''}`} onClick={() => setList(list.map((x, j) => (j === i ? { ...x, shape: s.shape, lot_id: '' } : x)))}>{s.shape}</button>)}</div>
                 {d.shape && (
@@ -103,14 +103,14 @@ function StonesCard({ f, setF }) {
                 )}
                 {d.lot_id && (
                   <div className="grid g2">
-                    <Field label="وزن الألماس (قيراط) *"><Input dir="ltr" inputMode="decimal" value={d.carats} onChange={(e) => upd(i, 'carats', num(e.target.value))} placeholder="0.00" /></Field>
+                    <Field label="وزن الألماس المخبري (قيراط) *"><Input dir="ltr" inputMode="decimal" value={d.carats} onChange={(e) => upd(i, 'carats', num(e.target.value))} placeholder="0.00" /></Field>
                     <Field label="عدد الحبات"><Input dir="ltr" inputMode="numeric" value={d.count} onChange={(e) => upd(i, 'count', e.target.value.replace(/\D/g, ''))} /></Field>
                   </div>
                 )}
               </div>
             );
           })}
-          <div><Btn kind="ghost" size="sm" onClick={() => setList([...list, { shape: '', lot_id: '', carats: '', count: '' }])}>+ نوع ألماس آخر</Btn></div>
+          <div><Btn kind="ghost" size="sm" onClick={() => setList([...list, { shape: '', lot_id: '', carats: '', count: '' }])}>+ نوع ألماس مخبري آخر</Btn></div>
         </div>
       )}
       {STONES.some(([k]) => shown(k)) && <div className="grid g3">{STONES.filter(([k]) => shown(k)).map(([k, , label]) => <Field key={k} label={label}><Input dir="ltr" inputMode="decimal" value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: num(e.target.value) })} /></Field>)}</div>}

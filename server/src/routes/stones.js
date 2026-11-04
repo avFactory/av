@@ -75,7 +75,7 @@ export function parseStoneName(raw, shapes) {
   const n = norm(name);
   const cands = [...shapes.filter((s) => s.name !== 'أخرى').map((s) => [norm(s.name), s.name]), ...Object.entries(ALIASES).map(([a, t]) => [norm(a), t])]
     .sort((a, b) => b[0].length - a[0].length);
-  const stoneType = /طبيعي/.test(n) ? 'ألماس طبيعي' : 'ألماس';
+  const stoneType = /طبيعي/.test(n) ? 'ألماس طبيعي' : 'ألماس مخبري';
   for (const [key, shapeName] of cands) {
     if (n.startsWith(key)) {
       const rest = n.slice(key.length).trim();
@@ -190,7 +190,7 @@ r.get('/inventory.xlsx', requirePerm('stones.view'), async (_req, res) => {
   const rows = await many(`select s.name as shape, l.size_label, l.stone_type, l.color, l.clarity, l.lot_no, b.stock_carats, b.stock_count, b.with_workers_carats, b.used_carats
     from stone_lots l join stone_lot_balances b on b.lot_id=l.id join stone_shapes s on s.id=l.shape_id where l.active
     order by s.sort_order, (l.size_unit='mm') desc, l.size_value nulls last, l.size_label`);
-  await sendXlsx(res, 'مخزون الألماس', [['التصنيف', 'shape'], ['الصنف / المقاس', 'size_label'], ['النوع', 'stone_type'], ['اللون', 'color'], ['النقاء', 'clarity'], ['رقم الصنف', 'lot_no'],
+  await sendXlsx(res, 'مخزون الألماس المخبري', [['التصنيف', 'shape'], ['الصنف / المقاس', 'size_label'], ['النوع', 'stone_type'], ['اللون', 'color'], ['النقاء', 'clarity'], ['رقم الصنف', 'lot_no'],
     ['المخزون (قيراط)', (x) => Number(x.stock_carats)], ['العدد', 'stock_count'], ['لدى العمال (قيراط)', (x) => Number(x.with_workers_carats)], ['مستخدم (قيراط)', (x) => Number(x.used_carats)]], rows, 'diamonds-inventory.xlsx');
 });
 
@@ -218,7 +218,7 @@ r.post('/', requirePerm('stones.manage'), upload.array('files', 10), async (req,
     const files = await registerFiles(db, req.files, req.user.id);
     const lot = (await db.query(`insert into stone_lots(lot_no, stone_type, color, clarity, cut_shape, shape_id, size_label, size_unit, size_value, min_carats, certificate_no, unit_price, notes, created_by)
       values (next_doc_no('STN'),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,
-      [str(b.stone_type, 'نوع الحجر') || 'ألماس', str(b.color, 'اللون'), str(b.clarity, 'النقاء'), shape.name, shape.id,
+      [str(b.stone_type, 'نوع الحجر') || 'ألماس مخبري', str(b.color, 'اللون'), str(b.clarity, 'النقاء'), shape.name, shape.id,
        isMm && num ? `${num} mm` : sizeLabel, isMm ? 'mm' : 'other', num, b.min_carats ? CT(b.min_carats, 'حد التنبيه') : null,
        str(b.certificate_no, 'الشهادة'), b.unit_price ? b.unit_price : null, str(b.notes, 'ملاحظات'), req.user.id]).catch((e) => { if (e.code === '23505') throw bad('هذا الصنف موجود مسبقاً في نفس التصنيف - أضف الكمية عبر "حركة"'); throw e; })).rows[0];
     for (const f of files) await db.query('insert into stone_media(lot_id, path) values ($1,$2)', [lot.id, f.path]);

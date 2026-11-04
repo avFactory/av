@@ -30,11 +30,11 @@ export async function reserveDiamonds(db, order, userId) {
     await db.query('select pg_advisory_xact_lock(hashtext($1))', [`stone:${lotId}`]);
     const lot = (await db.query(`select l.lot_no, l.size_label, s.name as shape, b.stock_carats, b.stock_count
       from stone_lots l join stone_lot_balances b on b.lot_id=l.id left join stone_shapes s on s.id=l.shape_id where l.id=$1`, [lotId])).rows[0];
-    if (!lot) throw conflict(`صنف الألماس المحدد في المنتج ${p.name} غير موجود`);
+    if (!lot) throw conflict(`صنف الألماس المخبري المحدد في المنتج ${p.name} غير موجود`);
     const carats = rnd(Number(d.carats) * qty);
     const count = (Number(d.count) || 0) * qty;
     if (Number(lot.stock_carats) < carats || (count && Number(lot.stock_count) < count)) {
-      throw conflict(`مخزون الألماس غير كافٍ لاعتماد الطلب ${order.order_no}: ${lot.shape || ''} ${lot.size_label || ''} — المطلوب ${carats} قيراط${count ? ` / ${count} حبة` : ''}، المتوفر ${Number(lot.stock_carats)} قيراط${count ? ` / ${lot.stock_count} حبة` : ''}`);
+      throw conflict(`مخزون الألماس المخبري غير كافٍ لاعتماد الطلب ${order.order_no}: ${lot.shape || ''} ${lot.size_label || ''} — المطلوب ${carats} قيراط${count ? ` / ${count} حبة` : ''}، المتوفر ${Number(lot.stock_carats)} قيراط${count ? ` / ${lot.stock_count} حبة` : ''}`);
     }
     await db.query(`insert into stone_movements(lot_id, kind, carats, count, order_id, note, created_by) values ($1,'allocate',$2,$3,$4,$5,$6)`,
       [lotId, carats, count, order.id, `حجز لطلب ${order.order_no} عند الاعتماد`, userId]);
@@ -59,12 +59,12 @@ export const optW = (v, name) => (v === undefined || v === null || v === '' ? nu
 /** ألماس المنتج: [{lot_id, carats, count}] لكل قطعة — يُحجز من المخزون عند اعتماد الطلب */
 export function parseDiamonds(v) {
   let list = v;
-  if (typeof v === 'string') { try { list = v ? JSON.parse(v) : []; } catch { throw bad('بيانات الألماس غير صالحة'); } }
+  if (typeof v === 'string') { try { list = v ? JSON.parse(v) : []; } catch { throw bad('بيانات الألماس المخبري غير صالحة'); } }
   if (!Array.isArray(list)) return [];
   return list.filter((d) => d && d.lot_id).slice(0, 20).map((d) => {
     const carats = Number(d.carats);
-    if (!(carats > 0) || carats > 10000) throw bad('وزن الألماس (قيراط) مطلوب لكل نوع');
+    if (!(carats > 0) || carats > 10000) throw bad('وزن الألماس المخبري (قيراط) مطلوب لكل نوع');
     const count = d.count === '' || d.count == null ? 0 : int(d.count, 'عدد الحبات', { min: 0 });
-    return { lot_id: int(d.lot_id, 'نوع الألماس'), carats: Math.round(carats * 10000) / 10000, count };
+    return { lot_id: int(d.lot_id, 'نوع الألماس المخبري'), carats: Math.round(carats * 10000) / 10000, count };
   });
 }

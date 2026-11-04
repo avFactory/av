@@ -37,7 +37,7 @@ export default function Product() {
             <div><dt>الوزن التقريبي</dt><dd>{fmtW(p.approx_weight)} جم</dd></div>
             {p.final_weight && <div><dt>الوزن النهائي</dt><dd>{fmtW(p.final_weight)} جم</dd></div>}
             {(p.diamond_details || []).map((d, i) => (
-              <div key={`d${i}`}><dt>الألماس{p.diamond_details.length > 1 ? ` ${i + 1}` : ''}</dt><dd>{d.shape} <bdi dir="ltr">{d.size}</bdi>{[d.color, d.clarity].filter(Boolean).length ? ` ${[d.color, d.clarity].filter(Boolean).join(' ')}` : ''}<div className="small text-body-secondary"><bdi dir="ltr">{Number(d.carats)} ct</bdi>{d.count ? ` · ${d.count} حبة` : ''}</div></dd></div>
+              <div key={`d${i}`}><dt>الألماس المخبري{p.diamond_details.length > 1 ? ` ${i + 1}` : ''}</dt><dd>{d.shape} <bdi dir="ltr">{d.size}</bdi>{[d.color, d.clarity].filter(Boolean).length ? ` ${[d.color, d.clarity].filter(Boolean).join(' ')}` : ''}<div className="small text-body-secondary"><bdi dir="ltr">{Number(d.carats)} ct</bdi>{d.count ? ` · ${d.count} حبة` : ''}</div></dd></div>
             ))}
             {Number(p.pearl_weight) > 0 && <div><dt>وزن اللؤلؤ</dt><dd>{fmtW(p.pearl_weight)} جم</dd></div>}
             {Number(p.stone_weight) > 0 && <div><dt>وزن الحجر</dt><dd>{fmtW(p.stone_weight)} قيراط</dd></div>}

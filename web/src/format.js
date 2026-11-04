@@ -44,7 +44,7 @@ export const LOCS = {
 
 /** عناصر عرض أحجار الطلب/المنتج (الألماس واللؤلؤ والحجر والزركون) لمكوّن Kv */
 export function stoneItems(o) {
-  const out = (o.diamond_details || []).map((d, i, a) => [`الألماس${a.length > 1 ? ` ${i + 1}` : ''}`, `${[d.shape, d.size, d.color, d.clarity].filter(Boolean).join(' ')} · ${Number(d.carats)} قيراط${d.count ? ` · ${d.count} حبة` : ''}`]);
+  const out = (o.diamond_details || []).map((d, i, a) => [`الألماس المخبري${a.length > 1 ? ` ${i + 1}` : ''}`, `${[d.shape, d.size, d.color, d.clarity].filter(Boolean).join(' ')} · ${Number(d.carats)} قيراط${d.count ? ` · ${d.count} حبة` : ''}`]);
   if (Number(o.pearl_weight) > 0) out.push(['وزن اللؤلؤ', `${Number(o.pearl_weight)} جم`]);
   if (Number(o.stone_weight) > 0) out.push(['وزن الحجر', `${Number(o.stone_weight)} قيراط`]);
   if (Number(o.zircon_weight) > 0) out.push(['وزن الزركون', `${Number(o.zircon_weight)} جم`]);

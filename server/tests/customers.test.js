@@ -284,7 +284,7 @@ test('التسعيرة المختصرة: أعمدة مختصرة فقط، وال
   assert.equal(d.rows, undefined, 'لا تُرسل الثوابت');
   for (const word of ['"profit"', '"ct"', '"base"', '"step"', '"pp"']) assert.ok(!raw.includes(word), `لا يكشف ${word}`);
   const dia = d.sections.find((s) => s.id === 'diamond');
-  assert.deepEqual(dia.columns.map((c) => c[1]), ['المنتج', 'الوزن الاجمالي', 'وزن الألماس', 'شامل الضريبة للقطاعي']);
+  assert.deepEqual(dia.columns.map((c) => c[1]), ['المنتج', 'الوزن الاجمالي', 'وزن الألماس المخبري', 'شامل الضريبة للقطاعي']);
   assert.deepEqual(d.sections.find((s) => s.id === 'gold').columns.map((c) => c[1]), ['المنتج', 'الوزن الإجمالي', 'تكاليف المصنع', 'شامل الضريبة للقطاعي']);
   const c = await (await fetch(`${base}/api/public/pricing/${a.token_short}/calc`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ weights: { d_0_3: { e: '1.30', g: '1.53' } } }) })).json();
   const row = c.sections.find((s) => s.id === 'diamond').rows.find((x) => x.id === 'd_0_3');
@@ -358,7 +358,7 @@ test('أحجار المنتج: الألماس يُحجز من المخزون ع�
   const o2 = (await call('POST', '/orders', { title: 'كمية كبيرة', product_id: p.id, product_type: 'خاتم', karat: 18, color: 'white', quantity: 40, material_id: mat.id, start: false })).data;
   const st = await call('POST', `/orders/${o2.id}/start`);
   assert.equal(st.status, 409);
-  assert.match(st.data.error, /مخزون الألماس غير كافٍ/);
+  assert.match(st.data.error, /مخزون الألماس المخبري غير كافٍ/);
   const pub = (await call('GET', `/public/products/${p.id}`)).data;
   assert.equal(pub.diamond_details[0].carats, 0.5);
 });

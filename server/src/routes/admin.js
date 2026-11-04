@@ -674,7 +674,7 @@ r.put('/settings', requirePerm('settings.manage'), async (req, res) => {
       if (!allowed.includes(k)) continue;
       if (k === 'weight_decimals' && ![3, 4].includes(Number(v))) throw bad('دقة الوزن 3 أو 4 خانات');
       if (k === 'vat_rate' && !(Number(v) >= 0 && Number(v) < 100)) throw bad('نسبة الضريبة غير صالحة');
-      if (k === 'diamond_worker_nos' && (!Array.isArray(v) || v.length > 200 || v.some((x) => typeof x !== 'string' || x.length > 30))) throw bad('أرقام عمال الألماس غير صالحة');
+      if (k === 'diamond_worker_nos' && (!Array.isArray(v) || v.length > 200 || v.some((x) => typeof x !== 'string' || x.length > 30))) throw bad('أرقام عمال الألماس المخبري غير صالحة');
       const before = (await db.query('select value from settings where key=$1', [k])).rows[0]?.value;
       await db.query('insert into settings(key, value, updated_by, updated_at) values ($1,$2,$3,now()) on conflict (key) do update set value=$2, updated_by=$3, updated_at=now()', [k, JSON.stringify(v), req.user.id]);
       await audit(db, req, 'settings.update', 'settings', k, { before, after: v });

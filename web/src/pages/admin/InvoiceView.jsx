@@ -5,7 +5,7 @@ import { fmtMoney, fmtDT } from '../../format.js';
 import { Btn, Loader, useAction, useFetch, ReasonModal, ErrorBox } from '../../ui.jsx';
 import { useState } from 'react';
 
-const KIND = { labor: 'أجور تصنيع', stage_labor: 'أجرة مرحلة', stones: 'ألماس/أحجار', service: 'خدمة', other: 'أخرى' };
+const KIND = { labor: 'أجور تصنيع', stage_labor: 'أجرة مرحلة', stones: 'ألماس مخبري/أحجار', service: 'خدمة', other: 'أخرى' };
 
 /** عرض الفاتورة الضريبية (للطباعة / PDF) مع رمز QR للفوترة الإلكترونية */
 export default function InvoiceView({ store, print }) {

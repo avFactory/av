@@ -144,7 +144,7 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
   await cust.post(`/api/store/orders/${ids.order}/design`, { decision: 'approved' });
   await sup.post(`/api/orders/${ids.order}/advance`);
   o = await orderOf(ids.order);
-  assert.equal(o.stage_name, 'تجهيز الذهب والألماس');
+  assert.equal(o.stage_name, 'تجهيز الذهب والألماس المخبري');
 
   // 2) تسجيل 100 جرام ذهب على الطلب
   await sup.post(`/api/orders/${ids.order}/allocate`, { weight: '100', source: 'vault' });
@@ -215,7 +215,7 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
   assert.equal(bal, 99.7);
   const steps = [
     ['التشبيك', ids.w2, w2, '0.05', '0.03'],
-    ['تركيب الأحجار والألماس', ids.w2, w2, '0', '0'],
+    ['تركيب الأحجار والألماس المخبري', ids.w2, w2, '0', '0'],
     ['التلميع', ids.w1, w1, '0.04', '0.02'],
     ['الغسيل', ids.w1, w1, '0', '0'],
     ['التشييك والجودة والوزن النهائي', ids.w2, w2, '0', '0'],
@@ -460,7 +460,7 @@ test('تقسيم طلب على عدة عمال + القبول الإلكترون
   await w2.post(`/api/w/custody/${c2b}/ack`);
   // الطلب لا ينتقل حتى تُستلم كل العهد
   await sup.post('/api/sup/receive', { worker_id: ids.w1, items: [{ custody_id: c1.id, returned_weight: '59.98', scrap_weight: '0' }] });
-  assert.equal((await orderOf(o.id)).stage_name, 'تجهيز الذهب والألماس');
+  assert.equal((await orderOf(o.id)).stage_name, 'تجهيز الذهب والألماس المخبري');
   await sup.post('/api/sup/receive', { worker_id: ids.w2, items: [{ custody_id: c2b, returned_weight: '39.99', scrap_weight: '0' }] });
   assert.equal((await orderOf(o.id)).stage_name, 'الصب', 'انتقل بعد استلام عهد كل العمال');
   const sheet = await sup.get(`/api/sup/batches/${fix.batch_id}`);

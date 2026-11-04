@@ -40,10 +40,10 @@ export default function Invoices() {
           <Field label="الطلبات (أجور التصنيع تحسب تلقائياً)">
             <div className="chips">{orders.map((o) => { const on = f.order_ids.includes(o.id); return <button type="button" key={o.id} className={`chip ${on ? 'on' : ''}`} onClick={() => setF({ ...f, order_ids: on ? f.order_ids.filter((x) => x !== o.id) : [...f.order_ids, o.id] })}>{o.order_no} · {o.title}</button>; })}{!orders.length && <span className="muted small">لا توجد طلبات</span>}</div>
           </Field>
-          <Field label="بنود مستقلة إضافية (ألماس / أحجار / خدمات) - منفصلة عن أجور التصنيع">
+          <Field label="بنود مستقلة إضافية (ألماس مخبري / أحجار / خدمات) - منفصلة عن أجور التصنيع">
             {f.extra_lines.map((l, i) => (
               <div key={i} className="hrow gap wrap" style={{ marginBottom: 6 }}>
-                <Select value={l.kind} onChange={(e) => updLine(i, 'kind', e.target.value)} options={[['stones', 'ألماس/أحجار'], ['service', 'خدمة'], ['other', 'أخرى']]} style={{ width: 130 }} />
+                <Select value={l.kind} onChange={(e) => updLine(i, 'kind', e.target.value)} options={[['stones', 'ألماس مخبري/أحجار'], ['service', 'خدمة'], ['other', 'أخرى']]} style={{ width: 130 }} />
                 <Input placeholder="الوصف" value={l.description} onChange={(e) => updLine(i, 'description', e.target.value)} style={{ flex: 2, minWidth: 160 }} />
                 <Input placeholder="الكمية" value={l.qty} onChange={(e) => updLine(i, 'qty', e.target.value)} style={{ width: 80 }} />
                 <Input placeholder="الوحدة" value={l.unit} onChange={(e) => updLine(i, 'unit', e.target.value)} style={{ width: 90 }} />
