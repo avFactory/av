@@ -39,7 +39,9 @@ r.post('/login-options', async (req, res) => {
   const branches = (await pool.query(`select b.id, b.name from users u join customer_branches b on b.customer_id=u.customer_id and b.active
       join users bu on bu.branch_id=b.id and bu.active
     where lower(u.username)=lower($1) and u.active and u.role_code='customer' and u.branch_id is null order by b.name`, [username])).rows;
-  res.json({ branches });
+  const only = branches.length ? (await pool.query(`select c.branches_only from users u join customers c on c.id=u.customer_id
+    where lower(u.username)=lower($1) and u.branch_id is null limit 1`, [username])).rows[0]?.branches_only : false;
+  res.json({ branches, main: !only });
 });
 
 r.post('/logout', async (req, res) => {

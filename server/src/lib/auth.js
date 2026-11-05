@@ -73,6 +73,11 @@ export async function verifyLogin(username, password, branchId = null) {
   // حسابات الفروع لا تدخل باسمها الداخلي مباشرة
   if (!main || main.branch_id) { bcrypt.compareSync(password, DUMMY_HASH); return null; }
   let u = main;
+  // شركة بفروع فقط: الحساب الرئيسي معرّف للشركة ولا يُستخدم للدخول
+  if (!branchId && main.role_code === 'customer' && main.customer_id
+    && (await pool.query('select branches_only from customers where id=$1', [main.customer_id])).rows[0]?.branches_only) {
+    bcrypt.compareSync(password, DUMMY_HASH); return null;
+  }
   if (branchId) {
     if (main.role_code !== 'customer') return null;
     u = (await pool.query(`select u.* from users u join customer_branches b on b.id=u.branch_id

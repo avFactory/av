@@ -23,7 +23,7 @@ export default function Login() {
     if (!u || branches.for === u.toLowerCase()) return branches.list;
     try {
       const r = await api.post('/auth/login-options', { username: u });
-      setBranches({ for: u.toLowerCase(), list: r.branches });
+      setBranches({ for: u.toLowerCase(), list: r.branches, main: r.main !== false });
       setBranch(null);
       return r.branches;
     } catch { return []; }
@@ -54,7 +54,7 @@ export default function Login() {
           <Field label="اختر الفرع">
             <select className="form-select" value={branch ?? ''} onChange={(e) => setBranch(e.target.value === '' ? null : e.target.value)} autoFocus>
               <option value="" disabled>— اختر —</option>
-              <option value="0">الحساب الرئيسي للمحل</option>
+              {branches.main !== false && <option value="0">الحساب الرئيسي للمحل</option>}
               {branches.list.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </Field>

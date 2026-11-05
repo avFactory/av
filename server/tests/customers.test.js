@@ -160,7 +160,9 @@ test('استيراد العملاء مع الفروع: اسم مستخدم وا�
   const sharq = p.data.plans.find((x) => x.username === 'sharq');
   assert.equal(sharq.status, 'new');
   assert.deepEqual(sharq.branches.map((b) => b.name), ['فرع الخبر', 'فرع الظهران'], 'صف الفرع بلا اسم محل يتبع المحل السابق');
-  assert.equal(p.data.plans.find((x) => x.username === 'nomain').status, 'error', 'الفروع تحتاج صف الحساب الرئيسي');
+  const nm = p.data.plans.find((x) => x.username === 'nomain');
+  assert.equal(nm.status, 'new', 'شركة بفروع فقط بدون حساب رئيسي');
+  assert.equal(nm.branches_only, true);
   // فرع برقم مكرر = خطأ، وفرع بلا رقم يُقبل في الاستيراد (يُضاف رقمه لاحقاً)
   const wb3 = new ExcelJS.Workbook(); const w3 = wb3.addWorksheet('C');
   w3.addRow(['اسم المحل', 'اسم المستخدم', 'الفرع', 'كلمة المرور', 'جوال']);
@@ -192,6 +194,16 @@ test('استيراد العملاء مع الفروع: اسم مستخدم وا�
   assert.equal(n.status, 200, JSON.stringify(n.data));
   assert.equal((await call('GET', `/admin/customers/${n.data.id}`)).data.branches.length, 2);
   assert.equal((await call('POST', '/admin/customers', { shop_name: 'بلا مستخدم', branches: [{ name: 'x', password: 'Xxxxxxxx1' }] })).status, 400);
+
+  // شركة بفروع فقط: لا دخول للحساب الرئيسي، والفرع يدخل
+  const c3 = await call('POST', '/admin/customers/import/commit', { rows: p.data.rows.filter((r) => r.username === 'nomain') });
+  assert.deepEqual([c3.data.created, c3.data.branches], [1, 1], JSON.stringify(c3.data));
+  const lo = await fetch(base + '/api/auth/login-options', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'nomain' }) }).then((r) => r.json());
+  assert.equal(lo.main, false, 'لا خيار للحساب الرئيسي');
+  assert.equal(lo.branches.length, 1);
+  const tryLogin = (b) => fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.status);
+  assert.equal(await tryLogin({ username: 'nomain', password: 'Branch1#2026' }), 400, 'الحساب الرئيسي لا يدخل');
+  assert.equal(await tryLogin({ username: 'nomain', password: 'Branch1#2026', branch_id: lo.branches[0].id }), 200, 'الفرع يدخل');
 });
 
 test('الاسم المختصر على الملصق، ورمز QR رقمي يُقرأ بأي ماسح', async () => {

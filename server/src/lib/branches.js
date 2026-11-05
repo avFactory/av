@@ -17,7 +17,8 @@ async function checkBranchPhone(db, customerId, phone, exceptId = null, allowEmp
   // الاستيراد من Excel يسمح بفرع بدون رقم (يُضاف لاحقاً)، والإضافة اليدوية تتطلبه
   if (allowEmpty && !k) return null;
   if (k.length < 9) throw bad('رقم تواصل الفرع مطلوب (9 أرقام على الأقل)');
-  const rows = (await db.query(`select 'main' as kind, null as name, phone from customers where id=$1
+  // شركة بفروع فقط: لا يوجد حساب رئيسي، فجوال الشركة قد يكون جوال أحد فروعها
+  const rows = (await db.query(`select 'main' as kind, null as name, phone from customers where id=$1 and not branches_only
       union all select 'branch', name, phone from customer_branches where customer_id=$1 and ($2::int is null or id<>$2)`, [customerId, exceptId])).rows;
   const hit = rows.find((r) => r.phone && phoneKey(r.phone) === k);
   if (hit) throw bad(hit.kind === 'main' ? 'رقم تواصل الفرع يجب أن يختلف عن جوال المحل الرئيسي' : `رقم التواصل مستخدم لـ "${hit.name}" - لكل فرع رقم مختلف`);

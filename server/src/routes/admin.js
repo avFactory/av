@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 // لوحة الإدارة: الإحصائيات، الموظفون، الأدوار، العملاء، المراحل ونسب العجز، المسارات، الإعدادات، التدقيق
 import { Router } from 'express';
 import { monthlyLossSummary, workerLossRows, monthTotals, monthStart } from '../lib/workerLoss.js';
@@ -379,6 +380,8 @@ async function planCustomers(db, rows) {
     const errors = [];
     const g = { ...base, branch: undefined, username: list.find((r) => r.username)?.username || null, main_password: mainRow?.password || null, rows: list.length };
     const branchRows = list.filter((r) => r.branch);
+    // بدون صف رئيسي = شركة بفروع فقط (لا دخول للحساب الرئيسي)
+    g.branches_only = !mainRow && branchRows.length > 0;
     if (list.filter((r) => !r.branch).length > 1) errors.push('أكثر من صف للحساب الرئيسي لنفس المحل');
     if (!g.shop_name) errors.push('اسم المحل مفقود');
     if (g.vat_number && !/^\d{15}$/.test(digits(g.vat_number))) errors.push('الرقم الضريبي يجب أن يكون 15 رقماً');
@@ -390,11 +393,12 @@ async function planCustomers(db, rows) {
     const owner = g.username ? users.get(g.username.toLowerCase()) : undefined;
     if (owner !== undefined && owner !== (dup?.id ?? -1)) errors.push('اسم المستخدم مستخدم لحساب آخر');
     const needMainUser = g.username && !(dup && dup.username);
-    if (needMainUser && String(g.main_password || '').length < 8) errors.push(branchRows.length ? 'أضف صفاً بدون "الفرع" فيه كلمة مرور الحساب الرئيسي (8 أحرف على الأقل)' : 'كلمة المرور أقل من 8 أحرف');
+    if (needMainUser && !g.branches_only && String(g.main_password || '').length < 8) errors.push(branchRows.length ? 'أضف صفاً بدون "الفرع" فيه كلمة مرور الحساب الرئيسي (8 أحرف على الأقل)' : 'كلمة المرور أقل من 8 أحرف');
     if (branchRows.length && !g.username) errors.push('الفروع تحتاج "اسم المستخدم" للمحل');
     const names = new Set();
     const phones = new Map();
-    if (ph.length >= 9) phones.set(ph, 'جوال المحل الرئيسي');
+    // شركة بفروع فقط: جوال الشركة هو جوال فرعها الأول، فلا يُعدّ تكراراً
+    if (ph.length >= 9 && !g.branches_only) phones.set(ph, 'جوال المحل الرئيسي');
     if (dup) { if (dup.phone && phoneKey(dup.phone).length >= 9) phones.set(phoneKey(dup.phone), 'جوال المحل الرئيسي'); for (const x of dup.branch_phones) phones.set(phoneKey(x), 'فرع موجود'); }
     const branches = [];
     for (const r of branchRows) {
@@ -459,14 +463,15 @@ r.post('/customers/import/commit', requirePerm('customers.manage'), async (req, 
       if (!cid) {
         let sn = null;
         try { sn = cleanShortName(p.short_name); } catch { sn = null; }
-        cid = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, tier_id, notes, status, approved_by, approved_at, short_name)
-          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,now(),$13) returning id`,
-          [p.shop_name, p.owner_name, p.phone, p.phone2, p.email, p.city, p.address, p.vat_number ? digits(p.vat_number) : null, p.cr_number, await tierIdFor(db, p.tier), p.notes, req.user.id, sn || autoShortName(p.shop_name)])).rows[0].id;
+        cid = (await db.query(`insert into customers(shop_name, owner_name, phone, phone2, email, city, address, vat_number, cr_number, tier_id, notes, status, approved_by, approved_at, short_name, branches_only)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,now(),$13,$14) returning id`,
+          [p.shop_name, p.owner_name, p.phone, p.phone2, p.email, p.city, p.address, p.vat_number ? digits(p.vat_number) : null, p.cr_number, await tierIdFor(db, p.tier), p.notes, req.user.id, sn || autoShortName(p.shop_name), !!p.branches_only])).rows[0].id;
         created++;
       }
       if (p.create_main_user) {
         await db.query("insert into users(username, password_hash, full_name, role_code, customer_id, phone, must_change_password) values ($1,$2,$3,'customer',$4,$5,true)",
-          [p.username, hashPassword(String(p.main_password)), p.owner_name || p.shop_name, cid, p.phone]);
+          // شركة بفروع فقط: كلمة مرور عشوائية غير معروفة (الحساب معرّف فقط ولا يدخل)
+          [p.username, hashPassword(p.branches_only ? crypto.randomBytes(24).toString('hex') : String(p.main_password)), p.owner_name || p.shop_name, cid, p.phone]);
         logins++;
       }
       for (const b of p.branches.filter((x) => !x.exists)) { await createBranch(db, req, cid, b, { allowNoPhone: true }); branchesAdded++; }
