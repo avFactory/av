@@ -405,7 +405,8 @@ async function planCustomers(db, rows) {
       if (!exists && String(r.password || '').length < 8) errors.push(`كلمة مرور "${name}" أقل من 8 أحرف`);
       if (!exists) {
         const k = phoneKey(r.phone);
-        if (k.length < 9) errors.push(`رقم تواصل "${name}" مفقود`);
+        // فرع بدون رقم يُستورد ويُضاف رقمه لاحقاً من صفحة العميل
+        if (!k) { /* مسموح */ } else if (k.length < 9) errors.push(`رقم تواصل "${name}" غير صحيح`);
         else if (phones.has(k)) errors.push(`رقم تواصل "${name}" مكرر مع ${phones.get(k)} - لكل فرع رقم مختلف`);
         else phones.set(k, `"${name}"`);
       }
@@ -468,7 +469,7 @@ r.post('/customers/import/commit', requirePerm('customers.manage'), async (req, 
           [p.username, hashPassword(String(p.main_password)), p.owner_name || p.shop_name, cid, p.phone]);
         logins++;
       }
-      for (const b of p.branches.filter((x) => !x.exists)) { await createBranch(db, req, cid, b); branchesAdded++; }
+      for (const b of p.branches.filter((x) => !x.exists)) { await createBranch(db, req, cid, b, { allowNoPhone: true }); branchesAdded++; }
     }
     await audit(db, req, 'customer.import', 'customer', null, { created, logins, branches: branchesAdded, skipped });
     return { created, logins, branches: branchesAdded, skipped };

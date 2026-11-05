@@ -161,7 +161,7 @@ test('استيراد العملاء مع الفروع: اسم مستخدم وا�
   assert.equal(sharq.status, 'new');
   assert.deepEqual(sharq.branches.map((b) => b.name), ['فرع الخبر', 'فرع الظهران'], 'صف الفرع بلا اسم محل يتبع المحل السابق');
   assert.equal(p.data.plans.find((x) => x.username === 'nomain').status, 'error', 'الفروع تحتاج صف الحساب الرئيسي');
-  // فرع بلا رقم أو برقم مكرر = خطأ
+  // فرع برقم مكرر = خطأ، وفرع بلا رقم يُقبل في الاستيراد (يُضاف رقمه لاحقاً)
   const wb3 = new ExcelJS.Workbook(); const w3 = wb3.addWorksheet('C');
   w3.addRow(['اسم المحل', 'اسم المستخدم', 'الفرع', 'كلمة المرور', 'جوال']);
   w3.addRow(['محل الأرقام', 'nums', null, 'Nums#Main1', '0577000000']);
@@ -170,7 +170,7 @@ test('استيراد العملاء مع الفروع: اسم مستخدم وا�
   const fd3 = new FormData(); fd3.append('file', new Blob([await wb3.xlsx.writeBuffer()]), 'c.xlsx');
   const e3 = (await call('POST', '/admin/customers/import/parse', null, fd3)).data.plans[0];
   assert.equal(e3.status, 'error');
-  assert.ok(e3.errors.some((x) => x.includes('مكرر')) && e3.errors.some((x) => x.includes('مفقود')), JSON.stringify(e3.errors));
+  assert.ok(e3.errors.some((x) => x.includes('مكرر')) && !e3.errors.some((x) => x.includes('"ب"')), JSON.stringify(e3.errors));
   const c = await call('POST', '/admin/customers/import/commit', { rows: p.data.rows.filter((r) => r.username !== 'nomain') });
   assert.deepEqual([c.data.created, c.data.logins, c.data.branches], [1, 1, 2]);
   const opts = await fetch(base + '/api/auth/login-options', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'sharq' }) }).then((r) => r.json());

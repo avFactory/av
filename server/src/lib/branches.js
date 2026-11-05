@@ -12,8 +12,10 @@ export async function listBranches(db, customerId) {
 
 // رقم تواصل الفرع: مطلوب، ومختلف عن جوال المحل الرئيسي وعن أرقام الفروع الأخرى (مقارنة آخر 9 أرقام)
 export const phoneKey = (v) => String(v || '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\D/g, '').slice(-9);
-async function checkBranchPhone(db, customerId, phone, exceptId = null) {
+async function checkBranchPhone(db, customerId, phone, exceptId = null, allowEmpty = false) {
   const k = phoneKey(phone);
+  // الاستيراد من Excel يسمح بفرع بدون رقم (يُضاف لاحقاً)، والإضافة اليدوية تتطلبه
+  if (allowEmpty && !k) return null;
   if (k.length < 9) throw bad('رقم تواصل الفرع مطلوب (9 أرقام على الأقل)');
   const rows = (await db.query(`select 'main' as kind, null as name, phone from customers where id=$1
       union all select 'branch', name, phone from customer_branches where customer_id=$1 and ($2::int is null or id<>$2)`, [customerId, exceptId])).rows;
@@ -22,9 +24,9 @@ async function checkBranchPhone(db, customerId, phone, exceptId = null) {
   return String(phone).trim();
 }
 
-export async function createBranch(db, req, customerId, body) {
+export async function createBranch(db, req, customerId, body, { allowNoPhone = false } = {}) {
   const name = str(body.name, 'اسم الفرع', { required: true, max: 80 });
-  const phone = await checkBranchPhone(db, customerId, str(body.phone, 'رقم التواصل', { max: 30 }));
+  const phone = await checkBranchPhone(db, customerId, str(body.phone, 'رقم التواصل', { max: 30 }), null, allowNoPhone);
   if (String(body.password || '').length < 8) throw bad('كلمة مرور الفرع يجب ألا تقل عن 8 أحرف');
   const c = (await db.query('select id, shop_name from customers where id=$1', [customerId])).rows[0];
   if (!c) throw notFound('العميل غير موجود');
