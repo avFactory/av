@@ -12,7 +12,7 @@ import * as prod from '../lib/production.js';
 import * as ledger from '../lib/ledger.js';
 import { materialFor, orderColor } from './orders.js';
 import { parseDiamonds, optW, releaseDiamonds } from '../lib/stoneReserve.js';
-import { invoiceDetail } from './finance.js';
+import { invoiceDetail, withInvoiceExtras } from './finance.js';
 import { newGroupNo, nextItemNo } from '../lib/orderGroups.js';
 import { applyDueDate, leadDays, orderCategory } from '../lib/leadTime.js';
 import { listBranches, createBranch, updateBranch, assertMainAccount } from '../lib/branches.js';
@@ -369,8 +369,7 @@ r.get('/invoices/:id', async (req, res) => {
     const own = await one('select 1 from invoice_lines l join orders o on o.id=l.order_id where l.invoice_id=$1 and o.branch_id=$2 limit 1', [d.invoice.id, req.user.branch_id]);
     if (!own) throw notFound();
   }
-  delete d.invoice.created_by_name;
-  res.json(d);
+  res.json(await withInvoiceExtras(d, req));
 });
 
 export default r;

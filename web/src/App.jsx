@@ -7,6 +7,7 @@ import WorkerLayout from './components/WorkerLayout.jsx';
 import StoreLayout from './components/StoreLayout.jsx';
 import Login from './pages/Login.jsx';
 import PublicTrack from './pages/PublicTrack.jsx';
+import PublicInvoice from './pages/PublicInvoice.jsx';
 import PublicPricing from './pages/PublicPricing.jsx';
 import PublicStones from './pages/PublicStones.jsx';
 import Register from './pages/Register.jsx';
@@ -77,6 +78,7 @@ export default function App() {
   const { me } = useAuth();
   const loc = useLocation();
   // تتبع الطلب برابط عام: يعمل بدون تسجيل دخول
+  if (loc.pathname.startsWith('/i/')) return <Suspense fallback={<Loader />}><Routes><Route path="/i/:token" element={<PublicInvoice />} /></Routes></Suspense>;
   if (loc.pathname.startsWith('/t/')) return <Suspense fallback={<Loader />}><Routes><Route path="/t/:token" element={<PublicTrack />} /></Routes></Suspense>;
   // التسعيرة برابط خارجي: بدون تسجيل دخول
   if (loc.pathname.startsWith('/p/')) return <Suspense fallback={<Loader />}><Routes><Route path="/p/:token" element={<PublicPricing />} /></Routes></Suspense>;

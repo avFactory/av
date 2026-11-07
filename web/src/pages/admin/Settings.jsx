@@ -24,6 +24,8 @@ export default function Settings() {
             <Field label="السجل التجاري"><Input value={c.cr_number || ''} onChange={setC('cr_number')} dir="ltr" /></Field>
             <Field label="العنوان"><Input value={c.address || ''} onChange={setC('address')} /></Field>
             <Field label="الهاتف"><Input value={c.phone || ''} onChange={setC('phone')} dir="ltr" /></Field>
+            <Field label="البريد الإلكتروني"><Input value={c.email || ''} onChange={setC('email')} dir="ltr" /></Field>
+            <Field label="المدينة"><Input value={c.city || ''} onChange={setC('city')} /></Field>
           </div>
         </Card>
         <Card title="الضريبة والأوزان والرقابة">

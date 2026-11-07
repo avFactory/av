@@ -268,6 +268,16 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
   assert.equal(n(inv.subtotal), expected, 'الأجرة = الوزن × أجرة الجرام فقط');
   assert.equal(n(inv.vat_amount), Math.round(expected * 0.15 * 100) / 100);
   assert.ok(inv.qr_tlv.length > 20, 'QR الفوترة الإلكترونية');
+  // رابط الفاتورة العام (QR على الفاتورة يفتحه بدون تسجيل دخول)
+  assert.match(invD.link, /\/i\/[0-9a-f]{32}$/);
+  assert.match(invD.link_qr_svg, /^<svg/);
+  const pub = await fetch(base + '/api/public/invoice/' + invD.link.split('/i/')[1]);
+  assert.equal(pub.status, 200);
+  const pj = await pub.json();
+  assert.equal(pj.invoice.invoice_no, invD.invoice.invoice_no);
+  assert.equal(pj.invoice.created_by_name, undefined, 'لا بيانات داخلية');
+  assert.equal((await fetch(base + '/api/public/invoice/' + '0'.repeat(32))).status, 404);
+  assert.equal((await fetch(base + '/api/public/invoice/abc')).status, 404);
   assert.equal((await acct.req('POST', '/api/finance/invoices', { customer_id: ids.customer, order_ids: [ids.order] })).status, 409, 'لا فوترة مزدوجة');
   await acct.post('/api/finance/payments', { customer_id: ids.customer, invoice_id: inv.id, amount: inv.total, method: 'transfer' });
 

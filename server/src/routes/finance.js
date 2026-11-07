@@ -9,6 +9,12 @@ import { audit } from '../lib/audit.js';
 import { notifyCustomer } from '../lib/notify.js';
 import { sendXlsx } from '../lib/xlsx.js';
 import { METHOD_LABELS } from '../lib/labor.js';
+import QRCode from 'qrcode';
+import fs from 'node:fs';
+import path from 'node:path';
+import { orderThumb } from '../lib/orderThumb.js';
+import { UPLOAD_DIR } from '../lib/uploads.js';
+import { thumbnail } from '../lib/thumbs.js';
 
 const r = Router();
 
@@ -144,20 +150,44 @@ r.get('/invoices', requirePerm('finance.view'), async (req, res) => {
 
 export async function invoiceDetail(db, id) {
   const inv = (await db.query(`select i.*, i.subtotal::text, i.vat_amount::text, i.total::text, i.vat_rate::text, c.shop_name, c.owner_name, c.vat_number as customer_vat,
-      c.cr_number as customer_cr, c.address as customer_address, c.city as customer_city, u.full_name as created_by_name,
+      c.cr_number as customer_cr, c.address as customer_address, c.city as customer_city, c.phone as customer_phone, c.email as customer_email, u.full_name as created_by_name,
       (select invoice_no from invoices x where x.id=i.credit_for_id) as credit_for_no, (select invoice_no from invoices x where x.credit_for_id=i.id) as credited_by
     from invoices i join customers c on c.id=i.customer_id left join users u on u.id=i.created_by where i.id=$1`, [id])).rows[0];
   if (!inv) return null;
-  const lines = (await db.query('select l.*, l.qty::text, l.unit_price::text, l.amount::text, o.order_no from invoice_lines l left join orders o on o.id=l.order_id where invoice_id=$1 order by l.id', [id])).rows;
+  const lines = (await db.query(`select l.*, l.qty::text, l.unit_price::text, l.amount::text, o.order_no, o.title as order_title, o.size, o.notes as order_notes, o.quantity as order_qty,
+      coalesce(o.final_weight, o.approx_weight)::text as weight, o.final_weight is not null as weight_final, m.karat, coalesce(o.color, m.color) as color, ${orderThumb()} as thumb
+    from invoice_lines l left join orders o on o.id=l.order_id left join materials m on m.id=o.material_id where invoice_id=$1 order by l.id`, [id])).rows;
   const payments = (await db.query('select payment_no, kind, amount::text, method, received_at from payments where invoice_id=$1 order by id', [id])).rows;
   const { company } = await companySettings(db);
-  return { invoice: inv, lines, payments, company };
+  const branch = (await db.query(`select b.name, b.phone, b.address, b.city from invoice_lines l join orders o on o.id=l.order_id join customer_branches b on b.id=o.branch_id
+    where l.invoice_id=$1 limit 1`, [id])).rows[0] || null;
+  return { invoice: inv, lines, payments, company, branch };
+}
+
+/** رابط الفاتورة العام + رمز QR له + صور مصغّرة مضمّنة (تظهر في الرابط العام والطباعة بدون تسجيل دخول) */
+export async function withInvoiceExtras(d, req) {
+  const link = `${req.protocol}://${req.get('host')}/i/${d.invoice.public_token}`;
+  d.link = link;
+  d.link_qr_svg = await QRCode.toString(link, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' });
+  for (const l of d.lines) {
+    l.thumb_data = null;
+    if (!l.thumb) continue;
+    try {
+      const abs = path.resolve(UPLOAD_DIR, l.thumb);
+      if (!abs.startsWith(UPLOAD_DIR + path.sep)) continue;
+      const t = await thumbnail(abs, l.thumb, 200);
+      if (t) l.thumb_data = `data:image/webp;base64,${fs.readFileSync(t).toString('base64')}`;
+    } catch { /* بدون صورة */ }
+    delete l.thumb;
+  }
+  delete d.invoice.created_by_name;
+  return d;
 }
 
 r.get('/invoices/:id', requirePerm('finance.view'), async (req, res) => {
   const d = await invoiceDetail(pool, int(req.params.id));
   if (!d) throw notFound();
-  res.json(d);
+  res.json(await withInvoiceExtras(d, req));
 });
 
 /** تصدير الفاتورة بصيغة UBL 2.1 XML (أساس الفوترة الإلكترونية - المرحلة الثانية تتطلب ربط وشهادة من الهيئة) */

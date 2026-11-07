@@ -4,6 +4,7 @@ import { many, one, pool } from '../db.js';
 import { routeStages, hasDiamonds } from '../lib/production.js';
 import { getPricing, checkToken, shortView } from '../lib/pricingSheet.js';
 import { checkShareToken } from '../lib/shareLinks.js';
+import { invoiceDetail, withInvoiceExtras } from './finance.js';
 import { notFound, int } from '../lib/http.js';
 
 const r = Router();
@@ -79,6 +80,19 @@ r.get('/track/:token', async (req, res) => {
     progress: delivered ? 100 : total && o.stage_seq ? Math.round((100 * (o.stage_seq - 1)) / total) : 0,
     due_date: o.due_date, created_at: o.created_at, ready_at: o.ready_at, delivered_at: o.delivered_at, stages,
   });
+});
+
+/** الفاتورة برابط عام (عرض فقط): رمز سري لكل فاتورة يُطبع كـ QR عليها */
+r.get('/invoice/:token', async (req, res) => {
+  const token = String(req.params.token || '').toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(token)) throw notFound('رابط الفاتورة غير صحيح');
+  const row = await one('select id from invoices where public_token=$1', [token]);
+  if (!row) throw notFound('رابط الفاتورة غير صحيح');
+  const d = await withInvoiceExtras(await invoiceDetail(pool, row.id), req);
+  delete d.invoice.notes_internal;
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.json(d);
 });
 
 /** التسعيرة برابط خارجي: قراءة فقط (سعر الذهب والثوابت)، والأوزان تُدخل وتُحسب على جهاز الزائر ولا تُحفظ */
