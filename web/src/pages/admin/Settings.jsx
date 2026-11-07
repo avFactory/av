@@ -80,7 +80,7 @@ function LeadTimes() {
   }, 'تم حفظ مدة التنفيذ');
   return (
     <Card title="مدة تنفيذ الطلبات (بالأيام)" actions={<Btn size="sm" loading={busy} onClick={save}>حفظ المدد</Btn>}>
-      <p className="small text-body-secondary mb-2">يُحدد موعد التسليم تلقائياً حسب نوع القطعة وتصنيف العميل، ويُحسب من يوم اعتماد الطلب وبدء إنتاجه. الخانة الفارغة للتصنيف تعني «الافتراضي». المنتجات المتوفرة في المخزون لا تحتاج مدة.</p>
+      <p className="small text-body-secondary mb-2">يُحدد موعد التسليم تلقائياً حسب نوع القطعة وتصنيف العميل، ويُحسب بأيام العمل (الجمعة عطلة لا تُحسب) من يوم اعتماد الطلب وبدء إنتاجه. الخانة الفارغة للتصنيف تعني «الافتراضي». المنتجات المتوفرة في المخزون لا تحتاج مدة.</p>
       <div className="d-grid gap-3">
         {KINDS.map(([kind, kl]) => (
           <div key={kind}>
@@ -91,9 +91,9 @@ function LeadTimes() {
                 <tr key={cat}><td className="text-nowrap">{cl}</td>{cols.map((c) => {
                   const k = `${kind}|${cat}|${c.id}`;
                   const def = v[`${kind}|${cat}|`];
-                  return <td key={c.id || 'd'}><div className="input-group input-group-sm" style={{ width: 110 }}>
+                  return <td key={c.id || 'd'}><div className="input-group input-group-sm" style={{ width: 130 }}>
                     <Input dir="ltr" inputMode="numeric" value={v[k] ?? ''} placeholder={c.id ? (def || '—') : '0'} onChange={(e) => set(k, e.target.value)} />
-                    <span className="input-group-text">يوم</span></div></td>;
+                    <span className="input-group-text">يوم عمل</span></div></td>;
                 })}</tr>
               ))}</tbody>
             </table></div>

@@ -681,6 +681,7 @@ test('مدة تنفيذ الطلب: حسب الفئة وتصنيف العميل�
   const pDia = await mk({ name: 'خاتم ألماس مخبري مدة' });
   const pStock = await mk({ name: 'خاتم جاهز مدة', availability: 'available' });
   await pool.query('update products set stock_qty=5 where id=$1', [pStock.id]);
+  const { calendarDays: cd } = await import('../src/lib/leadTime.js');
   const days = (d) => Math.round((new Date(d) - new Date(new Date().toISOString().slice(0, 10))) / 864e5);
   assert.equal((await cu('GET', `/store/products/${pDia.id}`)).data.lead_days, 10, 'ألماس لعميل ذهبي');
   assert.equal((await cu('GET', `/store/products/${pGold.id}`)).data.lead_days, 18, 'ذهب لعميل ذهبي');
@@ -688,18 +689,31 @@ test('مدة تنفيذ الطلب: حسب الفئة وتصنيف العميل�
   const sent = (await cu('POST', '/store/orders', { items: [pGold, pDia, pStock].map((p) => ({ product_id: p.id, karat: 21, quantity: 1 })) })).data;
   const due = async (id) => (await pool.query("select to_char(due_date,'YYYY-MM-DD') d, due_auto from orders where id=$1", [id])).rows[0];
   const [g, d, s] = await Promise.all(sent.orders.map((o) => due(o.id)));
-  assert.ok(Math.abs(days(g.d) - 18) <= 1 && g.due_auto, JSON.stringify(g));
-  assert.ok(Math.abs(days(d.d) - 10) <= 1, JSON.stringify(d));
+  assert.ok(Math.abs(days(g.d) - cd(18)) <= 1 && g.due_auto, JSON.stringify(g));
+  assert.ok(Math.abs(days(d.d) - cd(10)) <= 1, JSON.stringify(d));
   assert.equal(s.d, null, 'المتوفر في المخزون بدون موعد');
   // التصميم الخاص: نفس مدة حسب الطلب، والموعد الذي يطلبه العميل لا يتغير
   assert.equal((await cu('GET', '/store/lead-times')).data.custom_gold, 18);
   const f1 = new FormData(); for (const [k, v] of Object.entries({ product_type: 'حلق', karat: '21' })) f1.append(k, v);
   const c1 = await fetch(base + '/api/store/custom', { method: 'POST', headers: { cookie: ck }, body: f1 }).then((r) => r.json());
-  assert.ok(Math.abs(days((await due(c1.id)).d) - 18) <= 1);
+  assert.ok(Math.abs(days((await due(c1.id)).d) - cd(18)) <= 1);
   const f2 = new FormData(); for (const [k, v] of Object.entries({ product_type: 'حلق', karat: '21', due_date: '2027-01-15' })) f2.append(k, v);
   const c2 = await fetch(base + '/api/store/custom', { method: 'POST', headers: { cookie: ck }, body: f2 }).then((r) => r.json());
   assert.deepEqual(await due(c2.id), { d: '2027-01-15', due_auto: false });
   // بدء الإنتاج يعيد حساب الموعد التلقائي فقط
   await call('POST', `/orders/${sent.orders[0].id}/start`, {});
-  assert.ok(Math.abs(days((await due(sent.orders[0].id)).d) - 18) <= 1);
+  assert.ok(Math.abs(days((await due(sent.orders[0].id)).d) - cd(18)) <= 1);
+});
+
+test('مدة التنفيذ بأيام العمل: الجمعة لا تُحسب ولا يقع الموعد فيها', async () => {
+  const { calendarDays } = await import('../src/lib/leadTime.js');
+  const d = (s) => new Date(`${s}T12:00:00Z`);
+  assert.equal(calendarDays(6, d('2026-11-07')), 7, 'من السبت 6 أيام عمل = السبت التالي');
+  assert.equal(calendarDays(1, d('2026-11-12')), 2, 'من الخميس يوم عمل = السبت');
+  assert.equal(calendarDays(1, d('2026-11-11')), 1);
+  assert.equal(calendarDays(14, d('2026-11-07')), 16, 'جمعتان لا تُحسبان');
+  for (let n = 0; n < 40; n++) for (const day of ['2026-11-07', '2026-11-10', '2026-11-12', '2026-11-13']) {
+    const due = new Date(d(day).getTime() + calendarDays(n, d(day)) * 864e5);
+    assert.notEqual(due.getUTCDay(), 5, `الموعد لا يقع يوم جمعة (${day} + ${n})`);
+  }
 });

@@ -20,6 +20,16 @@ export async function leadDays(db, { category, customerId }) {
   return r ? Number(r.days) : null;
 }
 
+/** عدد الأيام التقويمية من اليوم لتغطية n يوم عمل (الجمعة عطلة) — بتوقيت الرياض */
+export function calendarDays(n, today = new Date(Date.now() + 3 * 3600e3)) {
+  let dow = today.getUTCDay();
+  let cal = 0;
+  let work = 0;
+  while (work < n) { cal++; dow = (dow + 1) % 7; if (dow !== 5) work++; }
+  while (dow === 5) { cal++; dow = (dow + 1) % 7; } // لا يقع الموعد يوم جمعة
+  return cal;
+}
+
 /** تحديد موعد التسليم تلقائياً لطلب ليس له موعد (من اليوم أو من بدء الإنتاج) */
 export async function applyDueDate(db, orderId, { recalc = false } = {}) {
   const o = (await db.query('select * from orders where id=$1', [orderId])).rows[0];
@@ -27,8 +37,8 @@ export async function applyDueDate(db, orderId, { recalc = false } = {}) {
   if (o.due_date && !(recalc && o.due_auto)) return o.due_date;
   const days = await leadDays(db, { category: orderCategory(o), customerId: o.customer_id });
   if (days == null) return null;
-  // الجمعة عطلة: إن وقع الموعد يوم جمعة يُنقل للسبت
-  const r = (await db.query(`update orders set due_date = d + case when extract(dow from d) = 5 then 1 else 0 end, due_auto = true
-    from (select (now() at time zone 'Asia/Riyadh')::date + $2::int as d) x where id=$1 returning due_date`, [orderId, days])).rows[0];
+  // مدة التنفيذ بأيام العمل: الجمعة عطلة لا تُحسب، والموعد لا يقع يوم جمعة
+  const r = (await db.query(`update orders set due_date = x.d, due_auto = true
+    from (select (now() at time zone 'Asia/Riyadh')::date + $2::int as d) x where id=$1 returning due_date`, [orderId, calendarDays(days)])).rows[0];
   return r.due_date;
 }

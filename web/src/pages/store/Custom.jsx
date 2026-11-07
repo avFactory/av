@@ -128,5 +128,5 @@ function LeadNote({ diamond }) {
   const { data } = useFetch('/store/lead-times');
   const d = data?.[diamond ? 'custom_diamond' : 'custom_gold'];
   if (d == null) return null;
-  return <div className="alert alert-light border small py-2 mb-0">⏱ مدة التنفيذ المتوقعة{diamond ? ' (ألماس مخبري)' : ''}: <b>{d} يوم</b> من اعتماد عرض الأجور — ويمكنكم طلب موعد محدد في الخانة أعلاه.</div>;
+  return <div className="alert alert-light border small py-2 mb-0">⏱ مدة التنفيذ المتوقعة{diamond ? ' (ألماس مخبري)' : ''}: <b>{d} يوم عمل</b> من اعتماد عرض الأجور (الجمعة عطلة) — ويمكنكم طلب موعد محدد في الخانة أعلاه.</div>;
 }
