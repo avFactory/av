@@ -287,6 +287,20 @@ function GeneralIssue({ sp }) {
   const [worker, setWorker] = useState(null);
   const [f, setF] = useState({ material_id: '', weight: '', purpose: '', loss_rate_percent: '0' });
   const [done, setDone] = useState(null);
+  // مصدر العهدة العامة: ذهب من الخزنة، أو خامات المصنع (سلاسل، أقفال، كور سحب…)
+  const [src, setSrc] = useState(sp.get('src') === 'findings' ? 'findings' : 'vault');
+  const [items, setItems] = useState([{ finding_id: '', pieces: '', weight: '' }]);
+  const { data: fd, reload: reloadFindings } = useFetch(src === 'findings' ? '/findings' : null, { deps: [src] });
+  const findings = (fd?.findings || []).filter((x) => x.active && Number(x.stock_weight) > 0);
+  const updItem = (i, k, v) => setItems((list) => list.map((x, j) => {
+    if (j !== i) return x;
+    const n = { ...x, [k]: v };
+    const fi = findings.find((y) => String(y.id) === String(n.finding_id));
+    if ((k === 'pieces' || k === 'finding_id') && fi?.unit_weight && n.pieces) n.weight = String(+(Number(fi.unit_weight) * Number(n.pieces)).toFixed(3));
+    return n;
+  }));
+  const fItems = items.filter((i) => i.finding_id && Number(i.weight) > 0);
+  const fTotal = fItems.reduce((a, i) => a + Number(i.weight), 0);
   const key = useRef(newKey());
   const [run, busy] = useAction();
   const { data: list, reload } = useFetch('/inventory/gold/general-custodies', { live: ['custodies', 'gold_ledger'] });
@@ -297,18 +311,25 @@ function GeneralIssue({ sp }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const materialId = f.material_id || mats.find((m) => m.karat === 21)?.id || mats[0]?.id;
-  const valid = worker && materialId && Number(f.weight) > 0 && f.purpose.trim();
+  const valid = worker && (src === 'findings' ? fItems.length > 0 : materialId && Number(f.weight) > 0 && f.purpose.trim());
   const submit = () => run(async () => {
+    if (src === 'findings') {
+      const r = await api.post('/findings/issue', { worker_id: worker.id, items: fItems });
+      setDone({ ...r, findings: true, total: fTotal }); reload(); reloadFindings();
+      return;
+    }
     const r = await api.post('/inventory/gold/to-worker', { ...f, material_id: materialId, worker_id: worker.id, idempotency_key: key.current });
     setDone(r); reload();
   }, 'تم التسليم - بانتظار قبول العامل');
-  const reset = () => { setWorker(null); setF({ material_id: '', weight: '', purpose: '', loss_rate_percent: '0' }); setDone(null); key.current = newKey(); };
+  const reset = () => { setWorker(null); setF({ material_id: '', weight: '', purpose: '', loss_rate_percent: '0' }); setItems([{ finding_id: '', pieces: '', weight: '' }]); setDone(null); key.current = newKey(); };
 
   return (
     <div className="grid">
       {done ? (
         <Card>
-          <div className="alert alert-success mb">سُجلت العهدة العامة {done.custody_no} للعامل {worker.full_name}: {fmtW(f.weight)} جم. أُرسل له إشعار لقبول الاستلام.</div>
+          <div className="alert alert-success mb">{done.findings
+            ? <>صُرفت الخامات للعامل {worker.full_name} كعهدة عامة: {done.custodies.map((c) => `${c.name}${c.pieces ? ` × ${c.pieces}` : ''} (${fmtW(c.weight)} جم)`).join('، ')}. أُرسل له إشعار لقبول الاستلام.</>
+            : <>سُجلت العهدة العامة {done.custody_no} للعامل {worker.full_name}: {fmtW(f.weight)} جم. أُرسل له إشعار لقبول الاستلام.</>}</div>
           <div className="hrow gap wrap">
             <a className="btn btn-dark btn-lg" href={`/print/batch/${done.batch_id}`} target="_blank" rel="noreferrer">طباعة الكشف</a>
             <Btn size="lg" onClick={reset}>عهدة عامة جديدة</Btn>
@@ -328,6 +349,31 @@ function GeneralIssue({ sp }) {
               <Btn kind="ghost" size="sm" onClick={() => setWorker(null)}>تغيير</Btn>
             </div>
           </Card>
+          <div className="chips" role="tablist" aria-label="مصدر العهدة">
+            {[['vault', 'ذهب من الخزنة'], ['findings', '🔗 خامات المصنع (سلاسل، أقفال، كور سحب…)']].map(([k, l]) => <button key={k} type="button" className={`chip ${src === k ? 'on' : ''}`} onClick={() => setSrc(k)}>{l}</button>)}
+          </div>
+          {src === 'findings' ? (
+            <div className="line-item sel">
+              {!fd ? <span className="small muted">جارٍ التحميل…</span> : !findings.length ? <div className="small muted">لا يوجد رصيد خامات — أضف الخامات ورصيدها من صفحة «خامات المصنع».</div> : (
+                <div className="d-grid gap-2">
+                  {items.map((it, i) => {
+                    const fi = findings.find((y) => String(y.id) === String(it.finding_id));
+                    return (
+                      <div key={i} className="grid g3 align-items-end">
+                        <Field label="الخامة"><Select value={it.finding_id} onChange={(e) => updItem(i, 'finding_id', e.target.value)} placeholder="اختر الخامة"
+                          options={findings.map((x) => [x.id, `${x.name} — ${x.material_name} (متوفر ${fmtW(x.stock_weight)} جم / ${x.stock_pieces} ق)`])} /></Field>
+                        <Field label="عدد القطع"><Input inputMode="numeric" value={it.pieces} onChange={(e) => updItem(i, 'pieces', e.target.value.replace(/\D/g, ''))} /></Field>
+                        <Field label={`الوزن (جم)${fi ? ` — حد ${fmtW(fi.stock_weight)}` : ''}`}><WeightInput value={it.weight} onChange={(v) => updItem(i, 'weight', v)} /></Field>
+                      </div>
+                    );
+                  })}
+                  <div className="d-flex gap-2"><Btn size="sm" kind="ghost" onClick={() => setItems([...items, { finding_id: '', pieces: '', weight: '' }])}>+ خامة أخرى</Btn>
+                    {items.length > 1 && <Btn size="sm" kind="ghost" onClick={() => setItems(items.slice(0, -1))}>حذف الأخيرة</Btn>}</div>
+                  <div className="small text-body-secondary">تخرج من مخزون الخامات وتصبح ذهباً في عهدة العامل. عند استلام أي طلب منه يسجّل المشرف الخامة التي أضافها فيُخصم وزنها من هذه العهدة ويدخل في وزن الطلب، وما لم يُستخدم يعود لمخزون الخامات.</div>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="line-item sel">
             <div className="grid g2">
               <Field label="المادة (العيار واللون)"><Select value={materialId || ''} onChange={(e) => setF({ ...f, material_id: e.target.value })} options={mats.map((m) => [m.id, m.name])} /></Field>
@@ -336,9 +382,10 @@ function GeneralIssue({ sp }) {
               <Field label="نسبة العجز المسموح %" hint="0 = أي نقص عند الإرجاع يُحال للمراجعة"><Input dir="ltr" inputMode="decimal" value={f.loss_rate_percent} onChange={(e) => setF({ ...f, loss_rate_percent: e.target.value })} /></Field>
             </div>
           </div>
+          )}
           <AcceptNote />
           <div className="sticky-foot">
-            <Kv items={[['يُصرف من', 'الخزنة'], ['الوزن', <span dir="ltr">{fmtW(f.weight || 0)} جم</span>]]} />
+            <Kv items={[['يُصرف من', src === 'findings' ? 'خامات المصنع' : 'الخزنة'], ['الوزن', <span dir="ltr">{fmtW(src === 'findings' ? fTotal : f.weight || 0)} جم</span>]]} />
             <Btn size="lg" loading={busy} disabled={!valid} onClick={submit}>تأكيد تسليم العهدة العامة</Btn>
           </div>
         </>

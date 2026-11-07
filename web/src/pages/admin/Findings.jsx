@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtDT } from '../../format.js';
@@ -13,7 +14,6 @@ export default function Findings() {
   const { data, reload } = useFetch('/findings', { live: ['custodies'] });
   const [f, setF] = useState(null); // إضافة/تعديل خامة
   const [stock, setStock] = useState(null); // إضافة رصيد
-  const [issue, setIssue] = useState(null); // صرف لعامل
   const [moves, setMoves] = useState(null);
   const [run, busy] = useAction();
   if (!data) return <Loader />;
@@ -26,28 +26,11 @@ export default function Findings() {
 
   const save = () => run(async () => { if (f.id) await api.put(`/findings/${f.id}`, f); else await api.post('/findings', f); setF(null); reload(); }, 'تم الحفظ');
   const addStock = () => run(async () => { await api.post(`/findings/${stock.f.id}/in`, stock); setStock(null); reload(); }, 'تمت إضافة الرصيد');
-  const doIssue = () => run(async () => {
-    const items = issue.items.filter((i) => i.finding_id && Number(i.weight) > 0);
-    const r = await api.post('/findings/issue', { worker_id: issue.worker_id, items });
-    setIssue(null); reload(); return r;
-  }, 'تم صرف الخامات للعامل — بانتظار قبوله');
-  const updItem = (i, k, val) => setIssue((s) => {
-    const items = s.items.map((x, j) => {
-      if (j !== i) return x;
-      const n = { ...x, [k]: val };
-      const fd = list.find((y) => String(y.id) === String(n.finding_id));
-      // الوزن يُقترح من عدد القطع × وزن القطعة
-      if ((k === 'pieces' || k === 'finding_id') && fd?.unit_weight && n.pieces) n.weight = String(+(Number(fd.unit_weight) * Number(n.pieces)).toFixed(3));
-      return n;
-    });
-    return { ...s, items };
-  });
-
   return (
     <Page title="خامات المصنع" inline actions={<div className="page-tabs-row">
       <span className="small text-body-secondary">بالمخزون <b dir="ltr">{fmtW(sumW)}</b> جم · لدى العمال <b dir="ltr">{fmtW(sumWk)}</b> جم</span>
       <span className="d-flex gap-2">
-        {can('custody.issue') && <Btn kind="ghost" onClick={() => setIssue({ worker_id: '', items: [{ finding_id: '', pieces: '', weight: '' }] })}>صرف لعامل</Btn>}
+        {can('custody.issue') && <Link className="btn btn-outline-secondary" to="/sup/issue?mode=general&src=findings">صرف لعامل (عهدة عامة)</Link>}
         {manage && <Btn onClick={() => setF({ name: '', category: data.categories[0], material_id: mats[0]?.id || '', unit_weight: '', sku: '', notes: '' })}>خامة جديدة</Btn>}
       </span>
     </div>}>
@@ -90,29 +73,6 @@ export default function Findings() {
           <Field label="المصدر"><div className="chips">{[['external', 'شراء / استلام من خارج المصنع'], ['vault', 'تصنيع من ذهب الخزنة (يُخصم من الخزنة)']].map(([k, l]) => <button key={k} type="button" className={`chip ${stock.source === k ? 'on' : ''}`} onClick={() => setStock({ ...stock, source: k })}>{l}</button>)}</div></Field>
           <Field label="البيان"><Input value={stock.note} onChange={(e) => setStock({ ...stock, note: e.target.value })} placeholder="رقم الفاتورة / المورد" /></Field>
           <div className="hrow end mt"><Btn loading={busy} disabled={!(Number(stock.weight) > 0)} onClick={addStock}>إضافة</Btn></div>
-        </>}
-      </Modal>
-
-      <Modal open={!!issue} onClose={() => setIssue(null)} title="صرف خامات لعامل (عهدة عامة)" wide>
-        {issue && <>
-          <Field label="العامل *"><Select value={issue.worker_id} onChange={(e) => setIssue({ ...issue, worker_id: e.target.value })} placeholder="اختر العامل"
-            options={(lookups?.workers || []).map((w) => [w.id, `${w.kind === 'machine' ? '⚙ ' : ''}${w.full_name}${w.employee_no ? ` (${w.employee_no})` : ''}`])} /></Field>
-          <div className="d-grid gap-2 mt-2">
-            {issue.items.map((it, i) => {
-              const fd = list.find((y) => String(y.id) === String(it.finding_id));
-              return (
-                <div key={i} className="grid g3 align-items-end border rounded-3 p-2">
-                  <Field label="الخامة"><Select value={it.finding_id} onChange={(e) => updItem(i, 'finding_id', e.target.value)} placeholder="اختر"
-                    options={active.filter((x) => Number(x.stock_weight) > 0).map((x) => [x.id, `${x.name} — ${x.material_name} (متوفر ${fmtW(x.stock_weight)} جم / ${x.stock_pieces} ق)`])} /></Field>
-                  <Field label="عدد القطع"><Input inputMode="numeric" value={it.pieces} onChange={(e) => updItem(i, 'pieces', num(e.target.value))} /></Field>
-                  <Field label={`الوزن (جم)${fd ? ` — حد ${fmtW(fd.stock_weight)}` : ''}`}><WeightInput value={it.weight} onChange={(v) => updItem(i, 'weight', v)} /></Field>
-                </div>
-              );
-            })}
-            <div><Btn size="sm" kind="ghost" onClick={() => setIssue({ ...issue, items: [...issue.items, { finding_id: '', pieces: '', weight: '' }] })}>+ خامة أخرى</Btn></div>
-          </div>
-          <div className="alert alert-light border small mt-2 mb-2">تخرج الخامات من المخزون وتصبح ذهباً في عهدة العامل. عند استلام أي طلب منه يسجّل المشرف الخامة المضافة فيُخصم وزنها من هذه العهدة، وما لم يُستخدم يُستلم من شاشة الاستلام ويعود لمخزون الخامات.</div>
-          <div className="hrow end"><Btn loading={busy} disabled={!issue.worker_id || !issue.items.some((i) => i.finding_id && Number(i.weight) > 0)} onClick={doIssue}>صرف للعامل</Btn></div>
         </>}
       </Modal>
 
