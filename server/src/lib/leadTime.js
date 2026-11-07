@@ -27,6 +27,8 @@ export async function applyDueDate(db, orderId, { recalc = false } = {}) {
   if (o.due_date && !(recalc && o.due_auto)) return o.due_date;
   const days = await leadDays(db, { category: orderCategory(o), customerId: o.customer_id });
   if (days == null) return null;
-  const r = (await db.query(`update orders set due_date = (now() at time zone 'Asia/Riyadh')::date + $2::int, due_auto = true where id=$1 returning due_date`, [orderId, days])).rows[0];
+  // الجمعة عطلة: إن وقع الموعد يوم جمعة يُنقل للسبت
+  const r = (await db.query(`update orders set due_date = d + case when extract(dow from d) = 5 then 1 else 0 end, due_auto = true
+    from (select (now() at time zone 'Asia/Riyadh')::date + $2::int as d) x where id=$1 returning due_date`, [orderId, days])).rows[0];
   return r.due_date;
 }

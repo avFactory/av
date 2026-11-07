@@ -10,12 +10,16 @@ const S = (d) => d.toISOString().slice(0, 10);
 const add = (s, n) => { const d = D(s); d.setUTCDate(d.getUTCDate() + n); return S(d); };
 const todayISO = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+// الأسبوع يبدأ السبت، والجمعة عطلة
+const WEEK = [6, 0, 1, 2, 3, 4, 5];
+const fromSat = (s) => (D(s).getUTCDay() + 1) % 7; // السبت = 0
+const isFri = (s) => D(s).getUTCDay() === 5;
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
 function range(view, a) {
   const d = D(a);
   if (view === 'day') return [a, a];
-  if (view === 'week') { const s = add(a, -d.getUTCDay()); return [s, add(s, 6)]; } // الأسبوع من الأحد
+  if (view === 'week') { const s = add(a, -fromSat(a)); return [s, add(s, 6)]; } // الأسبوع من السبت إلى الجمعة
   if (view === 'month') { const s = `${a.slice(0, 7)}-01`; const e = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)); return [s, S(e)]; }
   return [`${a.slice(0, 4)}-01-01`, `${a.slice(0, 4)}-12-31`];
 }
@@ -108,8 +112,8 @@ export default function Schedule() {
         {view === 'week' && (
           <div className="sch-week">
             {Array.from({ length: 7 }, (_, i) => add(f, i)).map((d) => (
-              <div key={d} className={`sch-day ${d === today ? 'today' : ''}`}>
-                <button type="button" className="sch-dh" onClick={() => go('day', d)}><span>{DAYS[D(d).getUTCDay()]}</span><b>{D(d).getUTCDate()} {MONTHS[D(d).getUTCMonth()]}</b>{byDay[d]?.length ? <span className="sch-n">{byDay[d].length}</span> : null}</button>
+              <div key={d} className={`sch-day ${d === today ? 'today' : ''} ${isFri(d) ? 'holiday' : ''}`}>
+                <button type="button" className="sch-dh" onClick={() => go('day', d)}><span>{DAYS[D(d).getUTCDay()]}{isFri(d) ? ' — عطلة' : ''}</span><b>{D(d).getUTCDate()} {MONTHS[D(d).getUTCMonth()]}</b>{byDay[d]?.length ? <span className="sch-n">{byDay[d].length}</span> : null}</button>
                 <div className="sch-chips">{(byDay[d] || []).map((o) => <Chip key={o.id} o={o} />)}</div>
               </div>
             ))}
@@ -117,17 +121,17 @@ export default function Schedule() {
         )}
 
         {view === 'month' && (() => {
-          const start = add(f, -D(f).getUTCDay());
+          const start = add(f, -fromSat(f));
           const cells = [];
-          for (let d = start; d <= t || D(d).getUTCDay() !== 0; d = add(d, 1)) cells.push(d);
+          for (let d = start; d <= t || D(d).getUTCDay() !== 6; d = add(d, 1)) cells.push(d);
           return (
             <div className="sch-month">
-              {DAYS.map((x) => <div key={x} className="sch-mh">{x}</div>)}
+              {WEEK.map((i) => <div key={i} className={`sch-mh ${i === 5 ? 'holiday' : ''}`}>{DAYS[i]}{i === 5 ? ' (عطلة)' : ''}</div>)}
               {cells.map((d) => {
                 const list = byDay[d] || [];
                 const out = d < f || d > t;
                 return (
-                  <div key={d} className={`sch-cell ${out ? 'out' : ''} ${d === today ? 'today' : ''}`}>
+                  <div key={d} className={`sch-cell ${out ? 'out' : ''} ${d === today ? 'today' : ''} ${isFri(d) ? 'holiday' : ''}`}>
                     <button type="button" className="sch-cd" onClick={() => go('day', d)}>{D(d).getUTCDate()}{list.length ? <span className="sch-n">{list.length}</span> : null}</button>
                     {!out && list.slice(0, 3).map((o) => <Chip key={o.id} o={o} />)}
                     {!out && list.length > 3 && <button type="button" className="sch-more" onClick={() => go('day', d)}>+{list.length - 3} أخرى</button>}

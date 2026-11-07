@@ -841,3 +841,10 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .st-print-head { margin-bottom: 8px; }
 @media (max-width: 900px) { .st-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sub-row { grid-template-columns: 48px 1fr; } .sub-act { grid-column: 2; justify-content: flex-start; } }
 @media print { .st-table { font-size: 8pt; } .st-sum { grid-template-columns: repeat(4, 1fr); } }
+
+/* الجمعة عطلة في جدول الطلبات */
+.sch-week { grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(0, .7fr); }
+.sch-day.holiday, .sch-cell.holiday { background: repeating-linear-gradient(135deg, var(--bs-tertiary-bg) 0 8px, transparent 8px 16px); }
+.sch-day.holiday .sch-dh { color: var(--bs-secondary-color); }
+.sch-mh.holiday { color: #b42318; }
+@media (max-width: 900px) { .sch-week { grid-template-columns: 1fr; } }
