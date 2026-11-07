@@ -37,6 +37,7 @@ const Stages = L(() => import('./pages/admin/Stages.jsx'));
 const Inventory = L(() => import('./pages/admin/Inventory.jsx'));
 const Stones = L(() => import('./pages/admin/Stones.jsx'));
 const Findings = L(() => import('./pages/admin/Findings.jsx'));
+const Schedule = L(() => import('./pages/sup/Schedule.jsx'));
 const Products = L(() => import('./pages/admin/Products.jsx'));
 const Pricing = L(() => import('./pages/admin/Pricing.jsx'));
 const Labor = L(() => import('./pages/admin/Labor.jsx'));
@@ -119,6 +120,7 @@ export default function App() {
           <Route path="/admin/stages" element={S(<Stages />, ['stages.manage', 'loss_rates.manage'])} />
           <Route path="/admin/inventory" element={S(<Inventory />, ['inventory.view'])} />
           <Route path="/admin/stones" element={S(<Stones />, ['stones.view'])} />
+          <Route path="/sup/schedule" element={S(<Schedule />, ['schedule.view'])} />
           <Route path="/admin/findings" element={S(<Findings />, ['inventory.view', 'custody.issue', 'findings.manage'])} />
           <Route path="/admin/products" element={S(<Products />, ['products.manage'])} />
           <Route path="/admin/pricing" element={S(<Pricing />, ['pricing.manage'])} />

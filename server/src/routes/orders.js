@@ -63,6 +63,28 @@ r.post('/', requirePerm('orders.manage'), async (req, res) => {
   res.json(out);
 });
 
+/**
+ * جدول الطلبات حسب موعد التسليم بين تاريخين (يومي/أسبوعي/شهري/سنوي)، مع الطلبات المتأخرة.
+ * لا يشمل الملغاة والمرفوضة.
+ */
+r.get('/schedule', requirePerm('schedule.view'), async (req, res) => {
+  const iso = (v, d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : d);
+  const from = iso(req.query.from, null);
+  const to = iso(req.query.to, null);
+  if (!from || !to) throw bad('حدد الفترة');
+  if ((new Date(to) - new Date(from)) / 864e5 > 400) throw bad('الفترة طويلة جداً');
+  const cols = `o.id, o.order_no, o.cart_ref, o.title, o.quantity, o.status, to_char(o.due_date, 'YYYY-MM-DD') as due, o.approx_weight::text, o.final_weight::text,
+      c.shop_name, br.name as branch_name, s.name as stage_name, w.full_name as worker_name, o.delivered_at, o.ready_at,
+      (o.due_date < (now() at time zone 'Asia/Riyadh')::date and o.status not in ('delivered','cancelled','rejected')) as late, ${orderThumb()} as thumb`;
+  const joins = `from orders o left join customers c on c.id=o.customer_id left join customer_branches br on br.id=o.branch_id
+      left join stages s on s.id=o.current_stage_id left join users w on w.id=o.assigned_worker_id`;
+  const rows = await many(`select ${cols} ${joins}
+    where o.due_date between $1::date and $2::date and o.status not in ('cancelled','rejected') order by o.due_date, o.id`, [from, to]);
+  const overdue = await many(`select ${cols} ${joins}
+    where o.due_date < (now() at time zone 'Asia/Riyadh')::date and o.status not in ('delivered','cancelled','rejected') order by o.due_date, o.id limit 300`);
+  res.json({ from, to, rows, overdue, today: new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10) });
+});
+
 r.get('/', requirePerm('orders.view'), async (req, res) => {
   const f = req.query;
   const params = [];

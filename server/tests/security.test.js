@@ -187,3 +187,17 @@ test('إظهار/إخفاء المنتج في المتجر من القائمة',
   const cu = await user('vis_cust', 'customer');
   assert.equal((await cu.c('POST', `/catalog/products/${p.id}/visibility`, { active: false })).status, 403);
 });
+
+test('جدول الطلبات: للمشرف وبصلاحية خاصة، حسب موعد التسليم', async () => {
+  const sup = await user('sched_sup', 'supervisor');
+  const cu = await user('sched_cust', 'customer');
+  const mat = (await pool.query("select id from materials where karat=21 and active limit 1")).rows[0].id;
+  const today = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+  const o = (await admin('POST', '/orders', { title: 'طلب الجدول', product_type: 'خاتم', karat: 21, material_id: mat, due_date: today, start: false })).data;
+  const r = await sup.c('GET', `/orders/schedule?from=${today}&to=${today}`);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.ok(r.data.rows.some((x) => x.id === o.id && x.due === today));
+  assert.equal((await cu.c('GET', `/orders/schedule?from=${today}&to=${today}`)).status, 403);
+  assert.equal((await sup.c('GET', '/orders/schedule?from=2026-01-01&to=2028-01-01')).status, 400, 'فترة طويلة جداً');
+  assert.equal((await sup.c('GET', '/orders/schedule')).status, 400);
+});
