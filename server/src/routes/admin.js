@@ -773,7 +773,7 @@ r.post('/pricing/token', requirePerm('pricing.manage'), async (req, res) => {
 r.get('/lead-times', requirePerm('settings.manage', 'orders.manage'), async (_req, res) => {
   res.json({
     tiers: await many('select id, name, color from customer_tiers order by sort_order, name'),
-    rows: await many('select kind, category, tier_id, days from order_lead_times order by kind, category, tier_id nulls first'),
+    rows: await many("select kind, category, tier_id, days from order_lead_times where kind='catalog' order by category, tier_id nulls first"),
   });
 });
 r.put('/lead-times', requirePerm('settings.manage'), async (req, res) => {
@@ -781,7 +781,7 @@ r.put('/lead-times', requirePerm('settings.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
     const before = (await db.query('select kind, category, tier_id, days from order_lead_times')).rows;
     for (const x of list) {
-      const kind = oneOf(x.kind, ['catalog', 'custom'], 'النوع');
+      const kind = 'catalog'; // جدول واحد للتصاميم حسب الطلب والخاصة
       const category = oneOf(x.category, ['gold', 'diamond'], 'الفئة');
       const tier = x.tier_id ? int(x.tier_id, 'التصنيف') : null;
       if (x.days === '' || x.days == null) {

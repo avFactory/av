@@ -667,7 +667,7 @@ test('مدة تنفيذ الطلب: حسب الفئة وتصنيف العميل�
   assert.ok(gold);
   const put = await call('PUT', '/admin/lead-times', { rows: [
     { kind: 'catalog', category: 'gold', tier_id: null, days: 14 }, { kind: 'catalog', category: 'diamond', tier_id: null, days: 21 },
-    { kind: 'catalog', category: 'diamond', tier_id: gold.id, days: 10 }, { kind: 'custom', category: 'gold', tier_id: gold.id, days: 18 },
+    { kind: 'catalog', category: 'diamond', tier_id: gold.id, days: 10 }, { kind: 'catalog', category: 'gold', tier_id: gold.id, days: 18 },
   ] });
   assert.equal(put.status, 200, JSON.stringify(put.data));
   const { hashPassword } = await import('../src/lib/auth.js');
@@ -683,15 +683,15 @@ test('مدة تنفيذ الطلب: حسب الفئة وتصنيف العميل�
   await pool.query('update products set stock_qty=5 where id=$1', [pStock.id]);
   const days = (d) => Math.round((new Date(d) - new Date(new Date().toISOString().slice(0, 10))) / 864e5);
   assert.equal((await cu('GET', `/store/products/${pDia.id}`)).data.lead_days, 10, 'ألماس لعميل ذهبي');
-  assert.equal((await cu('GET', `/store/products/${pGold.id}`)).data.lead_days, 14, 'ذهب = الافتراضي');
+  assert.equal((await cu('GET', `/store/products/${pGold.id}`)).data.lead_days, 18, 'ذهب لعميل ذهبي');
   assert.equal((await cu('GET', `/store/products/${pStock.id}`)).data.lead_days, null, 'المتوفر بدون مدة');
   const sent = (await cu('POST', '/store/orders', { items: [pGold, pDia, pStock].map((p) => ({ product_id: p.id, karat: 21, quantity: 1 })) })).data;
   const due = async (id) => (await pool.query("select to_char(due_date,'YYYY-MM-DD') d, due_auto from orders where id=$1", [id])).rows[0];
   const [g, d, s] = await Promise.all(sent.orders.map((o) => due(o.id)));
-  assert.ok(Math.abs(days(g.d) - 14) <= 1 && g.due_auto, JSON.stringify(g));
+  assert.ok(Math.abs(days(g.d) - 18) <= 1 && g.due_auto, JSON.stringify(g));
   assert.ok(Math.abs(days(d.d) - 10) <= 1, JSON.stringify(d));
   assert.equal(s.d, null, 'المتوفر في المخزون بدون موعد');
-  // التصميم الخاص: مدة التصنيف، والموعد الذي يطلبه العميل لا يتغير
+  // التصميم الخاص: نفس مدة حسب الطلب، والموعد الذي يطلبه العميل لا يتغير
   assert.equal((await cu('GET', '/store/lead-times')).data.custom_gold, 18);
   const f1 = new FormData(); for (const [k, v] of Object.entries({ product_type: 'حلق', karat: '21' })) f1.append(k, v);
   const c1 = await fetch(base + '/api/store/custom', { method: 'POST', headers: { cookie: ck }, body: f1 }).then((r) => r.json());
@@ -701,5 +701,5 @@ test('مدة تنفيذ الطلب: حسب الفئة وتصنيف العميل�
   assert.deepEqual(await due(c2.id), { d: '2027-01-15', due_auto: false });
   // بدء الإنتاج يعيد حساب الموعد التلقائي فقط
   await call('POST', `/orders/${sent.orders[0].id}/start`, {});
-  assert.ok(Math.abs(days((await due(sent.orders[0].id)).d) - 14) <= 1);
+  assert.ok(Math.abs(days((await due(sent.orders[0].id)).d) - 18) <= 1);
 });

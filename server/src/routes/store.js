@@ -116,15 +116,15 @@ r.get('/products/:id', async (req, res) => {
   p.labor = l ? { method: l.method, rate: l.rate, estimate: laborAmount(l.method, l.rate, p.final_weight || p.approx_weight, 1) } : null;
   // مدة التنفيذ المتوقعة لهذا العميل (لا تُعرض للمتوفر في المخزون)
   const inStock = p.availability === 'available' && Number(p.stock_qty) > 0;
-  p.lead_days = inStock ? null : await leadDays(pool, { kind: 'catalog', category: p.diamond_details?.length ? 'diamond' : orderCategory(p), customerId: req.user.customer_id });
+  p.lead_days = inStock ? null : await leadDays(pool, { category: p.diamond_details?.length ? 'diamond' : orderCategory(p), customerId: req.user.customer_id });
   res.json(p);
 });
 
 /** مدة تنفيذ التصميم الخاص المتوقعة لهذا العميل (لصفحة "اطلب تصميمك") */
 r.get('/lead-times', async (req, res) => {
-  const out = {};
-  for (const kind of ['catalog', 'custom']) for (const category of ['gold', 'diamond']) out[`${kind}_${category}`] = await leadDays(pool, { kind, category, customerId: req.user.customer_id });
-  res.json(out);
+  const gold = await leadDays(pool, { category: 'gold', customerId: req.user.customer_id });
+  const diamond = await leadDays(pool, { category: 'diamond', customerId: req.user.customer_id });
+  res.json({ gold, diamond, custom_gold: gold, custom_diamond: diamond, catalog_gold: gold, catalog_diamond: diamond });
 });
 
 /** إرسال سلة المنتجات الجاهزة: كل بند يصبح طلباً مستقلاً برقم وQR خاص (مرتبطة برقم السلة) */
