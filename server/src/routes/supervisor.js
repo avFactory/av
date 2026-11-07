@@ -163,7 +163,7 @@ r.post('/receive', requirePerm('custody.receive'), async (req, res) => {
 r.get('/workers/:id/open', requirePerm('custody.receive', 'custody.view_all'), async (req, res) => {
   const id = int(req.params.id);
   const rows = await many(`
-    select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.gross_weight::text, c.stones_weight::text, c.pieces, c.loss_rate_snapshot::text,
+    select c.id, c.custody_no, c.order_id, c.material_id, c.finding_id, (c.weight_issued - c.weight_used)::numeric(16,4)::text as weight_issued, c.gross_weight::text, c.stones_weight::text, c.pieces, c.loss_rate_snapshot::text,
            c.issued_at, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text,
            coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name,
            ${orderThumb()} as thumb

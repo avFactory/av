@@ -51,7 +51,7 @@ r.post('/gold/to-worker', requirePerm('custody.issue', 'inventory.manage'), asyn
 
 /** العهد العامة القائمة لدى العمال */
 r.get('/gold/general-custodies', requirePerm('inventory.view', 'custody.view_all'), async (_req, res) => {
-  res.json(await many(`select c.id, c.custody_no, c.purpose, c.status, c.work_state, c.weight_issued::text, c.loss_rate_snapshot::text, c.issued_at, c.worker_ack_at, c.worker_rejected_at,
+  res.json(await many(`select c.id, c.custody_no, c.purpose, c.status, c.work_state, (c.weight_issued - c.weight_used)::numeric(16,4)::text as weight_issued, c.finding_id, c.loss_rate_snapshot::text, c.issued_at, c.worker_ack_at, c.worker_rejected_at,
       c.worker_reject_reason, u.full_name as worker_name, u.id as worker_id, u.kind as worker_kind, m.name as material_name, s.full_name as issued_by
     from custodies c join users u on u.id=c.worker_id join materials m on m.id=c.material_id join users s on s.id=c.supervisor_id
     where c.kind='general' and c.status in ('open','under_review') order by c.issued_at desc`));
@@ -167,6 +167,7 @@ r.get('/reconciliation', requirePerm('inventory.view', 'reports.view', 'custody.
       coalesce(sum(b.balance) filter (where b.loc_type='worker'),0) as workers,
       coalesce(sum(b.balance) filter (where b.loc_type='scrap'),0) as scrap,
       coalesce(sum(b.balance) filter (where b.loc_type='finished'),0) as finished,
+      coalesce(sum(b.balance) filter (where b.loc_type='findings'),0) as findings,
       coalesce(sum(b.balance) filter (where b.loc_type='loss_normal'),0) as loss_normal,
       coalesce(sum(b.balance) filter (where b.loc_type='loss_abnormal'),0) as loss_abnormal,
       coalesce(sum(b.balance) filter (where b.loc_type='loss_suspense'),0) as loss_suspense,
@@ -178,7 +179,7 @@ r.get('/reconciliation', requirePerm('inventory.view', 'reports.view', 'custody.
   // فحص 1: رصيد كل عامل في الدفتر = مجموع عهده المفتوحة
   const workerCheck = await many(`
     with led as (select loc_ref as worker_id, material_id, balance from gold_balances where loc_type='worker'),
-         cus as (select worker_id, material_id, sum(weight_issued) w from custodies where status='open' group by 1,2)
+         cus as (select worker_id, material_id, sum(weight_issued - weight_used) w from custodies where status='open' group by 1,2)
     select coalesce(l.worker_id, c.worker_id) worker_id, u.full_name, m.name material, coalesce(l.balance,0)::text ledger, coalesce(c.w,0)::text custodies,
            (coalesce(l.balance,0) = coalesce(c.w,0)) ok
     from led l full join cus c on c.worker_id=l.worker_id and c.material_id=l.material_id

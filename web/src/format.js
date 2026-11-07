@@ -39,7 +39,7 @@ export const KINDS = {
 };
 export const LOCS = {
   external: 'خارج المصنع', vault: 'الخزنة', order: 'تحت التشغيل', worker: 'لدى العامل', scrap: 'بقايا قابلة للاسترداد', loss_normal: 'عجز طبيعي',
-  loss_suspense: 'عجز تحت المراجعة', loss_abnormal: 'عجز غير طبيعي', delivered: 'مسلّم للعملاء', variance: 'فروقات', finished: 'منتجات جاهزة',
+  loss_suspense: 'عجز تحت المراجعة', loss_abnormal: 'عجز غير طبيعي', delivered: 'مسلّم للعملاء', variance: 'فروقات', finished: 'منتجات جاهزة', findings: 'خامات المصنع',
 };
 
 /** عناصر عرض أحجار الطلب/المنتج (الألماس واللؤلؤ والحجر والزركون) لمكوّن Kv */

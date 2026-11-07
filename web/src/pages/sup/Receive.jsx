@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, newKey, fileUrl } from '../../api.js';
 import { calcLoss, fmtW, fmtPct, sub, WORK_STATE, SETTLEMENT_STATUS } from '../../format.js';
-import { Btn, Card, Field, Input, Page, PageActions, ScanInput, WeightInput, useAction, useToast, Badge, Kv, Loader, Empty, StatusBadge, Textarea } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Page, Select, PageActions, ScanInput, WeightInput, useAction, useToast, Badge, Kv, Loader, Empty, StatusBadge, Textarea } from '../../ui.jsx';
 import WorkerPicker from '../../components/WorkerPicker.jsx';
 
 /** استلام ذهب من العامل: كل العهد في شاشة واحدة، وزن مستقل لكل طلب، حساب العجز تلقائياً */
@@ -12,6 +12,7 @@ export default function Receive() {
   const [worker, setWorker] = useState(null);
   const [open, setOpen] = useState(null);
   const [lines, setLines] = useState({});
+  const [finds, setFinds] = useState(null);
   const [done, setDone] = useState(null);
   const key = useRef(newKey());
   const [run, busy] = useAction();
@@ -23,6 +24,7 @@ export default function Receive() {
   useEffect(() => {
     if (!worker) return;
     setOpen(null);
+    api.get(`/findings/worker/${worker.id}`).then(setFinds).catch(() => setFinds([]));
     api.get(`/sup/workers/${worker.id}/open`).then((rows) => {
       setOpen(rows);
       // تحديد تلقائي للطلبات التي أنهاها العامل مع تعبئة ما صرّح به كاقتراح
@@ -34,7 +36,20 @@ export default function Receive() {
 
   const lineFrom = (c) => ({
     returned: c.worker_declared_returned != null ? String(+(Number(c.worker_declared_returned) + Number(c.stones_now || 0)).toFixed(4)) : '',
-    stones: c.stones_now || '0', reason: '', pieces: String(c.pieces), notes: '', showStones: Number(c.stones_now) > 0,
+    stones: c.stones_now || '0', reason: '', pieces: String(c.pieces), notes: '', showStones: Number(c.stones_now) > 0, adds: [],
+  });
+  // خامات أضافها العامل على الطلب من عهدة الخامات لديه (سلسلة، قفل…)
+  const addedOf = (l) => (l?.adds || []).reduce((t, a) => t + (Number(a.weight) || 0), 0);
+  const updAdd = (id, i, k, v) => setLines((ls) => {
+    const l = ls[id];
+    const adds = l.adds.map((a, j) => {
+      if (j !== i) return a;
+      const n = { ...a, [k]: v };
+      const src = (finds || []).find((x) => String(x.id) === String(n.source_custody_id));
+      if ((k === 'pieces' || k === 'source_custody_id') && src?.unit_weight && n.pieces) n.weight = String(+(Number(src.unit_weight) * Number(n.pieces)).toFixed(3));
+      return n;
+    });
+    return { ...ls, [id]: { ...l, adds } };
   });
   const toggle = (c) => setLines((l) => { const n = { ...l }; if (n[c.id]) delete n[c.id]; else n[c.id] = lineFrom(c); return n; });
   const upd = (id, k, v) => setLines((l) => ({ ...l, [id]: { ...l[id], [k]: v } }));
@@ -54,19 +69,26 @@ export default function Receive() {
       const l = lines[c.id];
       if (!l || l.returned === '') continue;
       const ret = sub(l.returned, l.stones || 0);
-      out[c.id] = { ...calcLoss(c.weight_issued, ret, 0, c.loss_rate_snapshot), ret };
+      const added = addedOf(l);
+      out[c.id] = { ...calcLoss((Number(c.weight_issued) + added).toFixed(4), ret, 0, c.loss_rate_snapshot), ret, added };
     }
     return out;
   }, [open, lines]);
   const selected = (open || []).filter((c) => lines[c.id]);
   const problems = selected.filter((c) => calc[c.id] && calc[c.id].gain > 0);
-  const valid = selected.length && selected.every((c) => lines[c.id].returned !== '' && calc[c.id] && calc[c.id].ret >= 0)
+  // مجموع ما يُضاف من كل عهدة خامات لا يتجاوز المتبقي فيها
+  const usedBySrc = {};
+  for (const c of selected) for (const a of lines[c.id].adds || []) if (a.source_custody_id) usedBySrc[a.source_custody_id] = (usedBySrc[a.source_custody_id] || 0) + (Number(a.weight) || 0);
+  const overSrc = (finds || []).filter((x) => (usedBySrc[x.id] || 0) > Number(x.available) + 1e-9);
+  const addsOk = selected.every((c) => (lines[c.id].adds || []).every((a) => a.source_custody_id && Number(a.weight) > 0)) && !overSrc.length;
+  const valid = addsOk && selected.length && selected.every((c) => lines[c.id].returned !== '' && calc[c.id] && calc[c.id].ret >= 0)
     && problems.every((c) => lines[c.id].reason.trim());
 
   const submit = () => run(async () => {
     const r = await api.post('/sup/receive', {
       worker_id: worker.id, idempotency_key: key.current,
-      items: selected.map((c) => ({ custody_id: c.id, returned_weight: lines[c.id].returned, scrap_weight: '0', stones_weight: lines[c.id].stones || '0', reason: lines[c.id].reason, pieces_returned: lines[c.id].pieces, notes: lines[c.id].notes })),
+      items: selected.map((c) => ({ custody_id: c.id, returned_weight: lines[c.id].returned, scrap_weight: '0', stones_weight: lines[c.id].stones || '0', reason: lines[c.id].reason, pieces_returned: lines[c.id].pieces, notes: lines[c.id].notes,
+        additions: (lines[c.id].adds || []).map((a) => ({ source_custody_id: a.source_custody_id, weight: a.weight, pieces: a.pieces || 0 })) })),
     });
     setDone(r);
   }, 'تم الاستلام وتسجيل التسويات');
@@ -155,8 +177,31 @@ export default function Receive() {
                         {l.showStones ? (
                           <Field label="وزن الأحجار المركبة ضمن الوزن (جم)" hint="1 قيراط = 0.2 جرام - محسوب تلقائياً من حركات الأحجار"><WeightInput value={l.stones} onChange={(v) => upd(c.id, 'stones', v)} /></Field>
                         ) : <button className="link small" style={{ justifySelf: 'start' }} onClick={() => upd(c.id, 'showStones', true)}>القطعة تحتوي أحجاراً؟</button>}
+                        {c.order_id && (() => {
+                          const srcs = (finds || []).filter((x) => x.material_id === c.material_id);
+                          if (!srcs.length && !l.adds?.length) return null;
+                          return (
+                            <div className="finds-box">
+                              <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                                <b className="small">🔗 خامات أضافها العامل على القطعة <span className="text-body-secondary fw-normal">(من عهدة الخامات لديه — يُخصم وزنها منها ويُضاف للطلب)</span></b>
+                                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => upd(c.id, 'adds', [...(l.adds || []), { source_custody_id: srcs.length === 1 ? String(srcs[0].id) : '', pieces: '1', weight: srcs.length === 1 && srcs[0].unit_weight ? String(+Number(srcs[0].unit_weight).toFixed(3)) : '' }])}>+ إضافة خامة</button>
+                              </div>
+                              {(l.adds || []).map((a, i) => (
+                                <div key={i} className="finds-row">
+                                  <Select value={a.source_custody_id} onChange={(e) => updAdd(c.id, i, 'source_custody_id', e.target.value)} placeholder="اختر الخامة"
+                                    options={srcs.map((x) => [String(x.id), `${x.name} — متبقي ${fmtW(x.available)} جم${x.pieces_left ? ` / ${x.pieces_left} ق` : ''}`])} />
+                                  <Input inputMode="numeric" placeholder="قطع" value={a.pieces} onChange={(e) => updAdd(c.id, i, 'pieces', e.target.value.replace(/\D/g, ''))} />
+                                  <WeightInput value={a.weight} onChange={(v) => updAdd(c.id, i, 'weight', v)} />
+                                  <button type="button" className="btn btn-sm btn-link text-danger" onClick={() => upd(c.id, 'adds', l.adds.filter((_, j) => j !== i))}>حذف</button>
+                                </div>
+                              ))}
+                              {overSrc.length > 0 && <div className="small text-danger">الوزن المضاف أكبر من المتبقي في: {overSrc.map((x) => x.name).join('، ')}</div>}
+                            </div>
+                          );
+                        })()}
                         {k && (
                           <div className="calc">
+                            {k.added > 0 && <div><span>المسلَّم + الخامات</span><b>{fmtW(Number(c.weight_issued) + k.added, 4)}</b></div>}
                             <div><span>العجز الفعلي</span><b>{fmtW(k.actual, 4)}</b></div>
                             <div className="ok"><span>المسموح (المستلم × النسبة)</span><b>{fmtW(k.allowed, 4)}</b></div>
                             <div className={k.abnormal > 0 ? 'bad' : 'ok'}><span>يبقى على حساب العامل</span><b>{fmtW(k.abnormal, 4)}</b></div>

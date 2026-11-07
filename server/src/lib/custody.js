@@ -12,7 +12,7 @@ async function sub(db, a, b) {
   return (await db.query('select round($1::numeric - $2::numeric, 4)::text v', [a, b])).rows[0].v;
 }
 
-async function getWorker(db, id) {
+export async function getWorker(db, id) {
   const r = await db.query("select id, full_name, employee_no, role_code, active from users where id=$1", [id]);
   const w = r.rows[0];
   if (!w || w.role_code !== 'worker') throw bad('العامل غير موجود');
@@ -103,8 +103,15 @@ export async function issue(db, req, body) {
   return { batch_id: batch.id, batch_no: batch.batch_no, custodies: created };
 }
 
+/** قطع عهدة الخامات المتبقية (المصروفة − المضافة على طلبات) */
+async function piecesLeft(db, c) {
+  if (!c.finding_id) return c.pieces;
+  const used = Number((await db.query('select coalesce(sum(pieces),0) n from custody_additions where source_custody_id=$1 and not reversed', [c.id])).rows[0].n);
+  return Math.max(0, Number(c.pieces || 0) - used);
+}
+
 /** معاينة حساب العجز قبل التأكيد (نفس دالة قاعدة البيانات) */
-export async function preview(db, custodyId, returnedGross, scrap, stonesW) {
+export async function preview(db, custodyId, returnedGross, scrap, stonesW, added = '0') {
   const c = (await db.query('select * from custodies where id=$1', [custodyId])).rows[0];
   if (!c) throw notFound('العهدة غير موجودة');
   const stones = stonesW != null && stonesW !== '' ? W(stonesW, 'وزن الأحجار', { allowZero: true }) : c.order_id ? (await embeddedStonesGrams(db, c.order_id, c.worker_id)).total : '0';
@@ -112,8 +119,10 @@ export async function preview(db, custodyId, returnedGross, scrap, stonesW) {
   const returned = await sub(db, gross, stones);
   if (Number(returned) < 0) throw bad('الوزن المرتجع أقل من وزن الأحجار');
   const s = scrap == null || scrap === '' ? '0' : W(scrap, 'البقايا', { allowZero: true });
-  const r = (await db.query('select * from calc_loss($1,$2,$3,$4)', [c.weight_issued, returned, s, c.loss_rate_snapshot])).rows[0];
-  return { custody: c, returned, scrap: s, stones, gross, ...r };
+  // المسلَّم الفعلي = المسلَّم − ما استُهلك منه في طلبات (عهدة الخامات) + خامات أضافها العامل على هذا الطلب
+  const issued = (await db.query('select ($1::numeric - $2::numeric + $3::numeric)::numeric(16,4)::text v', [c.weight_issued, c.weight_used || 0, added || 0])).rows[0].v;
+  const r = (await db.query('select * from calc_loss($1,$2,$3,$4)', [issued, returned, s, c.loss_rate_snapshot])).rows[0];
+  return { custody: c, issued, added: added || '0', returned, scrap: s, stones, gross, ...r };
 }
 
 /**
@@ -149,7 +158,23 @@ export async function receive(db, req, body) {
     const order = c.order_id ? await lockOrder(db, c.order_id) : null;
     const label = order ? order.order_no : `عهدة عامة${c.purpose ? ' - ' + c.purpose : ''}`;
 
-    const p = await preview(db, c.id, it.returned_weight, it.scrap_weight, it.stones_weight);
+    // خامات أضافها العامل على الطلب (سلسلة، قفل...) من عهدة الخامات لديه: يُخصم وزنها منها ويدخل في وزن الطلب
+    const additions = [];
+    const usedNow = new Map();
+    for (const a of Array.isArray(it.additions) ? it.additions : []) {
+      if (!c.order_id) throw bad('الخامات تُضاف على عهدة طلب تصنيع');
+      const sid = int(a.source_custody_id, 'عهدة الخامات');
+      const src = (await db.query('select c.*, f.name as finding_name from custodies c left join findings f on f.id=c.finding_id where c.id=$1 for update of c', [sid])).rows[0];
+      if (!src || src.worker_id !== workerId || src.status !== 'open' || !src.finding_id) throw bad('عهدة الخامات غير صالحة لهذا العامل');
+      if (src.material_id !== c.material_id) throw bad(`عيار "${src.finding_name}" يختلف عن عيار الطلب ${label}`);
+      const w = Number(W(a.weight, `وزن ${src.finding_name}`));
+      const avail = Number(src.weight_issued) - Number(src.weight_used) - (usedNow.get(sid) || 0);
+      if (w > avail + 1e-9) throw bad(`وزن "${src.finding_name}" أكبر من المتبقي لدى العامل (${avail.toFixed(3)} جم)`);
+      usedNow.set(sid, (usedNow.get(sid) || 0) + w);
+      additions.push({ src, w, pieces: a.pieces != null && a.pieces !== '' ? int(a.pieces, 'عدد القطع', { min: 0 }) : 0 });
+    }
+    const added = (Math.round(additions.reduce((t, a) => t + a.w, 0) * 10000) / 10000).toFixed(4);
+    const p = await preview(db, c.id, it.returned_weight, it.scrap_weight, it.stones_weight, added);
     // العجز يُسجَّل تلقائياً ويبقى الزائد على حساب العامل (يُحسب على إجمالي شغل الشهر).
     // المراجعة فقط عند زيادة الوزن عن المسلَّم (حالة غير طبيعية تحتاج ملاحظة).
     // أو إذا طلب المشرف صراحةً إحالة الحالة للمراجعة (review: true)
@@ -161,15 +186,27 @@ export async function receive(db, req, body) {
       `insert into settlements(settlement_no, custody_id, receive_batch_id, weight_issued, returned_weight, gross_returned, stones_weight, scrap_weight,
          actual_loss, allowed_loss, normal_loss, abnormal_loss, gain_weight, rate_snapshot, pieces_returned, status, reason, notes, received_by, idempotency_key)
        values (next_doc_no('STL'),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *`,
-      [c.id, batch.id, c.weight_issued, p.returned, p.gross, p.stones, p.scrap, p.actual_loss, p.allowed_loss, p.normal_loss, p.abnormal_loss,
-       p.gain_weight, c.loss_rate_snapshot, it.pieces_returned != null && it.pieces_returned !== '' ? int(it.pieces_returned, 'عدد القطع', { min: 0 }) : c.pieces,
+      [c.id, batch.id, p.issued, p.returned, p.gross, p.stones, p.scrap, p.actual_loss, p.allowed_loss, p.normal_loss, p.abnormal_loss,
+       p.gain_weight, c.loss_rate_snapshot, it.pieces_returned != null && it.pieces_returned !== '' ? int(it.pieces_returned, 'عدد القطع', { min: 0 }) : await piecesLeft(db, c),
        needsReview ? 'pending_review' : 'approved', reason, str(it.notes, 'ملاحظات'), req.user.id, key ? `${key}:${idx}` : null]
     )).rows[0];
 
     const base = { material_id: c.material_id, order_id: c.order_id, custody_id: c.id, settlement_id: st.id, worker_id: workerId, stage_id: c.stage_id, batch_id: batch.id, user_id: req.user.id };
+    for (const a of additions) {
+      await db.query(`insert into custody_additions(custody_id, source_custody_id, finding_id, order_id, weight, pieces, settlement_id, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [c.id, a.src.id, a.src.finding_id, c.order_id, a.w, a.pieces, st.id, req.user.id]);
+      const u = (await db.query('update custodies set weight_used = weight_used + $2 where id=$1 returning weight_issued, weight_used', [a.src.id, a.w])).rows[0];
+      await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, order_id, note, created_by) values ($1,'used',0,$2,$3,$4,$5,$6)`,
+        [a.src.finding_id, a.w, a.src.id, c.order_id, `أُضيفت على ${label}${a.pieces ? ` (${a.pieces} قطعة)` : ''}`, req.user.id]);
+      // استُهلكت عهدة الخامات بالكامل: تُغلق تلقائياً
+      if (Number(u.weight_used) >= Number(u.weight_issued)) await db.query("update custodies set status='closed', closed_at=now(), work_state='finished', finished_at=coalesce(finished_at, now()) where id=$1", [a.src.id]);
+    }
     await ledger.postIf(db, { ...base, kind: 'gain_pending', weight: p.gain_weight, from: ['variance', null], to: ['worker', workerId], reason });
-    // العهدة العامة يعود ذهبها للخزنة، وعهدة الطلب يعود لرصيد الطلب
-    await ledger.postIf(db, { ...base, kind: c.order_id ? 'return' : 'general_return', weight: p.returned, from: ['worker', workerId], to: c.order_id ? ['order', c.order_id] : ['vault', null] });
+    // عهدة الطلب يعود ذهبها لرصيد الطلب، وعهدة الخامات لمخزون الخامات، والعهدة العامة للخزنة
+    await ledger.postIf(db, { ...base, kind: c.order_id ? 'return' : c.finding_id ? 'findings_return' : 'general_return', weight: p.returned, from: ['worker', workerId],
+      to: c.order_id ? ['order', c.order_id] : c.finding_id ? ['findings', c.finding_id] : ['vault', null] });
+    if (c.finding_id) await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, note, created_by) values ($1,'return',$2,$3,$4,$5,$6)`,
+      [c.finding_id, st.pieces_returned || 0, p.returned, c.id, `إرجاع من العامل (${st.settlement_no})`, req.user.id]);
     await ledger.postIf(db, { ...base, kind: 'scrap_return', weight: p.scrap, from: ['worker', workerId], to: ['scrap', null] });
     await ledger.postIf(db, { ...base, kind: 'normal_loss', weight: p.normal_loss, from: ['worker', workerId], to: ['loss_normal', null] });
     if (Number(p.abnormal_loss) > 0) {
@@ -182,7 +219,7 @@ export async function receive(db, req, body) {
          finished_at=coalesce(finished_at, now()) where id=$1`,
       [c.id, needsReview ? 'under_review' : 'closed']
     );
-    await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `استلام ${p.returned} جم + بقايا ${p.scrap} - عجز ${p.actual_loss} (${st.settlement_no})`, false, workerId);
+    await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `استلام ${p.returned} جم${Number(added) ? ` (منها خامات مضافة ${added} جم: ${additions.map((a) => a.src.finding_name).join('، ')})` : ''} + بقايا ${p.scrap} - عجز ${p.actual_loss} (${st.settlement_no})`, false, workerId);
 
     let advanced = null;
     if (needsReview) {
@@ -286,6 +323,18 @@ export async function reverseSettlement(db, req, id, reasonIn) {
     if (mv.to_type !== 'worker') await ledger.requireBalance(db, mv.to_type, mv.to_ref, mv.material_id, mv.weight, 'لا يمكن عكس الحركة لعدم كفاية الرصيد');
     await ledger.reverse(db, mv, `تصحيح ${st.settlement_no}: ${reason}`, req.user.id);
   }
+  // إرجاع الخامات المضافة لعهدة الخامات لدى العامل
+  for (const a of (await db.query('select * from custody_additions where settlement_id=$1 and not reversed', [id])).rows) {
+    const src = (await db.query('select * from custodies where id=$1 for update', [a.source_custody_id])).rows[0];
+    if (src.status !== 'open' && (await db.query("select 1 from settlements where custody_id=$1 and status <> 'reversed'", [src.id])).rowCount)
+      throw conflict(`عهدة الخامات ${src.custody_no} تم استلامها - صحّح تسويتها أولاً`);
+    await db.query("update custodies set weight_used = weight_used - $2, status='open', closed_at=null where id=$1", [src.id, a.weight]);
+    await db.query('update custody_additions set reversed=true where id=$1', [a.id]);
+    await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, order_id, note, created_by) values ($1,'reversal',0,$2,$3,$4,$5,$6)`,
+      [a.finding_id, a.weight, src.id, a.order_id, `تصحيح ${st.settlement_no}: إلغاء إضافة الخامة`, req.user.id]);
+  }
+  if (c.finding_id) await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, note, created_by) values ($1,'reversal',$2,$3,$4,$5,$6)`,
+    [c.finding_id, -(st.pieces_returned || 0), st.returned_weight, c.id, `تصحيح ${st.settlement_no}`, req.user.id]);
   await db.query("update settlements set status='reversed', reversed_by=$2, reversed_at=now(), reversal_reason=$3 where id=$1", [id, req.user.id, reason]);
   await db.query("update custodies set status='open', closed_at=null where id=$1", [c.id]);
   if (order && order.current_stage_id !== c.stage_id && order.status === 'in_production') {
@@ -304,7 +353,10 @@ export async function reverseIssue(db, req, id, reasonIn) {
   if (!c) throw notFound('العهدة غير موجودة');
   if (c.status !== 'open') throw conflict('لا يمكن إلغاء عهدة تم استلامها - صحّح التسوية أولاً');
   if (c.order_id) await lockOrder(db, c.order_id);
-  const mvs = (await db.query("select * from gold_ledger g where custody_id=$1 and settlement_id is null and kind in ('issue','general_issue') and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)", [id])).rows;
+  if (Number(c.weight_used) > 0) throw conflict('أُضيف جزء من هذه الخامات على طلبات - صحّح تلك التسويات أولاً');
+  const mvs = (await db.query("select * from gold_ledger g where custody_id=$1 and settlement_id is null and kind in ('issue','general_issue','findings_issue') and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)", [id])).rows;
+  if (c.finding_id) await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, note, created_by) values ($1,'reversal',$2,$3,$4,$5,$6)`,
+    [c.finding_id, c.pieces || 0, c.weight_issued, c.id, `إلغاء صرف ${c.custody_no}`, req.user.id]);
   for (const mv of mvs) await ledger.reverse(db, mv, `إلغاء تسليم ${c.custody_no}: ${reason}`, req.user.id);
   await db.query("update custodies set status='reversed', reversed_by=$2, reversed_at=now(), reversal_reason=$3 where id=$1", [id, req.user.id, reason]);
   await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `إلغاء التسليم ${c.custody_no}: ${reason}`);

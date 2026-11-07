@@ -32,6 +32,7 @@ const NAV = [
   ['المخزون', [
     ['/admin/inventory', 'الذهب والمخزون', ['inventory.view']],
     ['/admin/stones', 'الألماس المخبري والأحجار', ['stones.view']],
+    ['/admin/findings', 'خامات المصنع', ['inventory.view', 'custody.issue', 'findings.manage']],
     ['/admin/products', 'منتجات المتجر', ['products.manage']],
     ['/admin/pricing', 'التسعيرة', ['pricing.manage']],
   ]],

@@ -55,5 +55,5 @@ export async function reverse(db, mv, reason, userId) {
 export const LOC_LABELS = {
   external: 'خارج المصنع', vault: 'الخزنة/المخزون', order: 'تحت التشغيل (بالطلب)', worker: 'لدى العامل',
   scrap: 'بقايا قابلة للاسترداد', loss_normal: 'عجز طبيعي', loss_suspense: 'عجز تحت المراجعة',
-  loss_abnormal: 'عجز غير طبيعي معتمد', delivered: 'مسلَّم للعميل', variance: 'فروقات تسوية/جرد', finished: 'منتجات جاهزة بالمخزون',
+  loss_abnormal: 'عجز غير طبيعي معتمد', delivered: 'مسلَّم للعميل', variance: 'فروقات تسوية/جرد', finished: 'منتجات جاهزة بالمخزون', findings: 'خامات المصنع',
 };

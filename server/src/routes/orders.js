@@ -143,7 +143,8 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
       coalesce(sum(weight) filter (where kind='abnormal_pending'),0)::text as abnormal_pending,
       coalesce(sum(weight) filter (where kind='scrap_return'),0)::text as scrap,
       coalesce(sum(weight) filter (where kind='loss_recovered'),0)::text as recovered,
-      coalesce(sum(weight) filter (where kind='final_excess'),0)::text as final_excess
+      coalesce(sum(weight) filter (where kind='final_excess'),0)::text as final_excess,
+      (select coalesce(sum(a.weight),0) from custody_additions a where a.order_id=$1 and not a.reversed)::text as findings_added
     from gold_ledger g where order_id=$1 and reverses_id is null and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)`, [id]);
   const designs = await many('select d.*, u.full_name as sent_by_name from design_reviews d left join users u on u.id=d.sent_by where order_id=$1 order by id desc', [id]);
   const stones = await many(`select m.id, m.kind, m.carats::text, m.count, m.created_at, l.lot_no, l.stone_type, w.full_name as worker_name

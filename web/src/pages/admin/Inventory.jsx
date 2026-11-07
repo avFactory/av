@@ -127,8 +127,8 @@ function Counts({ mats }) {
 function Reconciliation() {
   const { data } = useFetch('/inventory/reconciliation', { live: ['gold_ledger'] });
   if (!data) return <Loader />;
-  const cols = ['vault', 'orders', 'workers', 'scrap', 'finished', 'loss_normal', 'loss_abnormal', 'loss_suspense', 'delivered', 'variance'];
-  const L = { vault: 'الخزنة', orders: 'تحت التشغيل', workers: 'لدى العمال', scrap: 'بقايا', finished: 'جاهز', loss_normal: 'عجز طبيعي', loss_abnormal: 'عجز غير طبيعي', loss_suspense: 'معلق', delivered: 'مسلم', variance: 'فروقات' };
+  const cols = ['vault', 'findings', 'orders', 'workers', 'scrap', 'finished', 'loss_normal', 'loss_abnormal', 'loss_suspense', 'delivered', 'variance'];
+  const L = { vault: 'الخزنة', findings: 'خامات', orders: 'تحت التشغيل', workers: 'لدى العمال', scrap: 'بقايا', finished: 'جاهز', loss_normal: 'عجز طبيعي', loss_abnormal: 'عجز غير طبيعي', loss_suspense: 'معلق', delivered: 'مسلم', variance: 'فروقات' };
   return (
     <div className="grid">
       <div className={`alert ${data.ok ? 'alert-success' : 'alert-danger'}`}>{data.ok ? 'الأرصدة متطابقة: كل جرام له موقع معروف، وعهد العمال تطابق دفتر الحركات.' : 'يوجد عدم تطابق - راجع التفاصيل أدناه'}</div>

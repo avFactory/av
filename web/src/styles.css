@@ -677,3 +677,8 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 @media (max-width: 760px) { .audit-filters > input, .audit-filters label input { width: 100%; } .audit-filters label { flex: 1; } }
 .lead-table th { font-size: .78rem; font-weight: 600; white-space: nowrap; }
 .lead-table td { padding-block: 6px; }
+
+/* خامات مضافة عند الاستلام */
+.finds-box { display: grid; gap: 8px; padding: 10px 12px; border: 1px dashed var(--gold, #a8864f); border-radius: 12px; background: color-mix(in srgb, var(--gold-soft, #f3ead9) 40%, transparent); }
+.finds-row { display: grid; grid-template-columns: minmax(0, 1fr) 80px 130px auto; gap: 8px; align-items: center; }
+@media (max-width: 600px) { .finds-row { grid-template-columns: 1fr 70px 110px; } .finds-row > button { grid-column: 1 / -1; justify-self: start; } }
