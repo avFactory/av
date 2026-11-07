@@ -14,7 +14,7 @@ import * as ledger from '../lib/ledger.js';
 import * as prod from '../lib/production.js';
 import { resolveLabor, laborAmount } from '../lib/labor.js';
 import { nextItemNo, orderCopyColumns } from '../lib/orderGroups.js';
-import { applyDueDate } from '../lib/leadTime.js';
+import { applyDueDate, capacity } from '../lib/leadTime.js';
 
 const r = Router();
 
@@ -73,7 +73,7 @@ r.get('/schedule', requirePerm('schedule.view'), async (req, res) => {
   const to = iso(req.query.to, null);
   if (!from || !to) throw bad('حدد الفترة');
   if ((new Date(to) - new Date(from)) / 864e5 > 400) throw bad('الفترة طويلة جداً');
-  const cols = `o.id, o.order_no, o.cart_ref, o.title, o.quantity, o.status, to_char(o.due_date, 'YYYY-MM-DD') as due, o.approx_weight::text, o.final_weight::text,
+  const cols = `o.id, o.order_no, o.cart_ref, o.title, o.quantity, o.status, to_char(o.due_date, 'YYYY-MM-DD') as due, coalesce(o.final_weight, o.approx_weight)::float as grams, o.approx_weight::text, o.final_weight::text,
       c.shop_name, br.name as branch_name, s.name as stage_name, w.full_name as worker_name, o.delivered_at, o.ready_at,
       (o.due_date < (now() at time zone 'Asia/Riyadh')::date and o.status not in ('delivered','cancelled','rejected')) as late, ${orderThumb()} as thumb`;
   const joins = `from orders o left join customers c on c.id=o.customer_id left join customer_branches br on br.id=o.branch_id
@@ -82,7 +82,7 @@ r.get('/schedule', requirePerm('schedule.view'), async (req, res) => {
     where o.due_date between $1::date and $2::date and o.status not in ('cancelled','rejected') order by o.due_date, o.id`, [from, to]);
   const overdue = await many(`select ${cols} ${joins}
     where o.due_date < (now() at time zone 'Asia/Riyadh')::date and o.status not in ('delivered','cancelled','rejected') order by o.due_date, o.id limit 300`);
-  res.json({ from, to, rows, overdue, today: new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10) });
+  res.json({ from, to, rows, overdue, capacity: await capacity(pool), today: new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10) });
 });
 
 r.get('/', requirePerm('orders.view'), async (req, res) => {

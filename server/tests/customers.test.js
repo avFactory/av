@@ -717,3 +717,33 @@ test('مدة التنفيذ بأيام العمل: الجمعة لا تُحسب 
     assert.notEqual(due.getUTCDay(), 5, `الموعد لا يقع يوم جمعة (${day} + ${n})`);
   }
 });
+
+test('الطاقة الإنتاجية اليومية: اليوم الممتلئ يؤجل موعد الطلب الجديد يوماً لكل يوم مشغول', async () => {
+  const { calendarDays } = await import('../src/lib/leadTime.js');
+  await call('PUT', '/admin/lead-times', { rows: [{ kind: 'catalog', category: 'gold', tier_id: null, days: 5 }] });
+  assert.equal((await call('PUT', '/admin/settings', { capacity: { orders: 'abc' } })).status, 400);
+  assert.equal((await call('PUT', '/admin/settings', { capacity: { orders: '1', grams: '', pieces: '' } })).status, 200);
+  const mat = (await pool.query("select id from materials where karat=21 and active limit 1")).rows[0].id;
+  // تفريغ الأيام القادمة من طلبات الاختبارات السابقة حتى يكون الحساب واضحاً
+  await pool.query("update orders set due_date = null where due_date >= (now() at time zone 'Asia/Riyadh')::date");
+  const mk = async (t) => (await call('POST', '/orders', { title: t, product_type: 'حلقة', karat: 21, material_id: mat, quantity: 1, start: false })).data.id;
+  const due = async (id) => (await pool.query("select to_char(due_date,'YYYY-MM-DD') d from orders where id=$1", [id])).rows[0].d;
+  const nextWork = (iso) => { const d = new Date(`${iso}T00:00:00Z`); do d.setUTCDate(d.getUTCDate() + 1); while (d.getUTCDay() === 5); return d.toISOString().slice(0, 10); };
+  const base = new Date(Date.now() + 3 * 3600e3 + calendarDays(5) * 864e5).toISOString().slice(0, 10);
+  const a = await due(await mk('طاقة 1'));
+  const b = await due(await mk('طاقة 2'));
+  const c = await due(await mk('طاقة 3'));
+  assert.equal(a, base, 'اليوم المحسوب فارغ');
+  assert.equal(b, nextWork(base), 'يوم مشغول = يوم إضافي');
+  assert.equal(c, nextWork(nextWork(base)), 'يومان مشغولان = يومان إضافيان');
+  for (const x of [a, b, c]) assert.notEqual(new Date(`${x}T00:00:00Z`).getUTCDay(), 5, 'لا يقع يوم جمعة');
+  // بدون حد: نفس يوم الموعد المحسوب
+  await call('PUT', '/admin/settings', { capacity: { orders: '', grams: '', pieces: '' } });
+  assert.equal(await due(await mk('بدون حد')), base);
+  // حد الجرامات: طلب أكبر من الحد يأخذ يوماً فارغاً كاملاً
+  await call('PUT', '/admin/settings', { capacity: { grams: '10' } });
+  const w = async (g) => due((await call('POST', '/orders', { title: `وزن ${g}`, product_type: 'حلقة', karat: 21, material_id: mat, approx_weight: g, start: false })).data.id);
+  assert.equal(await w('8'), base, '8 جم ضمن حد 10');
+  assert.equal(await w('5'), nextWork(base), '8 + 5 > 10 → اليوم التالي');
+  await call('PUT', '/admin/settings', { capacity: {} });
+});

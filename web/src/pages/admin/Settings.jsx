@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
-import { Btn, Card, Field, Input, Loader, Page, Select, useAction, useFetch } from '../../ui.jsx';
+import { Btn, Field, Input, Loader, Page, Select, useAction, useFetch } from '../../ui.jsx';
 
 export default function Settings() {
   const { refresh } = useAuth();
@@ -17,7 +17,7 @@ export default function Settings() {
   return (
     <Page title="الإعدادات">
       <div className="grid">
-        <Card title="بيانات المنشأة (تظهر في الفواتير)">
+        <Sec title="بيانات المنشأة (تظهر في الفواتير)" id="company">
           <div className="grid g3">
             <Field label="اسم المصنع"><Input value={c.name || ''} onChange={setC('name')} /></Field>
             <Field label="الرقم الضريبي"><Input value={c.vat_number || ''} onChange={setC('vat_number')} dir="ltr" /></Field>
@@ -27,8 +27,8 @@ export default function Settings() {
             <Field label="البريد الإلكتروني"><Input value={c.email || ''} onChange={setC('email')} dir="ltr" /></Field>
             <Field label="المدينة"><Input value={c.city || ''} onChange={setC('city')} /></Field>
           </div>
-        </Card>
-        <Card title="الضريبة والأوزان والرقابة">
+        </Sec>
+        <Sec title="الضريبة والأوزان والرقابة" id="tax">
           <div className="grid g3">
             <Field label="نسبة ضريبة القيمة المضافة %"><Input value={s.vat_rate} onChange={(e) => setS({ ...s, vat_rate: e.target.value })} dir="ltr" /></Field>
             <Field label="دقة عرض الوزن (خانات عشرية)" hint="التخزين دائماً بدقة 4 خانات"><Select value={String(s.weight_decimals)} onChange={(e) => setS({ ...s, weight_decimals: Number(e.target.value) })} options={[['3', '3 خانات'], ['4', '4 خانات']]} /></Field>
@@ -37,19 +37,30 @@ export default function Settings() {
               <Input dir="ltr" value={Array.isArray(s.diamond_worker_nos) ? s.diamond_worker_nos.join(', ') : (s.diamond_worker_nos ?? '')} onChange={(e) => setS({ ...s, diamond_worker_nos: e.target.value })} />
             </Field>
           </div>
-        </Card>
-        <Card title="قنوات الإشعارات الخارجية للعملاء">
+        </Sec>
+        <Sec title="حدود الطاقة الإنتاجية اليومية" id="capacity">
+          <p className="small text-body-secondary mb-2">تُطبق على الطلبات الجديدة: إذا امتلأ يوم التسليم المحسوب يُؤجَّل موعد الطلب ليوم العمل التالي (يوم لكل يوم مشغول، والجمعة عطلة). اترك الخانة فارغة = بدون حد.</p>
+          <div className="grid g3">
+            {[['orders', 'عدد الطلبات في اليوم', 'طلب'], ['grams', 'الجرامات التي يمكن إنتاجها في اليوم', 'جم'], ['pieces', 'عدد القطع في اليوم', 'قطعة']].map(([k, l, u]) => (
+              <Field key={k} label={l}><div className="input-group">
+                <Input dir="ltr" inputMode="decimal" placeholder="بدون حد" value={s.capacity?.[k] ?? ''} onChange={(e) => setS({ ...s, capacity: { ...(s.capacity || {}), [k]: e.target.value.replace(/[^\d.]/g, '') } })} />
+                <span className="input-group-text">{u}</span></div></Field>
+            ))}
+          </div>
+          <p className="small text-body-secondary mt-2 mb-0">الطلب الواحد من السلة (بعدة بنود) يُحسب طلباً واحداً. الطلب الذي يتجاوز وحده حد الجرامات أو القطع يأخذ يوماً كاملاً.</p>
+        </Sec>
+        <Sec title="قنوات الإشعارات الخارجية للعملاء" id="notify">
           <p className="small muted mb">تتطلب ضبط مفاتيح المزود على الخادم (متغيرات البيئة) - لا توضع المفاتيح في الواجهة.</p>
           <div className="hrow gap wrap">{[['whatsapp', 'WhatsApp Business'], ['sms', 'SMS'], ['email', 'البريد الإلكتروني']].map(([k, l]) => <label key={k} className="check"><input type="checkbox" checked={!!ch[k]} onChange={(e) => setS({ ...s, notify_channels: { ...ch, [k]: e.target.checked } })} />{l}</label>)}</div>
-        </Card>
-        <div className="hrow end"><Btn size="lg" loading={busy} onClick={() => run(async () => { await api.put('/admin/settings', { company: s.company, vat_rate: Number(s.vat_rate), weight_decimals: Number(s.weight_decimals), abnormal_threshold: Number(s.abnormal_threshold), notify_channels: s.notify_channels, diamond_worker_nos: (Array.isArray(s.diamond_worker_nos) ? s.diamond_worker_nos : String(s.diamond_worker_nos || '').split(/[,،\s]+/)).map((x) => String(x).trim()).filter(Boolean) }); await refresh(); }, 'تم حفظ الإعدادات')}>حفظ الإعدادات</Btn></div>
+        </Sec>
+        <div className="hrow end"><Btn size="lg" loading={busy} onClick={() => run(async () => { await api.put('/admin/settings', { company: s.company, vat_rate: Number(s.vat_rate), weight_decimals: Number(s.weight_decimals), abnormal_threshold: Number(s.abnormal_threshold), notify_channels: s.notify_channels, capacity: s.capacity || {}, diamond_worker_nos: (Array.isArray(s.diamond_worker_nos) ? s.diamond_worker_nos : String(s.diamond_worker_nos || '').split(/[,،\s]+/)).map((x) => String(x).trim()).filter(Boolean) }); await refresh(); }, 'تم حفظ الإعدادات')}>حفظ الإعدادات</Btn></div>
         <LeadTimes />
-        <Card title="الأقسام">
+        <Sec title="الأقسام" id="depts">
           <div className="hrow gap">
             <Input value={dept} onChange={(e) => setDept(e.target.value)} placeholder="اسم قسم جديد" style={{ maxWidth: 260 }} />
             <Btn kind="ghost" disabled={!dept} onClick={() => run(async () => { await api.post('/admin/departments', { name: dept }); setDept(''); await refresh(); }, 'تمت الإضافة')}>إضافة قسم</Btn>
           </div>
-        </Card>
+        </Sec>
       </div>
     </Page>
   );
@@ -79,7 +90,8 @@ function LeadTimes() {
     reload();
   }, 'تم حفظ مدة التنفيذ');
   return (
-    <Card title="مدة تنفيذ الطلبات (بالأيام)" actions={<Btn size="sm" loading={busy} onClick={save}>حفظ المدد</Btn>}>
+    <Sec title="مدة تنفيذ الطلبات (بأيام العمل)" id="lead">
+      <div className="hrow end mb-2"><Btn size="sm" loading={busy} onClick={save}>حفظ المدد</Btn></div>
       <p className="small text-body-secondary mb-2">يُحدد موعد التسليم تلقائياً حسب نوع القطعة وتصنيف العميل، ويُحسب بأيام العمل (الجمعة عطلة لا تُحسب) من يوم اعتماد الطلب وبدء إنتاجه. الخانة الفارغة للتصنيف تعني «الافتراضي». المنتجات المتوفرة في المخزون لا تحتاج مدة.</p>
       <div className="d-grid gap-3">
         {KINDS.map(([kind, kl]) => (
@@ -100,6 +112,18 @@ function LeadTimes() {
           </div>
         ))}
       </div>
-    </Card>
+    </Sec>
+  );
+}
+
+/** قسم منسدل في الإعدادات (يُحفظ فتحه وإغلاقه على الجهاز) */
+function Sec({ title, id, children }) {
+  const key = `set_open_${id}`;
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(key) === '1'; } catch { return false; } });
+  return (
+    <details className="card set-sec" open={open} onToggle={(e) => { setOpen(e.currentTarget.open); try { localStorage.setItem(key, e.currentTarget.open ? '1' : '0'); } catch { /* ignore */ } }}>
+      <summary><span>{title}</span><span className="set-arrow" aria-hidden="true">‹</span></summary>
+      <div className="set-body">{children}</div>
+    </details>
   );
 }

@@ -848,3 +848,15 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .sch-day.holiday .sch-dh { color: var(--bs-secondary-color); }
 .sch-mh.holiday { color: #b42318; }
 @media (max-width: 900px) { .sch-week { grid-template-columns: 1fr; } }
+
+/* أقسام الإعدادات المنسدلة */
+.set-sec > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; font-weight: 800; font-size: 1.05rem; }
+.set-sec > summary::-webkit-details-marker { display: none; }
+.set-sec[open] > summary { border-bottom: 1px solid var(--bs-border-color); color: var(--gold-ink, #8a6a2f); }
+.set-arrow { font-size: 1.3rem; line-height: 1; color: var(--bs-secondary-color); transition: transform .2s; }
+.set-sec[open] .set-arrow { transform: rotate(90deg); }
+.set-body { padding: 14px 16px; }
+
+.sch-cap { font-size: .68rem; color: var(--bs-secondary-color); font-weight: 600; }
+.sch-cap.full { color: #b42318; }
+.sch-cell.full { box-shadow: inset 0 0 0 2px rgba(208,52,44,.45); }

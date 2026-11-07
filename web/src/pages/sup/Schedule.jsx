@@ -73,6 +73,15 @@ export default function Schedule() {
   const byDay = rows.reduce((m, o) => { (m[o.due] ||= []).push(o); return m; }, {});
   const count = (k) => rows.filter((o) => (k === 'late' ? o.late : o.status === k)).length;
   const today = data?.today || todayISO();
+  // استهلاك الطاقة اليومية (حسب حدود الإعدادات): الطلب الواحد من السلة يُحسب مرة
+  const cap = data?.capacity || {};
+  const hasCap = cap.orders || cap.grams || cap.pieces;
+  const load = (d) => {
+    const l = byDay[d] || [];
+    return { orders: new Set(l.map((o) => o.cart_ref || o.order_no)).size, grams: l.reduce((a, o) => a + Number(o.grams || 0), 0), pieces: l.reduce((a, o) => a + Number(o.quantity || 0), 0) };
+  };
+  const full = (d) => { const x = load(d); return (cap.orders && x.orders >= cap.orders) || (cap.grams && x.grams >= cap.grams) || (cap.pieces && x.pieces >= cap.pieces); };
+  const capText = (d) => { const x = load(d); return [cap.orders && `${x.orders}/${cap.orders} طلب`, cap.grams && `${Math.round(x.grams)}/${cap.grams} جم`, cap.pieces && `${x.pieces}/${cap.pieces} ق`].filter(Boolean).join(' · '); };
   const go = (v, d) => { setView(v); setA(d); };
 
   return (
@@ -113,7 +122,7 @@ export default function Schedule() {
           <div className="sch-week">
             {Array.from({ length: 7 }, (_, i) => add(f, i)).map((d) => (
               <div key={d} className={`sch-day ${d === today ? 'today' : ''} ${isFri(d) ? 'holiday' : ''}`}>
-                <button type="button" className="sch-dh" onClick={() => go('day', d)}><span>{DAYS[D(d).getUTCDay()]}{isFri(d) ? ' — عطلة' : ''}</span><b>{D(d).getUTCDate()} {MONTHS[D(d).getUTCMonth()]}</b>{byDay[d]?.length ? <span className="sch-n">{byDay[d].length}</span> : null}</button>
+                <button type="button" className="sch-dh" onClick={() => go('day', d)}><span>{DAYS[D(d).getUTCDay()]}{isFri(d) ? ' — عطلة' : ''}</span><b>{D(d).getUTCDate()} {MONTHS[D(d).getUTCMonth()]}</b>{hasCap && !isFri(d) ? <small className={`sch-cap ${full(d) ? 'full' : ''}`}>{full(d) ? 'ممتلئ · ' : ''}{capText(d)}</small> : null}{byDay[d]?.length ? <span className="sch-n">{byDay[d].length}</span> : null}</button>
                 <div className="sch-chips">{(byDay[d] || []).map((o) => <Chip key={o.id} o={o} />)}</div>
               </div>
             ))}
@@ -131,7 +140,7 @@ export default function Schedule() {
                 const list = byDay[d] || [];
                 const out = d < f || d > t;
                 return (
-                  <div key={d} className={`sch-cell ${out ? 'out' : ''} ${d === today ? 'today' : ''} ${isFri(d) ? 'holiday' : ''}`}>
+                  <div key={d} className={`sch-cell ${out ? 'out' : ''} ${d === today ? 'today' : ''} ${isFri(d) ? 'holiday' : ''} ${!out && hasCap && full(d) ? 'full' : ''}`} title={hasCap && !out ? capText(d) : undefined}>
                     <button type="button" className="sch-cd" onClick={() => go('day', d)}>{D(d).getUTCDate()}{list.length ? <span className="sch-n">{list.length}</span> : null}</button>
                     {!out && list.slice(0, 3).map((o) => <Chip key={o.id} o={o} />)}
                     {!out && list.length > 3 && <button type="button" className="sch-more" onClick={() => go('day', d)}>+{list.length - 3} أخرى</button>}
