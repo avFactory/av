@@ -54,6 +54,11 @@ export default function StaffLayout() {
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
+  // القوائم المنسدلة: المجموعة التي فيها الصفحة الحالية تُفتح تلقائياً، والاختيار يُحفظ على الجهاز
+  const [groups, setGroups] = useState(() => { try { return JSON.parse(localStorage.getItem('nav_groups') || '{}'); } catch { return {}; } });
+  const activeGrp = NAV.find(([, items]) => items.some(([to, , , end]) => (end ? loc.pathname === to : loc.pathname === to || loc.pathname.startsWith(`${to}/`))))?.[0];
+  const isOpen = (g) => (groups[g] ?? g === activeGrp);
+  const toggleGrp = (g) => setGroups((x) => { const n = { ...x, [g]: !isOpen(g) }; try { localStorage.setItem('nav_groups', JSON.stringify(n)); } catch { /* ignore */ } return n; });
   // مسح ملصق طلب بقارئ الباركود من أي صفحة يفتح بيانات الطلب
   const navScan = useNavigate();
   useScanner((code) => navScan(`/sup/scan?code=${encodeURIComponent(code)}`), can('scan.use', 'orders.view') && loc.pathname !== '/sup/scan');
@@ -67,9 +72,11 @@ export default function StaffLayout() {
             const vis = items.filter(([, , p]) => can(...p));
             if (!vis.length) return null;
             return (
-              <div key={grp} className="d-flex flex-column">
-                <div className="grp">{grp}</div>
-                {vis.map(([to, label, , end]) => <NavLink key={to} to={to} end={end} className="nav-link">{label}</NavLink>)}
+              <div key={grp} className={`nav-grp ${isOpen(grp) ? 'open' : ''} ${grp === activeGrp ? 'has-active' : ''}`}>
+                <button type="button" className="grp-btn" aria-expanded={isOpen(grp)} onClick={() => toggleGrp(grp)}>
+                  <span>{grp}</span><span className="grp-arrow" aria-hidden="true">‹</span>
+                </button>
+                {isOpen(grp) && <div className="grp-items">{vis.map(([to, label, , end]) => <NavLink key={to} to={to} end={end} className="nav-link">{label}</NavLink>)}</div>}
               </div>
             );
           })}

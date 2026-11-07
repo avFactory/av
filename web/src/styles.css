@@ -682,3 +682,15 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .finds-box { display: grid; gap: 8px; padding: 10px 12px; border: 1px dashed var(--gold, #a8864f); border-radius: 12px; background: color-mix(in srgb, var(--gold-soft, #f3ead9) 40%, transparent); }
 .finds-row { display: grid; grid-template-columns: minmax(0, 1fr) 80px 130px auto; gap: 8px; align-items: center; }
 @media (max-width: 600px) { .finds-row { grid-template-columns: 1fr 70px 110px; } .finds-row > button { grid-column: 1 / -1; justify-self: start; } }
+
+/* القائمة الجانبية: مجموعات منسدلة داخل إطار */
+.side .nav-grp { border: 1px solid rgba(255,255,255,.14); border-radius: 12px; margin-bottom: 8px; overflow: hidden; background: rgba(255,255,255,.02); }
+.side .nav-grp.has-active { border-color: rgba(201,169,106,.55); }
+.side .grp-btn { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; background: transparent; border: 0; color: #f1ece2;
+  font-size: 1.12rem; font-weight: 800; padding: 11px 14px; text-align: right; cursor: pointer; }
+.side .grp-btn:hover { background: rgba(255,255,255,.06); }
+.side .nav-grp.open > .grp-btn { border-bottom: 1px solid rgba(255,255,255,.1); color: #d9bf8a; }
+.side .grp-arrow { font-size: 1.3rem; line-height: 1; transition: transform .2s; color: #9b958a; }
+.side .nav-grp.open .grp-arrow { transform: rotate(90deg); color: #d9bf8a; }
+.side .grp-items { display: flex; flex-direction: column; padding: 6px; }
+.side .grp-items .nav-link { font-size: 1rem; padding-inline-start: 18px; }
