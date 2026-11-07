@@ -52,6 +52,7 @@ export default function Product() {
             {Number(p.stone_weight) > 0 && <div><dt>وزن الحجر</dt><dd>{fmtW(p.stone_weight)} قيراط</dd></div>}
             {Number(p.zircon_weight) > 0 && <div><dt>وزن الزركون</dt><dd>{fmtW(p.zircon_weight)} جم</dd></div>}
             <div><dt>التوفر</dt><dd>{p.availability === 'available' && p.stock_qty > 0 ? `متوفر (${p.stock_qty})` : 'يصنع حسب الطلب'}</dd></div>
+            {p.lead_days != null && <div><dt>مدة التنفيذ المتوقعة</dt><dd>{p.lead_days} يوم <span className="small text-body-secondary">من اعتماد الطلب</span></dd></div>}
             {p.labor && <div><dt>أجور التصنيع</dt><dd style={{ color: 'var(--gold-ink)' }}>{fmtMoney(p.labor.rate)} {METHODS[p.labor.method]}</dd></div>}
             {p.labor && <div><dt>تقدير أجرة القطعة</dt><dd>{fmtMoney(p.labor.estimate)}</dd></div>}
             {!approved && <div><dt>أجور التصنيع</dt><dd><Link to={loginUrl} className="link">سجّل الدخول لعرض الأجور</Link></dd></div>}

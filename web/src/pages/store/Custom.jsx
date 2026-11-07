@@ -66,6 +66,7 @@ export default function Custom() {
           <Field label="ملاحظات" className="mt"><Textarea value={f.notes} onChange={set('notes')} rows={4} /></Field>
         </Card>
         <StonesCard f={f} setF={setF} />
+        <LeadNote diamond={!!f.has_diamonds && (f.diamonds || []).some((d) => d.lot_id)} />
         <div className="hrow end"><Btn size="lg" type="submit" loading={busy}>🛒 أضف الطلب للسلة</Btn></div>
       </form>
     </Page>
@@ -120,4 +121,12 @@ function StonesCard({ f, setF }) {
       {STONES.some(([k]) => shown(k)) && <div className="grid g3">{STONES.filter(([k]) => shown(k)).map(([k, , label]) => <Field key={k} label={label}><Input dir="ltr" inputMode="decimal" value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: num(e.target.value) })} /></Field>)}</div>}
     </Card>
   );
+}
+
+/** مدة التنفيذ المتوقعة للتصميم الخاص حسب الفئة وتصنيف العميل */
+function LeadNote({ diamond }) {
+  const { data } = useFetch('/store/lead-times');
+  const d = data?.[diamond ? 'custom_diamond' : 'custom_gold'];
+  if (d == null) return null;
+  return <div className="alert alert-light border small py-2 mb-0">⏱ مدة التنفيذ المتوقعة للتصميم الخاص{diamond ? ' (ألماس مخبري)' : ''}: <b>{d} يوم</b> من اعتماد عرض الأجور — ويمكنكم طلب موعد محدد في الخانة أعلاه.</div>;
 }

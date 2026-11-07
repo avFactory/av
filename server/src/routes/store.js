@@ -14,6 +14,7 @@ import { materialFor, orderColor } from './orders.js';
 import { parseDiamonds, optW, releaseDiamonds } from '../lib/stoneReserve.js';
 import { invoiceDetail } from './finance.js';
 import { newGroupNo, nextItemNo } from '../lib/orderGroups.js';
+import { applyDueDate, leadDays, orderCategory } from '../lib/leadTime.js';
 import { listBranches, createBranch, updateBranch, assertMainAccount } from '../lib/branches.js';
 
 const r = Router();
@@ -113,7 +114,17 @@ r.get('/products/:id', async (req, res) => {
   if (!p) throw notFound('المنتج غير متوفر');
   const l = await resolveLabor(pool, { customer_id: req.user.customer_id, product_id: p.id, product_type: p.product_type });
   p.labor = l ? { method: l.method, rate: l.rate, estimate: laborAmount(l.method, l.rate, p.final_weight || p.approx_weight, 1) } : null;
+  // مدة التنفيذ المتوقعة لهذا العميل (لا تُعرض للمتوفر في المخزون)
+  const inStock = p.availability === 'available' && Number(p.stock_qty) > 0;
+  p.lead_days = inStock ? null : await leadDays(pool, { kind: 'catalog', category: p.diamond_details?.length ? 'diamond' : orderCategory(p), customerId: req.user.customer_id });
   res.json(p);
+});
+
+/** مدة تنفيذ التصميم الخاص المتوقعة لهذا العميل (لصفحة "اطلب تصميمك") */
+r.get('/lead-times', async (req, res) => {
+  const out = {};
+  for (const kind of ['catalog', 'custom']) for (const category of ['gold', 'diamond']) out[`${kind}_${category}`] = await leadDays(pool, { kind, category, customerId: req.user.customer_id });
+  res.json(out);
 });
 
 /** إرسال سلة المنتجات الجاهزة: كل بند يصبح طلباً مستقلاً برقم وQR خاص (مرتبطة برقم السلة) */
@@ -142,6 +153,8 @@ r.post('/orders', async (req, res) => {
          str(it.size, 'المقاس'), qty, str(it.notes, 'ملاحظات'), labor?.method || null, labor?.rate || null,
          labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null, orderColor(color), JSON.stringify(p.diamonds || []), p.pearl_weight, p.stone_weight, p.zircon_weight, `${cartRef}-${idx + 1}`])).rows[0];
       await prod.logStage(db, o.id, null, 'created', req.user.id, `طلب من المتجر (${cartRef})`, true);
+      // المتوفر في المخزون لا يحتاج مدة تنفيذ
+      if (!(p.availability === 'available' && Number(p.stock_qty) >= qty)) await applyDueDate(db, o.id);
       created.push(o);
     }
     await notifyPerm(db, 'orders.manage', { kind: 'order', title: `طلب جديد من ${req.user.shop_name}${req.user.branch_name ? ' - ' + req.user.branch_name : ''}`, body: `${created.length} صنف - ${cartRef}`, link: `/orders?q=${encodeURIComponent(cartRef)}` });
@@ -184,6 +197,7 @@ r.post('/custom', upload.array('files', 20), async (req, res) => {
       await db.query('insert into order_files(order_id, kind, path, original_name, mime, uploaded_by, customer_visible) values ($1,$2,$3,$4,$5,$6,true)', [o.id, kind, f.path, f.original_name, f.mime, req.user.id]);
     }
     await prod.logStage(db, o.id, null, 'created', req.user.id, 'طلب تصميم خاص', true);
+    await applyDueDate(db, o.id);
     await notifyPerm(db, 'orders.quote', { kind: 'order', title: `طلب تصميم خاص من ${req.user.shop_name}`, body: o.order_no, link: `/orders/${o.id}` });
     await audit(db, req, 'store.custom', 'order', o.id, { files: files.length });
     return { id: o.id, order_no: o.order_no, cart_ref: cartRef };

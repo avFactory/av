@@ -3,6 +3,7 @@ import { reserveDiamonds } from './stoneReserve.js';
 import { notifyCustomer, notifyPerm, notifyUsers } from './notify.js';
 import * as ledger from './ledger.js';
 import { audit } from './audit.js';
+import { applyDueDate } from './leadTime.js';
 
 export async function lockOrder(db, id) {
   const r = await db.query('select * from orders where id=$1 for update', [id]);
@@ -75,6 +76,8 @@ export async function startProduction(db, order, userId) {
      where id=$1`,
     [order.id, routeId]
   );
+  // الموعد التلقائي يُحسب من يوم بدء الإنتاج (اعتماد الطلب)، والموعد اليدوي لا يتغير
+  await applyDueDate(db, order.id, { recalc: true });
   await enterStage(db, { ...order, route_id: routeId, status: 'in_production' }, stages[0], userId);
   await notifyPerm(db, 'orders.advance', { kind: 'order', title: `أمر إنتاج جديد ${order.order_no}`, body: order.title, link: `/orders/${order.id}` });
 }

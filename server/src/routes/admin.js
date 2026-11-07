@@ -769,6 +769,36 @@ r.post('/pricing/token', requirePerm('pricing.manage'), async (req, res) => {
     return { token };
   }));
 });
+// ------------------------------------------------------------------ مدة تنفيذ الطلبات (بالأيام)
+r.get('/lead-times', requirePerm('settings.manage', 'orders.manage'), async (_req, res) => {
+  res.json({
+    tiers: await many('select id, name, color from customer_tiers order by sort_order, name'),
+    rows: await many('select kind, category, tier_id, days from order_lead_times order by kind, category, tier_id nulls first'),
+  });
+});
+r.put('/lead-times', requirePerm('settings.manage'), async (req, res) => {
+  const list = Array.isArray(req.body.rows) ? req.body.rows : [];
+  res.json(await tx(async (db) => {
+    const before = (await db.query('select kind, category, tier_id, days from order_lead_times')).rows;
+    for (const x of list) {
+      const kind = oneOf(x.kind, ['catalog', 'custom'], 'النوع');
+      const category = oneOf(x.category, ['gold', 'diamond'], 'الفئة');
+      const tier = x.tier_id ? int(x.tier_id, 'التصنيف') : null;
+      if (x.days === '' || x.days == null) {
+        // فراغ للتصنيف = يتبع المدة الافتراضية؛ والافتراضية لا تُحذف
+        if (tier) await db.query('delete from order_lead_times where kind=$1 and category=$2 and tier_id=$3', [kind, category, tier]);
+        continue;
+      }
+      const days = int(x.days, 'عدد الأيام', { min: 0 });
+      if (days > 365) throw bad('عدد الأيام يجب ألا يتجاوز 365');
+      await db.query(`insert into order_lead_times(kind, category, tier_id, days) values ($1,$2,$3,$4)
+        on conflict (kind, category, coalesce(tier_id, 0)) do update set days=excluded.days, updated_at=now()`, [kind, category, tier, days]);
+    }
+    await audit(db, req, 'lead_times.update', 'settings', 'order_lead_times', { before, after: list });
+    return { ok: true };
+  }));
+});
+
 r.put('/settings', requirePerm('settings.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
     const allowed = ['company', 'vat_rate', 'weight_decimals', 'abnormal_threshold', 'currency', 'notify_channels', 'diamond_worker_nos'];

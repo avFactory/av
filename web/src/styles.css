@@ -675,3 +675,5 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .audit-val { white-space: pre-wrap; word-break: break-word; display: block; max-height: 9rem; overflow: auto; }
 .audit-raw { max-height: 50vh; overflow: auto; font-size: .75rem; background: var(--bs-tertiary-bg); padding: 10px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
 @media (max-width: 760px) { .audit-filters > input, .audit-filters label input { width: 100%; } .audit-filters label { flex: 1; } }
+.lead-table th { font-size: .78rem; font-weight: 600; white-space: nowrap; }
+.lead-table td { padding-block: 6px; }

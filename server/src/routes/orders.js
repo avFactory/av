@@ -14,6 +14,7 @@ import * as ledger from '../lib/ledger.js';
 import * as prod from '../lib/production.js';
 import { resolveLabor, laborAmount } from '../lib/labor.js';
 import { nextItemNo, orderCopyColumns } from '../lib/orderGroups.js';
+import { applyDueDate } from '../lib/leadTime.js';
 
 const r = Router();
 
@@ -53,6 +54,8 @@ r.post('/', requirePerm('orders.manage'), async (req, res) => {
        b.stone_weight !== undefined ? optW(b.stone_weight, 'وزن الحجر') : product?.stone_weight ?? null, b.zircon_weight !== undefined ? optW(b.zircon_weight, 'وزن الزركون') : product?.zircon_weight ?? null]
     )).rows[0];
     await prod.logStage(db, o.id, null, 'created', req.user.id, 'إنشاء الطلب', true);
+    // موعد التسليم التلقائي حسب الفئة وتصنيف العميل (إن لم يُحدد يدوياً)
+    await applyDueDate(db, o.id);
     if (b.start !== false) await prod.startProduction(db, o, req.user.id);
     await audit(db, req, 'order.create', 'order', o.id, { order_no: o.order_no });
     return o;
