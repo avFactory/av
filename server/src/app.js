@@ -22,6 +22,7 @@ import miscRoutes from './routes/misc.js';
 import publicRoutes from './routes/public.js';
 import castingRoutes from './routes/casting.js';
 import findingsRoutes from './routes/findings.js';
+import { staff as statementStaff, store as statementStore } from './routes/statements.js';
 
 export function createApp() {
   const app = express();
@@ -79,8 +80,10 @@ export function createApp() {
   app.use('/api/inventory', invRoutes);
   app.use('/api/stones', stoneRoutes);
   app.use('/api/catalog', catalogRoutes);
+  app.use('/api/finance', statementStaff);
   app.use('/api/finance', financeRoutes);
   app.use('/api/reports', reportRoutes);
+  app.use('/api/store', statementStore);
   app.use('/api/store', storeRoutes);
   app.use('/api/public', publicRoutes);
   app.use('/api/casting', castingRoutes);

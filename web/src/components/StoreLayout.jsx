@@ -36,7 +36,7 @@ export default function StoreLayout() {
               <NavLink to="/store" end className="nav-link">المنتجات</NavLink>
               <NavLink to="/store/custom" className="nav-link">اطلب تصميمك</NavLink>
               {approved && <NavLink to="/store/orders" className="nav-link">طلباتي</NavLink>}
-              {approved && <NavLink to="/store/invoices" className="nav-link">الفواتير</NavLink>}
+              {approved && <><NavLink to="/store/invoices" className="nav-link">الفواتير</NavLink><NavLink to="/store/statement" className="nav-link">كشف الحساب</NavLink></>}
               <NavLink to="/store/cart" className="nav-link">السلة <span className="badge rounded-pill text-bg-warning">{count}</span></NavLink>
             </nav>
             <div className="d-flex flex-wrap align-items-center gap-2 py-2 py-lg-0">

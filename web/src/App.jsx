@@ -38,6 +38,9 @@ const Inventory = L(() => import('./pages/admin/Inventory.jsx'));
 const Stones = L(() => import('./pages/admin/Stones.jsx'));
 const Findings = L(() => import('./pages/admin/Findings.jsx'));
 const Schedule = L(() => import('./pages/sup/Schedule.jsx'));
+const CustomerStatement = L(() => import('./pages/admin/CustomerStatement.jsx'));
+const Submissions = L(() => import('./pages/admin/Submissions.jsx'));
+const StoreStatement = L(() => import('./pages/store/Statement.jsx'));
 const Products = L(() => import('./pages/admin/Products.jsx'));
 const Pricing = L(() => import('./pages/admin/Pricing.jsx'));
 const Labor = L(() => import('./pages/admin/Labor.jsx'));
@@ -120,6 +123,8 @@ export default function App() {
           <Route path="/admin/stages" element={S(<Stages />, ['stages.manage', 'loss_rates.manage'])} />
           <Route path="/admin/inventory" element={S(<Inventory />, ['inventory.view'])} />
           <Route path="/admin/stones" element={S(<Stones />, ['stones.view'])} />
+          <Route path="/admin/customers/:id/statement" element={S(<CustomerStatement />, ['finance.view', 'customers.view'])} />
+          <Route path="/admin/submissions" element={S(<Submissions />, ['finance.view'])} />
           <Route path="/sup/schedule" element={S(<Schedule />, ['schedule.view'])} />
           <Route path="/admin/findings" element={S(<Findings />, ['inventory.view', 'custody.issue', 'findings.manage'])} />
           <Route path="/admin/products" element={S(<Products />, ['products.manage'])} />
@@ -157,6 +162,7 @@ export default function App() {
           <Route path="/store/orders" element={S(<MyOrders />, ['store.access'])} />
           <Route path="/store/orders/:id" element={S(<Track />, ['store.access'])} />
           <Route path="/store/invoices" element={S(<SInvoices />, ['store.access'])} />
+          <Route path="/store/statement" element={S(<StoreStatement />, ['store.access'])} />
           <Route path="/store/invoices/:id" element={S(<InvoiceView store />, ['store.access'])} />
           <Route path="/store/account" element={S(<SAccount />, ['store.access'])} />
           <Route path="/store/notifications" element={S(<Notifications />, ['store.access'])} />

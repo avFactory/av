@@ -40,6 +40,7 @@ const NAV = [
   ['المالية', [
     ['/admin/invoices', 'الفواتير', ['finance.view']],
     ['/admin/payments', 'المدفوعات', ['finance.view']],
+    ['/admin/submissions', 'مستندات السداد', ['finance.view']],
     ['/admin/expenses', 'المصروفات', ['finance.view']],
     ['/admin/labor', 'أجور التصنيع', ['labor.manage']],
   ]],

@@ -18,11 +18,14 @@ export default function CustomerDetail() {
   const c = data.customer;
   const setStatus = (status) => run(async () => { await api.put(`/admin/customers/${id}`, { status }); reload(); }, 'تم التحديث');
   return (
-    <Page title={c.shop_name} subtitle={c.owner_name} back="/admin/customers" actions={can('customers.manage') && <>
+    <Page title={c.shop_name} subtitle={c.owner_name} back="/admin/customers" actions={<>
+      {(can('finance.view') || can('customers.view')) && <Link className="btn btn-dark" to={`/admin/customers/${c.id}/statement`}>كشف الحساب</Link>}
+      {can('customers.manage') && <>
       {c.status !== 'approved' && <Btn kind="ok" onClick={() => setStatus('approved')}>موافقة</Btn>}
       {c.status === 'pending' && <Btn kind="ghost" onClick={() => setStatus('rejected')}>رفض</Btn>}
       {c.status === 'approved' && <Btn kind="ghost" onClick={() => setStatus('suspended')}>إيقاف</Btn>}
       <Btn kind="ghost" onClick={() => setEdit({ ...c })}>تعديل</Btn>
+      </>}
     </>}>
       <div className="grid g2 mb">
         <Card title="بيانات المنشأة"><Kv items={[['الحالة', c.status], ['الجوال', c.phone], ['البريد', c.email], ['المدينة', c.city], ['العنوان', c.address], ['الرقم الضريبي', c.vat_number], ['السجل التجاري', c.cr_number], ['التصنيف', <TierBadge name={c.tier_name} color={c.tier_color} />], ['حسابات الدخول', data.users.map((u) => u.username).join('، ')]]} /></Card>
