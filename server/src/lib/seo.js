@@ -109,10 +109,10 @@ ${verify}<link rel="canonical" href="${site}/" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />
 <script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;background:#0f0f0f;color:#eee;line-height:1.8}
+*{box-sizing:border-box}body{margin:0;position:relative;z-index:0;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;background:#0f0f0f;color:#eee;line-height:1.8}
 a{color:#d4af37}.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
-header.hero{background:#111 url(/login-bg.webp) center/cover;position:relative}header.hero:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(0,0,0,.85))}
-.hero .wrap{position:relative;padding:28px 16px 64px;text-align:center}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:40px}
+body:before{content:"";position:fixed;inset:0;z-index:-1;background:#111 url(/login-bg.webp) center/cover no-repeat}header.hero{position:relative;min-height:100vh;min-height:100svh;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.8))}main,footer{background:rgba(15,15,15,.93)}
+.hero .wrap{width:100%;padding:28px 16px 64px;text-align:center}.top{position:absolute;top:24px;inset-inline:max(16px,calc((100% - 1080px)/2 + 16px));display:flex;justify-content:space-between;align-items:center}
 .top img{height:56px}.top nav{display:flex;gap:18px;flex-wrap:wrap}.top nav a{text-decoration:none}
 h1{font-size:clamp(26px,5vw,44px);margin:0 0 8px;color:#f3d77a}.sub{font-size:clamp(16px,2.6vw,20px);color:#ddd;margin:0 auto 26px;max-width:760px}
 .btn{display:inline-block;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700;margin:6px}.btn.p{background:#d4af37;color:#111}.btn.s{border:1px solid #d4af37}
