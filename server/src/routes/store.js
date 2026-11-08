@@ -16,6 +16,7 @@ import { invoiceDetail, withInvoiceExtras } from './finance.js';
 import { newGroupNo, nextItemNo } from '../lib/orderGroups.js';
 import { bullionVals } from './catalog.js';
 import { applyDueDate, leadDays, orderCategory } from '../lib/leadTime.js';
+import { visibleTo } from '../lib/audience.js';
 import { listBranches, createBranch, updateBranch, assertMainAccount } from '../lib/branches.js';
 
 const r = Router();
@@ -79,8 +80,8 @@ r.get('/products', async (req, res) => {
   // صفحات: 48 منتجاً في كل مرة (التمرير يجلب المزيد)، وصورة الغلاف فقط في القائمة
   const limit = Math.min(Math.max(int(f.limit ?? 48, 'limit', { min: 1 }), 1), 200);
   const offset = Math.max(int(f.offset ?? 0, 'offset', { min: 0 }), 0);
-  const params = [f.type || null, f.karat ? int(f.karat) : null, String(f.q ?? '').trim() ? `%${String(f.q).trim().replace(/[%_\\]/g, (c) => '\\' + c)}%` : null, ['gold', 'diamond', 'pearl', 'stone', 'bullion'].includes(f.cat) ? f.cat : null];
-  const where = `p.active and p.availability <> 'unavailable'
+  const params = [f.type || null, f.karat ? int(f.karat) : null, String(f.q ?? '').trim() ? `%${String(f.q).trim().replace(/[%_\\]/g, (c) => '\\' + c)}%` : null, ['gold', 'diamond', 'pearl', 'stone', 'bullion'].includes(f.cat) ? f.cat : null, req.user.customer_id ?? null];
+  const where = `p.active and p.availability <> 'unavailable' and ${visibleTo(5)}
       and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3 or p.product_type ilike $3)
       and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
         or ($4='stone' and coalesce(p.stone_weight,0) > 0) or ($4='bullion' and p.bullion_type is not null)
@@ -101,7 +102,7 @@ r.get('/products', async (req, res) => {
     delete p.labor_method; delete p.labor_rate;
   }
   const total = offset === 0 ? (await one(`select count(*)::int n from products p where ${where}`, params)).n : undefined;
-  const types = offset === 0 ? (await many('select distinct product_type from products where active order by 1')).map((t) => t.product_type) : undefined;
+  const types = offset === 0 ? (await many(`select distinct p.product_type from products p where p.active and ${visibleTo(1)} order by 1`, [req.user.customer_id ?? null])).map((t) => t.product_type) : undefined;
   res.json({ products: rows, types, total, has_more: hasMore, offset });
 });
 
@@ -111,7 +112,7 @@ r.get('/products/:id', async (req, res) => {
       p.pearl_weight::text, p.stone_weight::text, p.zircon_weight::text, p.bullion_type, p.bullion_weight::text,
       coalesce((select json_agg(json_build_object('shape', s.name, 'size', l.size_label, 'color', l.color, 'clarity', l.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
         from jsonb_array_elements(p.diamonds) d join stone_lots l on l.id=(d->>'lot_id')::int left join stone_shapes s on s.id=l.shape_id), '[]') as diamond_details
-    from products p where p.id=$1 and p.active`, [int(req.params.id)]);
+    from products p where p.id=$1 and p.active and ${visibleTo(2)}`, [int(req.params.id), req.user.customer_id ?? null]);
   if (!p) throw notFound('المنتج غير متوفر');
   const l = await resolveLabor(pool, { customer_id: req.user.customer_id, product_id: p.id, product_type: p.product_type });
   p.labor = l ? { method: l.method, rate: l.rate, estimate: laborAmount(l.method, l.rate, p.final_weight || p.approx_weight, 1) } : null;
@@ -137,7 +138,7 @@ r.post('/orders', async (req, res) => {
     const cartRef = await newGroupNo(db);
     const created = [];
     for (const [idx, it] of items.entries()) {
-      const p = (await db.query('select * from products where id=$1 and active for update', [int(it.product_id)])).rows[0];
+      const p = (await db.query(`select * from products p where p.id=$1 and p.active and ${visibleTo(2)} for update`, [int(it.product_id), req.user.customer_id ?? null])).rows[0];
       if (!p || p.availability === 'unavailable') throw bad('منتج غير متوفر');
       const karat = int(it.karat, 'العيار');
       if (!p.karats.includes(karat)) throw bad(`العيار ${karat} غير متاح للمنتج ${p.name}`);

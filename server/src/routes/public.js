@@ -6,6 +6,7 @@ import { getPricing, checkToken, shortView } from '../lib/pricingSheet.js';
 import { checkShareToken } from '../lib/shareLinks.js';
 import { invoiceDetail, withInvoiceExtras } from './finance.js';
 import { notFound, int } from '../lib/http.js';
+import { visibleTo } from '../lib/audience.js';
 
 const r = Router();
 // تصفح المنتجات يتطلب تسجيل الدخول (حساب محل أو موظف) — روابط التتبع والتسعيرة والمخزون تبقى بالرمز السري
@@ -23,8 +24,8 @@ r.get('/products', needLogin, async (req, res) => {
   const f = req.query;
   const limit = Math.min(Math.max(int(f.limit ?? 48, 'limit'), 1), 200);
   const offset = Math.max(int(f.offset ?? 0, 'offset'), 0);
-  const params = [f.type || null, f.karat ? int(f.karat) : null, String(f.q ?? '').trim() ? `%${String(f.q).trim().replace(/[%_\\]/g, (c) => '\\' + c)}%` : null, ['gold', 'diamond', 'pearl', 'stone', 'bullion'].includes(f.cat) ? f.cat : null];
-  const where = `p.active and p.availability <> 'unavailable'
+  const params = [f.type || null, f.karat ? int(f.karat) : null, String(f.q ?? '').trim() ? `%${String(f.q).trim().replace(/[%_\\]/g, (c) => '\\' + c)}%` : null, ['gold', 'diamond', 'pearl', 'stone', 'bullion'].includes(f.cat) ? f.cat : null, req.user.customer_id ?? null];
+  const where = `p.active and p.availability <> 'unavailable' and ${visibleTo(5)}
       and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3 or p.product_type ilike $3)
       and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
         or ($4='stone' and coalesce(p.stone_weight,0) > 0) or ($4='bullion' and p.bullion_type is not null)
@@ -33,13 +34,13 @@ r.get('/products', needLogin, async (req, res) => {
   const hasMore = rows.length > limit;
   if (hasMore) rows.pop();
   const total = offset === 0 ? (await one(`select count(*)::int n from products p where ${where}`, params)).n : undefined;
-  const types = offset === 0 ? (await many("select distinct product_type from products where active and availability <> 'unavailable' order by 1")).map((t) => t.product_type) : undefined;
+  const types = offset === 0 ? (await many(`select distinct p.product_type from products p where p.active and p.availability <> 'unavailable' and ${visibleTo(1)} order by 1`, [req.user.customer_id ?? null])).map((t) => t.product_type) : undefined;
   res.setHeader('Cache-Control', 'private, max-age=60');
   res.json({ products: rows, types, total, has_more: hasMore, offset });
 });
 
 r.get('/products/:id', needLogin, async (req, res) => {
-  const p = await one(`select ${COLS} from products p where p.id=$1 and p.active and p.availability <> 'unavailable'`, [int(req.params.id)]);
+  const p = await one(`select ${COLS} from products p where p.id=$1 and p.active and p.availability <> 'unavailable' and ${visibleTo(2)}`, [int(req.params.id), req.user.customer_id ?? null]);
   if (!p) throw notFound('المنتج غير متوفر');
   res.json(p);
 });

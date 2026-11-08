@@ -775,3 +775,38 @@ test('السبائك: صنف في المتجر، سبائك أو جنيهات ب
   const c = await fetch(base + '/api/store/custom', { method: 'POST', headers: { cookie: ck }, body: fd }).then((r) => r.json());
   assert.equal((await pool.query('select bullion_type from orders where id=$1', [c.id])).rows[0].bullion_type, 'bar');
 });
+
+test('تخصيص المنتج: الافتراضي للجميع، أو لعملاء بالاسم أو بالفئة فقط', async () => {
+  const { hashPassword } = await import('../src/lib/auth.js');
+  const tier = (await pool.query("insert into customer_tiers(name) values ('فئة خاصة للتخصيص') returning id")).rows[0].id;
+  const mkC = async (u, t) => {
+    const id = (await pool.query("insert into customers(shop_name, owner_name, phone, status, tier_id) values ($1,'م',$2,'approved',$3) returning id", [`محل ${u}`, `05${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`, t])).rows[0].id;
+    await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, must_change_password) values ($1,$2,'م','customer',$3,false)", [u, hashPassword('Aud#2026shop'), id]);
+    let ck = '';
+    const cu = async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+    await cu('POST', '/auth/login', { username: u, password: 'Aud#2026shop' });
+    return { id, cu };
+  };
+  const named = await mkC('audnamed', null);
+  const tiered = await mkC('audtier', tier);
+  const other = await mkC('audother', null);
+  const mk = async (name, extra = {}) => { const f = new FormData(); for (const [k, v] of Object.entries({ name, product_type: 'خاتم', karats: '21', colors: 'yellow', ...extra })) f.append(k, v); return (await call('POST', '/catalog/products', null, f)).data; };
+  const pub = await mk('منتج عام');
+  const priv = await mk('منتج مخصص', { allowed_customer_ids: String(named.id), allowed_tier_ids: String(tier) });
+  assert.deepEqual([pub.allowed_customer_ids, pub.allowed_tier_ids], [[], []], 'الافتراضي بدون تخصيص');
+  const sees = async (c) => (await c.cu('GET', '/store/products?limit=200')).data.products.map((p) => p.id);
+  for (const c of [named, tiered]) {
+    const ids = await sees(c);
+    assert.ok(ids.includes(pub.id) && ids.includes(priv.id), 'العميل المخصص يرى المنتج');
+    assert.equal((await c.cu('GET', `/store/products/${priv.id}`)).status, 200);
+  }
+  const ids = await sees(other);
+  assert.ok(ids.includes(pub.id) && !ids.includes(priv.id), 'غيره لا يرى المنتج المخصص');
+  assert.equal((await other.cu('GET', `/store/products/${priv.id}`)).status, 404);
+  assert.equal((await other.cu('POST', '/store/orders', { items: [{ product_id: priv.id, karat: 21, quantity: 1 }] })).status, 400, 'ولا يستطيع طلبه');
+  assert.ok((await call('GET', '/catalog/audience')).data.customers.some((c) => c.id === named.id));
+  // إلغاء التخصيص: يرجع للجميع
+  const f = new FormData(); for (const [k, v] of Object.entries({ name: 'منتج مخصص', product_type: 'خاتم', karats: '21', colors: 'yellow', allowed_customer_ids: '', allowed_tier_ids: '' })) f.append(k, v);
+  assert.equal((await call('PUT', `/catalog/products/${priv.id}`, null, f)).status, 200);
+  assert.ok((await sees(other)).includes(priv.id));
+});

@@ -23,11 +23,12 @@ export default function Products() {
   const save = () => run(async () => {
     const fd = new FormData();
     for (const [k, v] of Object.entries(f)) {
-      if (['files', 'media', 'id', 'diamonds', 'has_diamonds', 'main'].includes(k) || k.startsWith('show_') || v == null) continue;
+      if (['files', 'media', 'id', 'diamonds', 'has_diamonds', 'main', 'restricted'].includes(k) || k.startsWith('show_') || v == null) continue;
       fd.append(k, Array.isArray(v) ? v.join(',') : v);
     }
     fd.append('diamonds', JSON.stringify(f.has_diamonds === false ? [] : (f.diamonds || []).filter((d) => d.lot_id)));
     for (const k of ['pearl_weight', 'stone_weight', 'zircon_weight', 'bullion_type', 'bullion_weight']) if (f[k] == null) fd.append(k, '');
+    if (!isRestricted(f)) { fd.set('allowed_customer_ids', ''); fd.set('allowed_tier_ids', ''); }
     for (const x of f.files || []) fd.append('files', x);
     if (f.main?.new != null) fd.append('main_new', String(f.main.new)); else if (f.main?.media) fd.append('main_media', String(f.main.media));
     if (f.id) await api.put(`/catalog/products/${f.id}`, fd); else await api.post('/catalog/products', fd);
@@ -46,7 +47,7 @@ export default function Products() {
     <Page title="منتجات المتجر" actions={<Btn onClick={() => setF({ karats: [21], colors: ['yellow'], sizes: [], availability: 'made_to_order', active: true, labor_method: 'per_gram' })}>منتج جديد</Btn>}>
       <div className="card"><Table rows={data} onRow={(p) => setF({ ...p, karats: p.karats, colors: p.colors, sizes: p.sizes, files: null })} columns={[
         ['', (p) => (p.media[0] ? <img src={fileUrl(p.media[0].path, 400)} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }} /> : null)],
-        ['رقم المنتج', 'sku'], ['الاسم', (p) => <b>{p.name}</b>], ['النوع', 'product_type'], ['العيارات', (p) => p.karats.join('، ')], ['الألوان', (p) => p.colors.map((c) => COLORS[c]).join('، ')],
+        ['رقم المنتج', 'sku'], ['الاسم', (p) => <><b>{p.name}</b>{isRestricted(p) && <div><Badge tone="warn">🔒 مخصص لعملاء محددين</Badge></div>}</>], ['النوع', 'product_type'], ['العيارات', (p) => p.karats.join('، ')], ['الألوان', (p) => p.colors.map((c) => COLORS[c]).join('، ')],
         ['الوزن', (p) => fmtW(p.final_weight || p.approx_weight)], ['الأجرة', (p) => (p.labor_method ? `${fmtMoney(p.labor_rate)} ${METHODS[p.labor_method]}` : 'حسب القواعد')], ['المخزون', 'stock_qty'],
         ['التوفر', (p) => AV[p.availability]],
         ['', (p) => <span className="d-inline-flex gap-2 align-items-center" onClick={(e) => e.stopPropagation()}>
@@ -76,6 +77,7 @@ export default function Products() {
             <Field label="مسار الإنتاج"><Select value={f.route_id || ''} onChange={(e) => setF({ ...f, route_id: e.target.value })} placeholder="تلقائي" options={(lookups?.routes || []).map((r) => [r.id, r.name])} /></Field>
           </div>
           <StonesSection f={f} setF={setF} />
+          <AudienceSection f={f} setF={setF} />
           <Field label="العيارات"><div className="chips">{[18, 21, 24].map((k) => <button type="button" key={k} className={`chip ${(f.karats || []).includes(k) ? 'on' : ''}`} onClick={() => toggle('karats', k)}>{k}</button>)}</div></Field>
           <Field label="الألوان"><div className="chips">{Object.entries(COLORS).map(([k, v]) => <button type="button" key={k} className={`chip ${(f.colors || []).includes(k) ? 'on' : ''}`} onClick={() => toggle('colors', k)}>{v}</button>)}</div></Field>
           <Field label="الوصف"><Textarea value={f.description || ''} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
@@ -99,6 +101,54 @@ export default function Products() {
         </>}
       </Modal>
     </Page>
+  );
+}
+
+const isRestricted = (f) => f.restricted ?? ((f.allowed_customer_ids || []).length > 0 || (f.allowed_tier_ids || []).length > 0);
+
+/** تخصيص المنتج: الافتراضي متاح لكل العملاء، أو يظهر فقط لعملاء محددين بالاسم و/أو فئات عملاء */
+function AudienceSection({ f, setF }) {
+  const { data } = useFetch('/catalog/audience');
+  const [q, setQ] = useState('');
+  const on = isRestricted(f);
+  const cids = (f.allowed_customer_ids || []).map(Number);
+  const tids = (f.allowed_tier_ids || []).map(Number);
+  const tog = (k, list, id) => setF({ ...f, restricted: true, [k]: list.includes(id) ? list.filter((x) => x !== id) : [...list, id] });
+  const customers = data?.customers || [];
+  const byId = new Map(customers.map((c) => [c.id, c]));
+  const hits = q.trim() ? customers.filter((c) => !cids.includes(c.id) && `${c.shop_name} ${c.owner_name || ''} ${c.city || ''}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8) : [];
+  return (
+    <div className="card mb-3">
+      <div className="card-header bg-transparent py-2"><b>من يرى المنتج في المتجر؟</b></div>
+      <div className="card-body d-grid gap-3">
+        <div className="d-flex flex-wrap gap-2">
+          <button type="button" className={`chip ${!on ? 'on' : ''}`} onClick={() => setF({ ...f, restricted: false, allowed_customer_ids: [], allowed_tier_ids: [] })}>🌐 كل العملاء (افتراضي)</button>
+          <button type="button" className={`chip ${on ? 'on' : ''}`} onClick={() => setF({ ...f, restricted: true })}>🔒 مخصص لعملاء أو فئات محددة</button>
+        </div>
+        {on && <>
+          <Field label="فئات العملاء" hint="يظهر لكل عملاء الفئة المختارة">
+            <div className="d-flex flex-wrap gap-2">
+              {(data?.tiers || []).map((t) => <button key={t.id} type="button" className={`chip ${tids.includes(t.id) ? 'on' : ''}`} onClick={() => tog('allowed_tier_ids', tids, t.id)}>{t.name}</button>)}
+              {data && !data.tiers.length && <span className="small text-body-secondary">لا توجد فئات</span>}
+            </div>
+          </Field>
+          <Field label="عملاء بالاسم">
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={data ? 'ابحث باسم المحل أو المالك أو المدينة…' : 'جارٍ التحميل…'} />
+            {hits.length > 0 && (
+              <div className="list-group mt-1">
+                {hits.map((c) => <button key={c.id} type="button" className="list-group-item list-group-item-action py-1" onClick={() => { tog('allowed_customer_ids', cids, c.id); setQ(''); }}>
+                  {c.shop_name}{c.owner_name ? <span className="small text-body-secondary"> — {c.owner_name}</span> : null}{c.city ? <span className="small text-body-secondary"> · {c.city}</span> : null}</button>)}
+              </div>
+            )}
+            {cids.length > 0 && <div className="d-flex flex-wrap gap-2 mt-2">
+              {cids.map((id) => <span key={id} className="chip on">{byId.get(id)?.shop_name || `عميل #${id}`} <button type="button" className="btn-close btn-close-sm ms-1" style={{ fontSize: 9 }} aria-label="إزالة" onClick={() => tog('allowed_customer_ids', cids, id)} /></span>)}
+            </div>}
+          </Field>
+          {!cids.length && !tids.length && <div className="small text-danger">اختر فئة أو عميلاً واحداً على الأقل، وإلا سيبقى المنتج متاحاً لكل العملاء.</div>}
+          <div className="small text-body-secondary">يظهر المنتج فقط للعملاء المختارين بالاسم ولعملاء الفئات المختارة، ولا يراه غيرهم في المتجر.</div>
+        </>}
+      </div>
+    </div>
   );
 }
 
