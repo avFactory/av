@@ -4,7 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
-import { sessionMiddleware } from './lib/auth.js';
+import { sessionMiddleware, COOKIE } from './lib/auth.js';
+import { robotsTxt, sitemapXml, landingHtml, INDEXABLE } from './lib/seo.js';
 import { HttpError } from './lib/http.js';
 import { cleanupFailedUploads } from './lib/uploads.js';
 import authRoutes from './routes/auth.js';
@@ -91,11 +92,23 @@ export function createApp() {
   app.use('/api', miscRoutes);
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'المسار غير موجود')));
 
+  // محركات البحث: robots وخريطة الموقع، وصفحة تعريفية عامة للزوار (بدون جلسة) على الصفحة الرئيسية
+  app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', 'public, max-age=86400').send(robotsTxt()));
+  app.get('/sitemap.xml', (_req, res) => res.type('application/xml').set('Cache-Control', 'public, max-age=86400').send(sitemapXml()));
+  app.get('/', async (req, res, next) => {
+    if (req.cookies?.[COOKIE]) return next();
+    res.set('Cache-Control', 'no-cache').set('Vary', 'Cookie').type('html').send(await landingHtml());
+  });
+
   // الواجهة الأمامية المبنية
   if (fs.existsSync(dist)) {
     app.use('/assets', express.static(path.join(dist, 'assets'), { immutable: true, maxAge: '365d' }));
     app.use(express.static(dist, { index: false, maxAge: '1d' }));
-    app.get('/{*splat}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+    app.get('/{*splat}', (req, res) => {
+      // صفحات النظام الداخلية والروابط السرية (فواتير/تتبع/تسعيرة) لا تُفهرس
+      if (!INDEXABLE.has(req.path.replace(/\/+$/, '') || '/')) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      res.sendFile(path.join(dist, 'index.html'));
+    });
   }
 
   // eslint-disable-next-line no-unused-vars
