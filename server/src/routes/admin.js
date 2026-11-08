@@ -49,8 +49,11 @@ r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
       (select count(*) from orders where due_date < current_date and status not in ('delivered','cancelled','rejected'))::int as late_orders,
       (select count(*) from orders where status in ('ready','delivered'))::int as completed_orders,
       (select count(*) from orders where status='ready')::int as ready_orders,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type in ('vault','order','worker','scrap','finished','loss_suspense'))::text as gold_in_factory,
+      (select coalesce(sum(balance),0) from gold_balances where loc_type in ('vault','order','worker','scrap','finished','loss_suspense','findings'))::text as gold_in_factory,
       (select coalesce(sum(balance),0) from gold_balances where loc_type='worker')::text as gold_with_workers,
+      (select coalesce(sum(b.balance),0) from gold_balances b join users u on u.id=b.loc_ref where b.loc_type='worker' and u.kind <> 'machine')::text as gold_with_people,
+      (select coalesce(sum(b.balance),0) from gold_balances b join users u on u.id=b.loc_ref where b.loc_type='worker' and u.kind = 'machine')::text as gold_in_machines,
+      (select coalesce(sum(balance),0) from gold_balances where loc_type='findings')::text as gold_in_findings,
       (select coalesce(sum(balance),0) from gold_balances where loc_type='vault')::text as gold_in_vault,
       (select coalesce(sum(balance),0) from gold_balances where loc_type='order')::text as gold_in_orders,
       (select coalesce(sum(balance),0) from gold_balances where loc_type='scrap')::text as gold_scrap,
@@ -68,7 +71,7 @@ r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
   const byStage = await many(`select s.name, count(o.id)::int n from stages s left join orders o on o.current_stage_id=s.id and o.status='in_production'
                               where s.active group by s.id order by s.sort_order`);
   const byMaterial = await many(`select m.name, b.loc_type, b.balance::text from gold_balances b join materials m on m.id=b.material_id
-                                 where b.balance <> 0 and b.loc_type in ('vault','order','worker','scrap','finished','loss_suspense') order by m.id`);
+                                 where b.balance <> 0 and b.loc_type in ('vault','order','worker','scrap','finished','loss_suspense','findings') order by m.id`);
   const lossTrend = await many(`select to_char(date_trunc('day', created_at),'YYYY-MM-DD') d,
       sum(weight) filter (where kind='normal_loss')::text normal, sum(weight) filter (where kind in ('abnormal_pending','abnormal_loss'))::text abnormal
     from gold_ledger where created_at > now() - interval '30 days' and kind in ('normal_loss','abnormal_pending','abnormal_loss') group by 1 order by 1`);

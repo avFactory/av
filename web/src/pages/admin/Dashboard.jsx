@@ -20,14 +20,14 @@ export default function Dashboard() {
       </div>
       <h3 className="mb">الذهب (جرام)</h3>
       <div className="grid g4 mb">
-        <Stat label="إجمالي الذهب في المصنع" value={fmtW(s.gold_in_factory)} unit="جم" tone="gold" sub="خزنة + طلبات + عمال + بقايا + جاهز + معلق" />
-        <Stat label="لدى العمال" value={fmtW(s.gold_with_workers)} unit="جم" to="/sup/workers" />
+        <Stat label="إجمالي الذهب في المصنع" value={fmtW(s.gold_in_factory)} unit="جم" tone="gold" sub="خزنة + طلبات + عمال + مكائن + خامات + بقايا + جاهز + معلق" />
+        <Stat label="لدى العمال" value={fmtW(s.gold_with_people)} unit="جم" to="/sup/workers" />
+        <Stat label="في المكائن" value={fmtW(s.gold_in_machines)} unit="جم" to="/sup/workers" />
+        <Stat label="في الخامات" value={fmtW(s.gold_in_findings)} unit="جم" to="/admin/findings" sub="سلاسل، أقفال، كور سحب…" />
         <Stat label="في المخزون (الخزنة)" value={fmtW(s.gold_in_vault)} unit="جم" to="/admin/inventory" sub={`تحت التشغيل ${fmtW(s.gold_in_orders)} · بقايا ${fmtW(s.gold_scrap)}`} />
         <Stat label="منتجات جاهزة" value={fmtW(s.gold_finished)} unit="جم" />
         <Stat label="العجز الطبيعي" value={fmtW(s.normal_loss)} unit="جم" tone="ok" to="/admin/reports" />
         <Stat label="العجز غير الطبيعي" value={fmtW(s.abnormal_loss)} unit="جم" tone="bad" to="/admin/reports" sub={Number(s.pending_loss) ? `${fmtW(s.pending_loss)} جم تحت المراجعة` : ''} />
-        <Stat label="حالات عجز مفتوحة" value={s.open_reviews} to="/sup/review" tone={s.open_reviews ? 'warn' : 'plain'} />
-        <Stat label="عدد العمال" value={s.workers} to="/admin/employees" />
       </div>
       <h3 className="mb">المالية (أجور التصنيع فقط)</h3>
       <div className="grid g4 mb">
