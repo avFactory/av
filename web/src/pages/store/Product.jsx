@@ -15,7 +15,7 @@ export default function Product() {
   const { data: p, error } = useFetch(`${apiBase}/products/${id}`, { deps: [apiBase] });
   const [img, setImg] = useState(0);
   const [sel, setSel] = useState({ karat: null, color: null, size: '', quantity: '1', notes: '' });
-  if (error) return <div className="page"><ErrorBox error={error} /></div>;
+  if (error) return <div className="page"><ErrorBox error={error} /><div className="mt-3"><Btn kind="secondary" onClick={() => nav(-1)}>→ رجوع للمتجر</Btn></div></div>;
   if (!p) return <Loader />;
   const karat = sel.karat ?? p.karats[0];
   const color = sel.color ?? p.colors[0];

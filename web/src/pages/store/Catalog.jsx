@@ -59,7 +59,7 @@ export default function Catalog() {
         <div className="chips">{['', '18', '21', '24'].map((k) => <button key={k} className={`chip ${f.karat === k ? 'on' : ''}`} onClick={() => setF({ ...f, karat: k })}>{k ? `عيار ${k}` : 'كل العيارات'}</button>)}</div>
       </div>
       {data && data.total != null && <div className="small text-body-secondary mb-2">{data.total} منتج</div>}
-      {!data ? <Loader /> : !items.length ? <Empty>لا توجد منتجات مطابقة</Empty> : (
+      {!data ? <Loader /> : !items.length ? <Empty>لا توجد منتجات مطابقة{(f.q || f.type || f.karat || f.cat) && <div className="mt-2"><button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setF({ q: '', type: '', karat: '', cat: '' })}>عرض كل المنتجات</button></div>}</Empty> : (
         <><div className="products">
           {items.map((p) => (
             <Link key={p.id} to={`/store/products/${p.id}`} className="product">

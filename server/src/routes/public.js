@@ -23,9 +23,9 @@ r.get('/products', needLogin, async (req, res) => {
   const f = req.query;
   const limit = Math.min(Math.max(int(f.limit ?? 48, 'limit'), 1), 200);
   const offset = Math.max(int(f.offset ?? 0, 'offset'), 0);
-  const params = [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null, ['gold', 'diamond', 'pearl', 'stone', 'bullion'].includes(f.cat) ? f.cat : null];
+  const params = [f.type || null, f.karat ? int(f.karat) : null, String(f.q ?? '').trim() ? `%${String(f.q).trim().replace(/[%_\\]/g, (c) => '\\' + c)}%` : null, ['gold', 'diamond', 'pearl', 'stone', 'bullion'].includes(f.cat) ? f.cat : null];
   const where = `p.active and p.availability <> 'unavailable'
-      and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3)
+      and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3 or p.product_type ilike $3)
       and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
         or ($4='stone' and coalesce(p.stone_weight,0) > 0) or ($4='bullion' and p.bullion_type is not null)
         or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0 and p.bullion_type is null))`;

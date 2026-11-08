@@ -47,7 +47,7 @@ function OrderCard({ o, nav, compact }) {
       <div style={{ width: size, height: size, borderRadius: 10, overflow: 'hidden', background: 'var(--gold-soft)', flex: 'none', display: 'grid', placeItems: 'center', color: 'var(--gold)' }}>{img ? <img src={fileUrl(img, 400)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '◇'}</div>
       <div className="grow" style={{ minWidth: 0 }}>
         <div className="hrow between wrap gap"><b>{o.order_no} — {o.title}</b><StatusBadge map={STATUS} value={o.status} /></div>
-        <div className="small muted">{!compact && o.branch_name ? `${o.branch_name} · ` : ''}{o.material_name} · الكمية {o.quantity}{compact ? '' : ` · ${fmtDate(o.created_at)}`}{o.labor_estimate ? ` · أجور تقديرية ${fmtMoney(o.labor_estimate)}` : ''}</div>
+        <div className="small muted">{!compact && o.branch_name ? `${o.branch_name} · ` : ''}{o.material_name} · الكمية {o.quantity}{compact ? '' : ` · ${fmtDate(o.created_at)}`}{Number(o.labor_estimate) > 0 ? ` · أجور تقديرية ${fmtMoney(o.labor_estimate)}` : ''}</div>
         {o.status === 'quoted' && <div className="small" style={{ color: 'var(--warn)' }}>عرض أجور بانتظار موافقتكم</div>}
         {o.design_status === 'sent' && <div className="small" style={{ color: 'var(--warn)' }}>تصميم بانتظار اعتمادكم</div>}
         {['in_production', 'ready', 'delivered'].includes(o.status) && <div className="hrow gap small mt" style={{ marginTop: 6 }}><div className="progress grow"><div style={{ width: `${pct}%` }} /></div><span>{pct}%</span><span className="muted">{o.stage_name}</span></div>}
