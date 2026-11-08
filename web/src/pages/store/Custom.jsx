@@ -5,7 +5,7 @@ import { COLORS } from '../../format.js';
 import { useCart, OrderGate } from '../../components/StoreLayout.jsx';
 import { Btn, Card, Field, FilePicker, Input, Page, Textarea, WeightInput, useAction, useFetch, useToast } from '../../ui.jsx';
 
-/** اطلب تصميمك: رفع الصور والرسومات وملفات 3D */
+/** اطلب تصميمك: المواصفات مع صورة أو PDF للتصميم */
 export default function Custom() {
   const { approved, cart, setCart } = useCart();
   const toast = useToast();
@@ -31,9 +31,9 @@ export default function Custom() {
   };
   if (!approved) {
     return (
-      <Page title="اطلب تصميمك" subtitle="صمّم قطعتك الخاصة: ارفع صورة أو رسماً أو ملف 3D، ويرسل لك المصنع عرض أجور التصنيع">
+      <Page title="اطلب تصميمك" subtitle="صمّم قطعتك الخاصة: ارفع صورة أو PDF، ويرسل لك المصنع عرض أجور التصنيع">
         <div className="grid g3 mb">
-          <div className="card card-body"><b>1. ارفع التصميم</b><p className="small muted">صور، رسم يدوي، أو ملفات 3D (STL, OBJ, 3DM…)</p></div>
+          <div className="card card-body"><b>1. ارفع التصميم</b><p className="small muted">صورة أو ملف PDF للتصميم</p></div>
           <div className="card card-body"><b>2. حدد المواصفات</b><p className="small muted">العيار، اللون، الوزن التقريبي، المقاس، الكمية</p></div>
           <div className="card card-body"><b>3. استلم العرض</b><p className="small muted">يراجع المصنع طلبك ويرسل عرض أجور التصنيع للموافقة</p></div>
         </div>
@@ -42,16 +42,8 @@ export default function Custom() {
     );
   }
   return (
-    <Page title="اطلب تصميمك" subtitle="ارفع صورة أو رسماً أو ملف 3D، وسيرسل لكم المصنع عرض أجور التصنيع للموافقة">
+    <Page title="اطلب تصميمك" subtitle="حدد المواصفات وارفع صورة أو PDF للتصميم، وسيرسل لكم المصنع عرض أجور التصنيع للموافقة">
       <form onSubmit={submit} className="grid">
-        <Card title="الملفات">
-          <div className="grid g3">
-            <FilePicker label="صور التصميم" accept="image/*" value={files.reference} onChange={(v) => setFiles({ ...files, reference: v })} />
-            <FilePicker label="رسم يدوي (صورة/PDF)" accept="image/*,.pdf" value={files.sketch} onChange={(v) => setFiles({ ...files, sketch: v })} />
-            <FilePicker label="ملفات 3D (STL, OBJ, 3DM, STEP, GLB)" accept=".stl,.obj,.3dm,.step,.stp,.glb,.gltf,.zip" value={files.model} onChange={(v) => setFiles({ ...files, model: v })} />
-          </div>
-          <div className="form-text">يمكنك إضافة أكثر من صورة: اضغط «إضافة المزيد» بعد كل اختيار (حتى 20 ملفاً).</div>
-        </Card>
         <Card title="المواصفات">
           <div className="grid g3">
             <Field label="نوع القطعة *"><Input value={f.product_type} onChange={set('product_type')} required placeholder="خاتم، طقم، سلسال…" /></Field>
@@ -63,6 +55,7 @@ export default function Custom() {
             <Field label="الكمية"><Input inputMode="numeric" value={f.quantity} onChange={set('quantity')} /></Field>
             <Field label="موعد التسليم المطلوب"><Input type="date" value={f.due_date} onChange={set('due_date')} /></Field>
           </div>
+          <div className="mt"><FilePicker label="ارفع صورة أو PDF للتصميم" accept="image/*,.pdf" value={files.reference} onChange={(v) => setFiles({ ...files, reference: v })} hint="يمكنك إضافة أكثر من ملف (حتى 20)" /></div>
           <Field label="ملاحظات" className="mt"><Textarea value={f.notes} onChange={set('notes')} rows={4} /></Field>
         </Card>
         <StonesCard f={f} setF={setF} />
