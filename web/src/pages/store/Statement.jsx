@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { api, fileUrl, qs } from '../../api.js';
 import StatementTable, { StatementSummary, SUB_ST, money2, gold3 } from '../../components/StatementView.jsx';
 import { fmtDT } from '../../format.js';
-import { Badge, Btn, Card, Field, Input, Loader, Page, Select, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
+import { Badge, Btn, Card, Field, Input, Loader, Page, Select, Tabs, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
 
 const num = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
 const EMPTY = { kind: 'money', amount: '', method: 'transfer', weight: '', karat: '21', reference: '', paid_at: '', note: '', file: null };
 
 /** كشف حساب العميل في المتجر + رفع مستندات السداد */
 export default function Statement() {
-  const [p, setP] = useState({ from: '', to: '' });
-  const { data: st, reload } = useFetch(`/store/statement${qs(p)}`, { deps: [p.from, p.to] });
+  const [p, setP] = useState({ from: '', to: '', branch: '' });
+  const { data: st, reload } = useFetch(`/store/statement${qs(p)}`, { deps: [p.from, p.to, p.branch] });
   const [f, setF] = useState(null);
   const [run, busy] = useAction();
   if (!st) return <Loader />;
@@ -21,13 +21,16 @@ export default function Statement() {
     await api.post('/store/submissions', fd);
     setF(null); reload();
   }, 'تم رفع المستند — سيُضاف لحسابكم بعد مراجعة المصنع');
+  const brs = st.branches || [];
+  const tabs = brs.length ? [['', 'كل الفروع'], ...(st.customer.branches_only ? [] : [['main', 'الحساب الرئيسي']]), ...brs.map((b) => [String(b.id), b.name])] : null;
   const ok = f && f.file && (f.kind === 'money' ? Number(f.amount) > 0 : Number(f.weight) > 0);
   return (
-    <Page title="كشف الحساب" actions={<>
+    <Page title={`كشف الحساب${st.my_branch ? ` — ${st.my_branch}` : ''}`} actions={<>
       <Btn kind="ghost" onClick={() => window.print()}>طباعة</Btn>
       <Btn onClick={() => setF({ ...EMPTY })}>رفع مستند سداد</Btn>
     </>}>
       <div className="print-only st-print-head"><b>كشف حساب: {st.customer.shop_name}</b><span> · الفترة: {p.from || 'من البداية'} — {p.to || 'حتى اليوم'}</span></div>
+      {tabs && <div className="no-print"><Tabs value={p.branch} onChange={(v) => setP({ ...p, branch: v })} tabs={tabs} /></div>}
       <div className="hrow gap wrap mb no-print" style={{ alignItems: 'end' }}>
         <Field label="من"><Input type="date" value={p.from} onChange={(x) => setP({ ...p, from: x.target.value })} /></Field>
         <Field label="إلى"><Input type="date" value={p.to} onChange={(x) => setP({ ...p, to: x.target.value })} /></Field>

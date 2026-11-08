@@ -83,7 +83,15 @@ export async function buildLines(db, customerId, orderIds, extra) {
   return lines;
 }
 
-async function issueInvoice(db, req, { customerId, lines, notes, type = 'invoice', creditFor = null }) {
+/** فرع للعميل (يُتحقق أنه يخصه)؛ فارغ = الحساب الرئيسي */
+export async function branchOf(db, customerId, v) {
+  if (v === undefined || v === null || v === '' || v === 'main') return null;
+  const id = int(v, 'الفرع');
+  if (!(await db.query('select 1 from customer_branches where id=$1 and customer_id=$2', [id, customerId])).rowCount) throw bad('الفرع لا يخص هذا العميل');
+  return id;
+}
+
+async function issueInvoice(db, req, { customerId, lines, notes, type = 'invoice', creditFor = null, branchId: branchIn = null }) {
   await db.query("select pg_advisory_xact_lock(hashtext('invoice_chain'))");
   const { company, vatRate } = await companySettings(db);
   const sums = (await db.query(`select round(sum(a), 2)::text sub, round(round(sum(a),2) * $2::numeric / 100, 2)::text vat,
@@ -96,9 +104,14 @@ async function issueInvoice(db, req, { customerId, lines, notes, type = 'invoice
   const qr = zatcaTLV({ seller: company.name, vatNumber: company.vat_number, timestamp: issueDate.toISOString(), total: sums.total, vat: sums.vat });
   const previousHash = prev?.invoice_hash || Buffer.from('0').toString('base64');
   const hash = crypto.createHash('sha256').update(JSON.stringify({ no, icv, customerId, lines, sums, issueDate, previousHash })).digest('base64');
+  // كل فرع حسابه منفصل: الفاتورة لفرع واحد (أو للحساب الرئيسي)
+  const orderIds = [...new Set(lines.map((l) => l.order_id).filter(Boolean))];
+  const brs = orderIds.length ? (await db.query('select distinct branch_id from orders where id = any($1::int[])', [orderIds])).rows.map((x) => x.branch_id) : [];
+  if (brs.length > 1) throw bad('الطلبات تخص أكثر من فرع - أصدر فاتورة مستقلة لكل فرع');
+  const branchId = brs.length ? brs[0] : (branchIn ?? null);
   const inv = (await db.query(`insert into invoices(invoice_no, icv, invoice_type, credit_for_id, customer_id, issue_date, subtotal, vat_rate, vat_amount, total,
-      previous_hash, invoice_hash, qr_tlv, notes, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning *`,
-    [no, icv, type, creditFor, customerId, issueDate, sums.sub, vatRate, sums.vat, sums.total, previousHash, hash, qr, notes, req.user.id])).rows[0];
+      previous_hash, invoice_hash, qr_tlv, notes, created_by, branch_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning *`,
+    [no, icv, type, creditFor, customerId, issueDate, sums.sub, vatRate, sums.vat, sums.total, previousHash, hash, qr, notes, req.user.id, branchId])).rows[0];
   for (const l of lines) {
     await db.query('insert into invoice_lines(invoice_id, order_id, kind, description, qty, unit, unit_price, amount) values ($1,$2,$3,$4,$5,$6,$7,$8)',
       [inv.id, l.order_id, l.kind, l.description, l.qty, l.unit, l.unit_price ?? 0, l.amount]);
@@ -118,7 +131,7 @@ r.post('/invoices', requirePerm('invoices.manage'), async (req, res) => {
     const orderIds = (req.body.order_ids || []).map((x) => int(x));
     for (const id of [...orderIds].sort((a, b) => a - b)) await db.query('select 1 from orders where id=$1 for update', [id]);
     const lines = await buildLines(db, customerId, orderIds, req.body.extra_lines);
-    const inv = await issueInvoice(db, req, { customerId, lines, notes: str(req.body.notes, 'ملاحظات') });
+    const inv = await issueInvoice(db, req, { customerId, lines, notes: str(req.body.notes, 'ملاحظات'), branchId: await branchOf(db, customerId, req.body.branch_id) });
     for (const oid of orderIds) await db.query("insert into order_stage_log(order_id, event, user_id, note, customer_visible) values ($1,'status',$2,$3,true)", [oid, req.user.id, `صدرت الفاتورة ${inv.invoice_no}`]);
     await notifyCustomer(db, customerId, { kind: 'invoice', title: `صدرت فاتورة ${inv.invoice_no}`, body: `${inv.total} ر.س`, link: `/store/invoices/${inv.id}` });
     await audit(db, req, 'invoice.issue', 'invoice', inv.id, { no: inv.invoice_no, total: inv.total, orders: orderIds });
@@ -135,7 +148,7 @@ r.post('/invoices/:id/credit', requirePerm('invoices.manage'), async (req, res) 
     if (inv.invoice_type !== 'invoice') throw conflict('لا يمكن إصدار إشعار دائن لإشعار دائن');
     if ((await db.query('select 1 from invoices where credit_for_id=$1', [inv.id])).rowCount) throw conflict('صدر إشعار دائن لهذه الفاتورة مسبقاً');
     const lines = (await db.query('select order_id, kind, description, qty::text, unit, unit_price::text, amount::text from invoice_lines where invoice_id=$1', [inv.id])).rows;
-    const cn = await issueInvoice(db, req, { customerId: inv.customer_id, lines: lines.map((l) => ({ ...l, description: `عكس: ${l.description}` })), notes: `إشعار دائن للفاتورة ${inv.invoice_no}: ${reason}`, type: 'credit_note', creditFor: inv.id });
+    const cn = await issueInvoice(db, req, { customerId: inv.customer_id, lines: lines.map((l) => ({ ...l, description: `عكس: ${l.description}` })), notes: `إشعار دائن للفاتورة ${inv.invoice_no}: ${reason}`, type: 'credit_note', creditFor: inv.id, branchId: inv.branch_id });
     await audit(db, req, 'invoice.credit', 'invoice', inv.id, { reason, credit_note: cn.invoice_no });
     return cn;
   }));
@@ -247,11 +260,13 @@ r.post('/payments', requirePerm('payments.manage'), async (req, res) => {
       const inv = (await db.query('select customer_id from invoices where id=$1', [invoiceId])).rows[0];
       if (!inv || inv.customer_id !== customerId) throw bad('الفاتورة لا تخص العميل');
     }
-    const p = (await db.query(`insert into payments(payment_no, customer_id, invoice_id, order_id, kind, amount, method, reference, note, received_by, reverses_id)
-      values (next_doc_no('PAY'),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
+    // فرع الدفعة: فرع الفاتورة إن وُجدت، وإلا المحدد (فارغ = الحساب الرئيسي)
+    const branchId = invoiceId ? (await db.query('select branch_id from invoices where id=$1', [invoiceId])).rows[0].branch_id : await branchOf(db, customerId, b.branch_id);
+    const p = (await db.query(`insert into payments(payment_no, customer_id, invoice_id, order_id, kind, amount, method, reference, note, received_by, reverses_id, branch_id)
+      values (next_doc_no('PAY'),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
       [customerId, invoiceId, b.order_id ? int(b.order_id) : null, oneOf(b.kind || 'payment', ['advance', 'payment', 'refund'], 'نوع الدفعة'),
        money(b.amount), oneOf(b.method || 'cash', ['cash', 'transfer', 'card', 'cheque', 'other'], 'طريقة الدفع'), str(b.reference, 'المرجع'),
-       str(b.note, 'ملاحظات'), req.user.id, b.reverses_id ? int(b.reverses_id) : null])).rows[0];
+       str(b.note, 'ملاحظات'), req.user.id, b.reverses_id ? int(b.reverses_id) : null, branchId])).rows[0];
     await audit(db, req, 'payment.create', 'payment', p.id, { amount: p.amount, kind: p.kind, customer: customerId });
     return p;
   }));

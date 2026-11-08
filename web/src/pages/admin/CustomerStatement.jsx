@@ -4,7 +4,7 @@ import { api, fileUrl, qs } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import StatementTable, { StatementSummary, SUB_ST, money2, gold3 } from '../../components/StatementView.jsx';
 import { fmtDT } from '../../format.js';
-import { Badge, Btn, Card, Field, Input, Loader, Modal, Page, ReasonModal, Select, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
+import { Badge, Btn, Card, Field, Input, Loader, Modal, Page, ReasonModal, Select, Tabs, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
 
 const KINDS = [['opening', 'رصيد افتتاحي'], ['gold_payment', 'سداد ذهب من العميل'], ['money_adjust', 'تسوية مبالغ'], ['gold_adjust', 'تسوية ذهب']];
 const num = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
@@ -50,18 +50,23 @@ export function SubmissionsList({ list, onDone, showCustomer }) {
 export default function CustomerStatement() {
   const { id } = useParams();
   const { can } = useAuth();
-  const [p, setP] = useState({ from: '', to: '' });
-  const { data: st, reload } = useFetch(`/finance/customers/${id}/statement${qs(p)}`, { deps: [p.from, p.to], live: ['payments', 'invoices'] });
+  const [p, setP] = useState({ from: '', to: '', branch: '' });
+  const { data: st, reload } = useFetch(`/finance/customers/${id}/statement${qs(p)}`, { deps: [p.from, p.to, p.branch], live: ['payments', 'invoices'] });
   const [e, setE] = useState(null);
   const [rev, setRev] = useState(null);
   const [run, busy] = useAction();
   if (!st) return <Loader />;
   const c = st.customer;
+  const brs = st.branches || [];
+  // كل فرع حساب منفصل: تبويب لكل فرع + الحساب الرئيسي + الكل مجمّعاً
+  const tabs = brs.length ? [['', 'كل الفروع (مجمّع)'], ...(c.branches_only ? [] : [['main', 'الحساب الرئيسي']]), ...brs.map((b) => [String(b.id), b.name])] : null;
+  const scopeName = !brs.length ? '' : p.branch === 'main' ? 'الحساب الرئيسي' : p.branch ? brs.find((b) => String(b.id) === p.branch)?.name : 'كل الفروع'
+  ;
   const saveEntry = () => run(async () => {
     const f = new FormData();
     const gw = e.gold_dir === 'credit' ? { gold_credit: e.gold } : { gold_debit: e.gold };
     const mw = e.money_dir === 'credit' ? { money_credit: e.money } : { money_debit: e.money };
-    const body = { kind: e.kind, entry_date: e.date, description: e.description, karat: e.karat, ...(e.kind === 'gold_payment' ? { gold_credit: e.gold } : { ...(e.money ? mw : {}), ...(e.gold ? gw : {}) }) };
+    const body = { branch_id: e.branch === 'main' ? '' : e.branch, kind: e.kind, entry_date: e.date, description: e.description, karat: e.karat, ...(e.kind === 'gold_payment' ? { gold_credit: e.gold } : { ...(e.money ? mw : {}), ...(e.gold ? gw : {}) }) };
     for (const [k, v] of Object.entries(body)) if (v !== undefined && v !== '') f.append(k, v);
     if (e.file) f.append('document', e.file);
     await api.post(`/finance/customers/${id}/entries`, f);
@@ -71,12 +76,14 @@ export default function CustomerStatement() {
   const entryRows = st.rows.filter((r) => r.entry_id);
 
   return (
-    <Page title={`كشف حساب — ${c.shop_name}`} back={`/admin/customers/${id}`} actions={<>
+    <Page title={`كشف حساب — ${c.shop_name}${scopeName ? ` — ${scopeName}` : ''}`} back={`/admin/customers/${id}`} actions={<>
       <a className="btn btn-outline-secondary no-print" href={`/api/finance/customers/${id}/statement.xlsx${qs(p)}`}>Excel</a>
       <Btn kind="ghost" onClick={() => window.print()}>طباعة</Btn>
-      {can('payments.manage') && <Btn onClick={() => setE({ kind: 'opening', date: '', money: '', money_dir: 'debit', gold: '', gold_dir: 'debit', karat: '21', description: '', file: null })}>قيد جديد / رصيد افتتاحي</Btn>}
+      {can('payments.manage') && <Btn onClick={() => setE({ branch: p.branch || (brs.length ? (c.branches_only ? String(brs[0].id) : 'main') : 'main'), kind: 'opening', date: '', money: '', money_dir: 'debit', gold: '', gold_dir: 'debit', karat: '21', description: '', file: null })}>قيد جديد / رصيد افتتاحي</Btn>}
     </>}>
-      <div className="print-only st-print-head"><b>كشف حساب العميل: {c.shop_name}</b>{c.vat_number && <span> · الرقم الضريبي {c.vat_number}</span>}<span> · الفترة: {p.from || 'من البداية'} — {p.to || 'حتى اليوم'}</span></div>
+      <div className="print-only st-print-head"><b>كشف حساب العميل: {c.shop_name}{scopeName ? ` — ${scopeName}` : ''}</b>{c.vat_number && <span> · الرقم الضريبي {c.vat_number}</span>}<span> · الفترة: {p.from || 'من البداية'} — {p.to || 'حتى اليوم'}</span></div>
+      {tabs && <div className="no-print"><Tabs value={p.branch} onChange={(v) => setP({ ...p, branch: v })} tabs={tabs} /></div>}
+      {tabs && !p.branch && <div className="alert alert-light border small py-2 no-print">لكل فرع كشف حساب ورصيد افتتاحي ومعاملات منفصلة — هذا العرض يجمع كل الفروع للاطلاع فقط. اختر الفرع لعرض كشفه.</div>}
       <div className="hrow gap wrap mb no-print" style={{ alignItems: 'end' }}>
         <Field label="من"><Input type="date" value={p.from} onChange={(x) => setP({ ...p, from: x.target.value })} /></Field>
         <Field label="إلى"><Input type="date" value={p.to} onChange={(x) => setP({ ...p, to: x.target.value })} /></Field>
@@ -96,6 +103,8 @@ export default function CustomerStatement() {
 
       <Modal open={!!e} onClose={() => setE(null)} title="قيد على حساب العميل">
         {e && <>
+          {brs.length > 0 && <Field label="الفرع (حساب منفصل) *"><Select value={e.branch} onChange={(x) => setE({ ...e, branch: x.target.value })}
+            options={[...(c.branches_only ? [] : [['main', 'الحساب الرئيسي']]), ...brs.map((b) => [String(b.id), b.name])]} /></Field>}
           <Field label="نوع القيد"><div className="chips">{KINDS.map(([k, l]) => <button key={k} type="button" className={`chip ${e.kind === k ? 'on' : ''}`} onClick={() => setE({ ...e, kind: k })}>{l}</button>)}</div></Field>
           <div className="grid g2">
             <Field label="التاريخ"><Input type="date" value={e.date} onChange={(x) => setE({ ...e, date: x.target.value })} /></Field>

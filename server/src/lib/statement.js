@@ -3,22 +3,26 @@ const r2 = (x) => Math.round(Number(x || 0) * 100) / 100;
 const r4 = (x) => Math.round(Number(x || 0) * 10000) / 10000;
 
 /** كل حركات العميل مرتبة بالتاريخ (المدين يزيد ما على العميل، والدائن ينقصه) */
-export async function statementRows(db, customerId) {
-  const q = (sql) => db.query(sql, [customerId]).then((r) => r.rows);
+// scope: undefined/'all' = كل الفروع مجمّعة، null = الحساب الرئيسي، رقم = فرع محدد
+export async function statementRows(db, customerId, scope = 'all') {
+  const all = scope === 'all' || scope === undefined;
+  const bid = all ? null : scope;
+  const q = (sql) => db.query(sql, [customerId, all, bid]).then((r) => r.rows);
+  const B = (col) => `($2::boolean or ${col} is not distinct from $3::int)`;
   const invoices = await q(`select i.id, i.invoice_no, i.invoice_type, i.issue_date as at, i.total::text, i.vat_amount::text,
       coalesce(sum(l.amount) filter (where l.kind in ('labor','stage_labor')), 0)::text as labor,
       coalesce(sum(l.amount) filter (where l.kind = 'stones'), 0)::text as stones,
       coalesce(sum(l.amount) filter (where l.kind not in ('labor','stage_labor','stones')), 0)::text as other,
       (select x.invoice_no from invoices x where x.id=i.credit_for_id) as credit_for
-    from invoices i left join invoice_lines l on l.invoice_id=i.id where i.customer_id=$1 and i.status='issued' group by i.id`);
-  const payments = await q(`select id, payment_no, kind, amount::text, method, reference, received_at as at from payments where customer_id=$1`);
+    from invoices i left join invoice_lines l on l.invoice_id=i.id where i.customer_id=$1 and i.status='issued' and ${B('i.branch_id')} group by i.id`);
+  const payments = await q(`select id, payment_no, kind, amount::text, method, reference, received_at as at from payments where customer_id=$1 and ${B('branch_id')}`);
   // الذهب: تسليم الطلبات (مباع للعميل) والذهب المستلم منه على الطلبات — بدون الحركات المعكوسة
   const gold = await q(`select g.id, g.kind, g.weight::text, g.created_at as at, m.karat, o.id as order_id, o.order_no
     from gold_ledger g join orders o on o.id=g.order_id join materials m on m.id=g.material_id
-    where o.customer_id=$1 and g.kind in ('delivery', 'customer_gold_in') and g.reverses_id is null
+    where o.customer_id=$1 and ${B('o.branch_id')} and g.kind in ('delivery', 'customer_gold_in') and g.reverses_id is null
       and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)`);
   const entries = await q(`select e.*, e.money_debit::text, e.money_credit::text, e.gold_debit::text, e.gold_credit::text, (e.entry_date::timestamp + interval '12 hours') as at
-    from customer_entries e where e.customer_id=$1 and not e.reversed`);
+    from customer_entries e where e.customer_id=$1 and not e.reversed and ${B('e.branch_id')}`);
 
   const PAY = { cash: 'نقداً', transfer: 'تحويل', card: 'بطاقة', cheque: 'شيك', other: 'أخرى' };
   const ENT = { opening: 'رصيد افتتاحي', gold_payment: 'سداد ذهب', money_adjust: 'تسوية مبالغ', gold_adjust: 'تسوية ذهب' };
@@ -59,8 +63,8 @@ export async function statementRows(db, customerId) {
 }
 
 /** كشف الحساب لفترة: رصيد ما قبل الفترة، الحركات بالرصيد التراكمي، والإجماليات والرصيد حسب العيار */
-export async function buildStatement(db, customerId, { from, to } = {}) {
-  const all = await statementRows(db, customerId);
+export async function buildStatement(db, customerId, { from, to, scope = 'all' } = {}) {
+  const all = await statementRows(db, customerId, scope);
   const day = (d) => new Date(new Date(d).getTime() + 3 * 3600e3).toISOString().slice(0, 10); // توقيت الرياض
   let money = 0, pure = 0;
   const byKarat = {};

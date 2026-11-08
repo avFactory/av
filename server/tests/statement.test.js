@@ -112,3 +112,43 @@ test('كشف الحساب: أجور وألماس مدين، المستلم دا�
   const xl = await fetch(`${base}/api/finance/customers/${cid}/statement.xlsx`, { headers: { cookie: '' } });
   assert.equal(xl.status, 401);
 });
+
+test('كشف حساب منفصل لكل فرع: رصيد افتتاحي ومدفوعات ومستندات لكل فرع، والفرع يرى كشفه فقط', async () => {
+  const cid = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('شركة الفروع','م','0500002222','approved') returning id")).rows[0].id;
+  const [ba, bb] = (await pool.query("insert into customer_branches(customer_id, name, phone) values ($1,'فرع أ','0511111111'),($1,'فرع ب','0522222222') returning id", [cid])).rows.map((r) => r.id);
+  await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, must_change_password) values ('brmain',$1,'م','customer',$2,false)", [hashPassword('Brmain#2026'), cid]);
+  await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, branch_id, must_change_password) values ('br-a-x',$1,'أ','customer',$2,$3,false)", [hashPassword('BranchA#2026'), cid, ba]);
+  // رصيد افتتاحي لكل فرع، ولا يتكرر لنفس الفرع
+  assert.equal((await admin('POST', `/finance/customers/${cid}/entries`, null, form({ kind: 'opening', money_debit: '1000', branch_id: String(ba) }, false))).status, 200);
+  assert.equal((await admin('POST', `/finance/customers/${cid}/entries`, null, form({ kind: 'opening', money_debit: '300', gold_debit: '2', karat: '21', branch_id: String(bb) }, false))).status, 200);
+  assert.equal((await admin('POST', `/finance/customers/${cid}/entries`, null, form({ kind: 'opening', money_debit: '5', branch_id: String(ba) }, false))).status, 409);
+  const other = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('آخر','م','0500003333','approved') returning id")).rows[0].id;
+  const ob = (await pool.query("insert into customer_branches(customer_id, name, phone) values ($1,'فرع غريب','0533333333') returning id", [other])).rows[0].id;
+  assert.equal((await admin('POST', `/finance/customers/${cid}/entries`, null, form({ kind: 'money_adjust', money_debit: '5', branch_id: String(ob) }, false))).status, 400, 'فرع عميل آخر');
+  // دفعة لفرع أ
+  assert.equal((await admin('POST', '/finance/payments', { customer_id: cid, amount: '400', method: 'cash', branch_id: ba })).status, 200);
+  const S = async (b) => (await admin('GET', `/finance/customers/${cid}/statement${b ? `?branch=${b}` : ''}`)).data;
+  assert.equal((await S(ba)).balance.money, 600, 'فرع أ: 1000 − 400');
+  assert.equal((await S(bb)).balance.money, 300, 'فرع ب منفصل');
+  assert.equal((await S(bb)).balance.by_karat['21'], 2);
+  assert.equal((await S()).balance.money, 900, 'كل الفروع مجمّعة');
+  assert.equal((await S('main')).balance.money, 0, 'الحساب الرئيسي');
+  // حساب الفرع يرى كشف فرعه فقط حتى لو طلب فرعاً آخر
+  const cu = client();
+  const opts = await fetch(base + '/api/auth/login-options', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'brmain' }) }).then((r) => r.json());
+  assert.equal((await cu('POST', '/auth/login', { username: 'brmain', password: 'BranchA#2026', branch_id: opts.branches.find((x) => x.name === 'فرع أ').id })).status, 200);
+  const mine = (await cu('GET', `/store/statement?branch=${bb}`)).data;
+  assert.equal(mine.balance.money, 600);
+  assert.equal(mine.scope, ba);
+  // مستند سداد من الفرع يُعتمد في حساب الفرع نفسه
+  const sub = (await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '100' }))).data;
+  assert.equal(sub.branch_id, ba);
+  await admin('POST', `/finance/submissions/${sub.id}/approve`, {});
+  assert.equal((await S(ba)).balance.money, 500);
+  assert.equal((await S(bb)).balance.money, 300, 'لم يتأثر فرع ب');
+  // الحساب الرئيسي يرى كل الفروع ويختار
+  const main = client();
+  assert.equal((await main('POST', '/auth/login', { username: 'brmain', password: 'Brmain#2026' })).status, 200);
+  assert.equal((await main('GET', '/store/statement')).data.balance.money, 800);
+  assert.equal((await main('GET', `/store/statement?branch=${bb}`)).data.balance.money, 300);
+});

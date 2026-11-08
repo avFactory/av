@@ -9,14 +9,22 @@ import { upload, registerFiles } from '../lib/uploads.js';
 import * as ledger from '../lib/ledger.js';
 import { buildStatement } from '../lib/statement.js';
 import { materialFor } from './orders.js';
+import { branchOf } from './finance.js';
 import { sendXlsx } from '../lib/xlsx.js';
 
 const KARATS = [18, 21, 22, 24];
 const isoDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
 const period = (q) => ({ from: isoDate(q.from), to: isoDate(q.to) });
 
+/** نطاق الكشف من الطلب: all = كل الفروع، main = الحساب الرئيسي، رقم = فرع */
+async function scopeOf(db, customerId, v) {
+  if (v === undefined || v === '' || v === 'all') return 'all';
+  return branchOf(db, customerId, v);
+}
+const branchesOf = (db, id) => db.query('select id, name, phone, active from customer_branches where customer_id=$1 order by name', [id]).then((r) => r.rows);
+
 async function customerInfo(db, id) {
-  const c = (await db.query(`select c.id, c.shop_name, c.owner_name, c.phone, c.vat_number, c.cr_number, c.city, c.address, t.name as tier_name
+  const c = (await db.query(`select c.id, c.shop_name, c.owner_name, c.phone, c.vat_number, c.cr_number, c.city, c.address, c.branches_only, t.name as tier_name
     from customers c left join customer_tiers t on t.id=c.tier_id where c.id=$1`, [id])).rows[0];
   if (!c) throw notFound('العميل غير موجود');
   return c;
@@ -38,15 +46,16 @@ export const staff = Router();
 staff.get('/customers/:id/statement', requirePerm('finance.view', 'customers.view'), async (req, res) => {
   const id = int(req.params.id);
   const customer = await customerInfo(pool, id);
-  const st = await buildStatement(pool, id, period(req.query));
-  const submissions = await many(`${subsQuery} where s.customer_id=$1 order by (s.status='pending') desc, s.id desc limit 50`, [id]);
-  res.json({ customer, ...st, submissions });
+  const scope = await scopeOf(pool, id, req.query.branch);
+  const st = await buildStatement(pool, id, { ...period(req.query), scope });
+  const submissions = await many(`${subsQuery} where s.customer_id=$1 and ($2::boolean or s.branch_id is not distinct from $3::int) order by (s.status='pending') desc, s.id desc limit 50`, [id, scope === 'all', scope === 'all' ? null : scope]);
+  res.json({ customer, ...st, submissions, branches: await branchesOf(pool, id), scope: scope === 'all' ? 'all' : scope ?? 'main' });
 });
 
 staff.get('/customers/:id/statement.xlsx', requirePerm('finance.view', 'customers.view'), async (req, res) => {
   const id = int(req.params.id);
   const c = await customerInfo(pool, id);
-  const st = await buildStatement(pool, id, period(req.query));
+  const st = await buildStatement(pool, id, { ...period(req.query), scope: await scopeOf(pool, id, req.query.branch) });
   const rows = [{ date: '', description: 'رصيد سابق', ref: '', money_debit: '', money_credit: '', money_balance: st.opening.money, gold_debit: '', gold_credit: '', karat: '', pure_balance: st.opening.pure }, ...st.rows];
   await sendXlsx(res, `كشف حساب ${c.shop_name}`.slice(0, 31), [['التاريخ', 'date'], ['البيان', 'description'], ['المرجع', 'ref'],
     ['مدين (ر.س)', (x) => x.money_debit || ''], ['دائن (ر.س)', (x) => x.money_credit || ''], ['الرصيد (ر.س)', 'money_balance'],
@@ -70,14 +79,18 @@ staff.post('/customers/:id/entries', requirePerm('payments.manage'), upload.sing
     if (Number(md) && Number(mc)) throw bad('المبلغ إما مدين أو دائن');
     if (Number(gd) && Number(gc)) throw bad('الذهب إما مدين أو دائن');
     const karat = Number(gd) || Number(gc) ? oneOf(int(b.karat, 'العيار'), KARATS, 'العيار') : null;
-    if (kind === 'opening' && (await db.query("select 1 from customer_entries where customer_id=$1 and kind='opening' and not reversed", [id])).rowCount)
-      throw conflict('يوجد رصيد افتتاحي لهذا العميل - ألغِه أولاً لإدخال رصيد جديد');
+    // كل فرع حسابه ورصيده الافتتاحي منفصل
+    const branchId = await branchOf(db, id, b.branch_id);
+    const cinfo = await customerInfo(db, id);
+    if (!branchId && cinfo.branches_only) throw bad('اختر الفرع (الشركة بفروع فقط)');
+    if (kind === 'opening' && (await db.query("select 1 from customer_entries where customer_id=$1 and kind='opening' and not reversed and branch_id is not distinct from $2", [id, branchId])).rowCount)
+      throw conflict(`يوجد رصيد افتتاحي ${branchId ? 'لهذا الفرع' : 'للحساب الرئيسي'} - ألغِه أولاً لإدخال رصيد جديد`);
     const [doc] = await registerFiles(db, req.file ? [req.file] : [], req.user.id);
     const desc = str(b.description, 'البيان', { max: 300 });
     const ledgerMv = kind === 'gold_payment' ? await goldIntoVault(db, req, id, karat, gc, `سداد ذهب من العميل${desc ? `: ${desc}` : ''}`) : null;
-    const e = (await db.query(`insert into customer_entries(entry_no, customer_id, entry_date, kind, money_debit, money_credit, gold_debit, gold_credit, karat, description, document_path, ledger_id, created_by)
-      values (next_doc_no('CEN'),$1,coalesce($2::date, (now() at time zone 'Asia/Riyadh')::date),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,
-      [id, isoDate(b.entry_date), kind, md, mc, gd, gc, karat, desc, doc?.path || null, ledgerMv?.id || null, req.user.id])).rows[0];
+    const e = (await db.query(`insert into customer_entries(entry_no, customer_id, entry_date, kind, money_debit, money_credit, gold_debit, gold_credit, karat, description, document_path, ledger_id, created_by, branch_id)
+      values (next_doc_no('CEN'),$1,coalesce($2::date, (now() at time zone 'Asia/Riyadh')::date),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,
+      [id, isoDate(b.entry_date), kind, md, mc, gd, gc, karat, desc, doc?.path || null, ledgerMv?.id || null, req.user.id, branchId])).rows[0];
     await audit(db, req, `customer_entry.${kind}`, 'customer', id, { entry: e.entry_no, md, mc, gd, gc, karat });
     return e;
   }));
@@ -100,6 +113,11 @@ staff.post('/entries/:id/reverse', requirePerm('payments.manage'), async (req, r
   }));
 });
 
+staff.get('/customers/:id/branches', requirePerm('finance.view', 'payments.manage'), async (req, res) => {
+  const id = int(req.params.id);
+  res.json({ branches: await branchesOf(pool, id), branches_only: (await customerInfo(pool, id)).branches_only });
+});
+
 staff.get('/submissions', requirePerm('finance.view'), async (req, res) => {
   const st = req.query.status ? oneOf(req.query.status, ['pending', 'approved', 'rejected'], 'الحالة') : null;
   res.json(await many(`${subsQuery} where ($1::text is null or s.status=$1) order by s.id desc limit 300`, [st]));
@@ -115,16 +133,16 @@ staff.post('/submissions/:id/approve', requirePerm('payments.manage'), async (re
     let paymentId = null, entryId = null;
     if (s.kind === 'money') {
       const amount = req.body.amount ? money(req.body.amount, 'المبلغ') : s.amount;
-      const p = (await db.query(`insert into payments(payment_no, customer_id, kind, amount, method, reference, note, received_by, received_at)
-        values (next_doc_no('PAY'),$1,'payment',$2,$3,$4,$5,$6,coalesce($7::timestamptz, now())) returning id`,
-        [s.customer_id, amount, s.method || 'transfer', s.reference, `مستند سداد ${s.submission_no}${note ? ` — ${note}` : ''}`, req.user.id, s.paid_at])).rows[0];
+      const p = (await db.query(`insert into payments(payment_no, customer_id, kind, amount, method, reference, note, received_by, received_at, branch_id)
+        values (next_doc_no('PAY'),$1,'payment',$2,$3,$4,$5,$6,coalesce($7::timestamptz, now()),$8) returning id`,
+        [s.customer_id, amount, s.method || 'transfer', s.reference, `مستند سداد ${s.submission_no}${note ? ` — ${note}` : ''}`, req.user.id, s.paid_at, s.branch_id])).rows[0];
       paymentId = p.id;
     } else {
       const w = req.body.weight ? W(req.body.weight, 'الوزن') : s.weight;
       const mv = await goldIntoVault(db, req, s.customer_id, s.karat, w, `سداد ذهب من العميل (${s.submission_no})`);
-      entryId = (await db.query(`insert into customer_entries(entry_no, customer_id, entry_date, kind, gold_credit, karat, description, document_path, submission_id, ledger_id, created_by)
-        values (next_doc_no('CEN'),$1,coalesce($2::date, (now() at time zone 'Asia/Riyadh')::date),'gold_payment',$3,$4,$5,$6,$7,$8,$9) returning id`,
-        [s.customer_id, s.paid_at, w, s.karat, `مستند ${s.submission_no}${s.reference ? ` — ${s.reference}` : ''}${note ? ` — ${note}` : ''}`, s.document_path, s.id, mv.id, req.user.id])).rows[0].id;
+      entryId = (await db.query(`insert into customer_entries(entry_no, customer_id, entry_date, kind, gold_credit, karat, description, document_path, submission_id, ledger_id, created_by, branch_id)
+        values (next_doc_no('CEN'),$1,coalesce($2::date, (now() at time zone 'Asia/Riyadh')::date),'gold_payment',$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
+        [s.customer_id, s.paid_at, w, s.karat, `مستند ${s.submission_no}${s.reference ? ` — ${s.reference}` : ''}${note ? ` — ${note}` : ''}`, s.document_path, s.id, mv.id, req.user.id, s.branch_id])).rows[0].id;
     }
     await db.query("update customer_submissions set status='approved', review_note=$2, reviewed_by=$3, reviewed_at=now(), payment_id=$4, entry_id=$5 where id=$1", [s.id, note, req.user.id, paymentId, entryId]);
     await notifyCustomer(db, s.customer_id, { kind: 'payment', title: `اعتُمد مستند السداد ${s.submission_no}`, body: s.kind === 'money' ? `${s.amount} ر.س أُضيفت لحسابكم` : `${s.weight} جم عيار ${s.karat} أُضيفت لحسابكم`, link: '/store/statement' });
@@ -151,10 +169,14 @@ export const store = Router();
 const approvedOnly = (req, _res, next) => { if (req.user.customer_status !== 'approved') throw new HttpError(403, 'حسابكم بانتظار موافقة إدارة المصنع'); next(); };
 
 store.get('/statement', requirePerm('store.access'), approvedOnly, async (req, res) => {
-  const st = await buildStatement(pool, req.user.customer_id, period(req.query));
-  const submissions = await many(`${subsQuery} where s.customer_id=$1 order by s.id desc limit 50`, [req.user.customer_id]);
+  // حساب الفرع يرى كشف فرعه فقط، والحساب الرئيسي يختار (كل الفروع / الرئيسي / فرع)
+  const cid = req.user.customer_id;
+  const scope = req.user.branch_id ? req.user.branch_id : await scopeOf(pool, cid, req.query.branch);
+  const st = await buildStatement(pool, cid, { ...period(req.query), scope });
+  const submissions = await many(`${subsQuery} where s.customer_id=$1 and ($2::boolean or s.branch_id is not distinct from $3::int) order by s.id desc limit 50`, [cid, scope === 'all', scope === 'all' ? null : scope]);
   for (const s of submissions) { delete s.created_by_name; delete s.reviewed_by_name; }
-  res.json({ customer: await customerInfo(pool, req.user.customer_id), ...st, submissions });
+  res.json({ customer: await customerInfo(pool, cid), ...st, submissions, branches: req.user.branch_id ? [] : await branchesOf(pool, cid),
+    scope: scope === 'all' ? 'all' : scope ?? 'main', my_branch: req.user.branch_name || null });
 });
 
 /** رفع مستند سداد (تحويل مبلغ أو تسليم ذهب) — يُضاف للحساب بعد موافقة المصنع */

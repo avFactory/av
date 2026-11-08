@@ -14,8 +14,14 @@ export default function Payments() {
   const { data: rec } = useFetch(tab === 'rec' ? '/finance/reports/receivables' : null);
   const [f, setF] = useState(null);
   const [invs, setInvs] = useState([]);
+  const [brs, setBrs] = useState({ branches: [], branches_only: false });
   const [run, busy] = useAction();
-  useEffect(() => { if (f?.customer_id) api.get(`/finance/invoices?customer_id=${f.customer_id}`).then(setInvs); }, [f?.customer_id]);
+  useEffect(() => {
+    if (!f?.customer_id) return;
+    api.get(`/finance/invoices?customer_id=${f.customer_id}`).then(setInvs);
+    api.get(`/finance/customers/${f.customer_id}/branches`).then(setBrs).catch(() => setBrs({ branches: [], branches_only: false }));
+  }, [f?.customer_id]);
+  const needBranch = brs.branches.length > 0 && !f?.invoice_id;
   return (
     <Page title="المدفوعات والتحصيل" actions={can('payments.manage') && <Btn onClick={() => setF({ kind: 'payment', method: 'transfer' })}>تسجيل دفعة</Btn>}>
       <Tabs value={tab} onChange={setTab} tabs={[['list', 'الدفعات'], ['rec', 'أرصدة العملاء']]} />
@@ -24,12 +30,14 @@ export default function Payments() {
       <Modal open={!!f} onClose={() => setF(null)} title="تسجيل دفعة">
         {f && <>
           <Field label="العميل"><Select value={f.customer_id || ''} onChange={(e) => setF({ ...f, customer_id: e.target.value, invoice_id: '' })} placeholder="—" options={(lookups?.customers || []).map((c) => [c.id, c.shop_name])} /></Field>
+          {needBranch && <Field label="الفرع (حساب منفصل) *"><Select value={f.branch_id || ''} onChange={(e) => setF({ ...f, branch_id: e.target.value })} placeholder="اختر الفرع"
+            options={[...(brs.branches_only ? [] : [['main', 'الحساب الرئيسي']]), ...brs.branches.map((b) => [String(b.id), b.name])]} /></Field>}
           <Field label="النوع"><Select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} options={Object.entries(KIND)} /></Field>
           <Field label="الفاتورة (اختياري)"><Select value={f.invoice_id || ''} onChange={(e) => setF({ ...f, invoice_id: e.target.value })} placeholder="بدون" options={invs.filter((i) => i.invoice_type === 'invoice').map((i) => [i.id, `${i.invoice_no} - ${fmtMoney(i.total)} (مدفوع ${fmtMoney(i.paid)})`])} /></Field>
           <Field label="المبلغ (ر.س)"><Input dir="ltr" inputMode="decimal" value={f.amount || ''} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
           <Field label="طريقة الدفع"><Select value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })} options={Object.entries(METHOD)} /></Field>
           <Field label="المرجع"><Input value={f.reference || ''} onChange={(e) => setF({ ...f, reference: e.target.value })} /></Field>
-          <Btn loading={busy} onClick={() => run(async () => { await api.post('/finance/payments', f); setF(null); reload(); }, 'تم تسجيل الدفعة')}>حفظ</Btn>
+          <Btn loading={busy} disabled={needBranch && !f.branch_id} onClick={() => run(async () => { await api.post('/finance/payments', { ...f, branch_id: f.invoice_id || f.branch_id === 'main' ? '' : f.branch_id }); setF(null); reload(); }, 'تم تسجيل الدفعة')}>حفظ</Btn>
         </>}
       </Modal>
     </Page>
