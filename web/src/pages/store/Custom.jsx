@@ -3,6 +3,7 @@ import { putFiles } from '../../fileStore.js';
 import { useNavigate } from 'react-router-dom';
 import { COLORS } from '../../format.js';
 import { useCart, OrderGate } from '../../components/StoreLayout.jsx';
+import BullionPick from '../../components/BullionPick.jsx';
 import { Btn, Card, Field, FilePicker, Input, Page, Textarea, WeightInput, useAction, useFetch, useToast } from '../../ui.jsx';
 
 /** اطلب تصميمك: المواصفات مع صورة أو PDF للتصميم */
@@ -78,10 +79,11 @@ function StonesCard({ f, setF }) {
   const shapes = [...new Map((types || []).map((t) => [t.shape, t])).values()];
   const shown = (k) => !!f[`show_${k}`];
   return (
-    <Card title={<span>الألماس المخبري والأحجار <span className="small text-body-secondary fw-normal">(اختياري — لكل قطعة)</span></span>}>
+    <Card title={<span>الألماس المخبري والأحجار والسبائك <span className="small text-body-secondary fw-normal">(اختياري — لكل قطعة)</span></span>}>
       <div className="d-flex flex-wrap gap-2 mb-3">
         <button type="button" className={`chip ${f.has_diamonds ? 'on' : ''}`} onClick={() => setF({ ...f, has_diamonds: !f.has_diamonds, diamonds: !f.has_diamonds && !list.length ? [{ shape: '', lot_id: '', carats: '', count: '' }] : list })}>💎 الألماس المخبري</button>
         {STONES.map(([k, l]) => <button key={k} type="button" className={`chip ${shown(k) ? 'on' : ''}`} onClick={() => setF({ ...f, [`show_${k}`]: !shown(k), [k]: shown(k) ? '' : f[k] })}>{l}</button>)}
+        <button type="button" className={`chip ${f.bullion_type ? 'on' : ''}`} onClick={() => setF({ ...f, bullion_type: f.bullion_type ? '' : 'coin', bullion_weight: f.bullion_type ? '' : f.bullion_weight })}>🪙 السبائك</button>
       </div>
       {f.has_diamonds && (
         <div className="d-grid gap-3 mb-2">
@@ -111,6 +113,7 @@ function StonesCard({ f, setF }) {
           <div><Btn kind="ghost" size="sm" onClick={() => setList([...list, { shape: '', lot_id: '', carats: '', count: '' }])}>+ نوع ألماس مخبري آخر</Btn></div>
         </div>
       )}
+      {f.bullion_type && <div className="mb-2"><BullionPick f={f} setF={setF} /></div>}
       {STONES.some(([k]) => shown(k)) && <div className="grid g3">{STONES.filter(([k]) => shown(k)).map(([k, , label]) => <Field key={k} label={label}><Input dir="ltr" inputMode="decimal" value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: num(e.target.value) })} /></Field>)}</div>}
     </Card>
   );

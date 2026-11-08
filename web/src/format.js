@@ -48,5 +48,8 @@ export function stoneItems(o) {
   if (Number(o.pearl_weight) > 0) out.push(['وزن اللؤلؤ', `${Number(o.pearl_weight)} جم`]);
   if (Number(o.stone_weight) > 0) out.push(['وزن الحجر', `${Number(o.stone_weight)} قيراط`]);
   if (Number(o.zircon_weight) > 0) out.push(['وزن الزركون', `${Number(o.zircon_weight)} جم`]);
+  if (o.bullion_type) out.push([o.bullion_type === 'coin' ? 'جنيهات' : 'سبائك', o.bullion_weight ? `${Number(o.bullion_weight)} جم ${o.bullion_type === 'coin' ? 'للجنيه' : 'للسبيكة'} (للقطعة الواحدة)` : '—']);
   return out;
 }
+
+export const BULLION = { bar: 'سبائك', coin: 'جنيهات' };

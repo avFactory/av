@@ -17,6 +17,12 @@ r.get('/products', requirePerm('products.manage', 'orders.view'), async (_req, r
     from products p where p.deleted_at is null order by p.active desc, p.id desc`));
 });
 
+/** السبائك: النوع (سبيكة/جنيه) ووزن القطعة — فارغ = لا يوجد */
+export function bullionVals(b) {
+  const t = b.bullion_type ? oneOf(b.bullion_type, ['bar', 'coin'], 'نوع السبائك') : null;
+  return [t, t ? optW(b.bullion_weight, t === 'coin' ? 'وزن الجنيه' : 'وزن السبيكة') : null];
+}
+
 function productVals(b) {
   const karats = arr(b.karats).map((k) => int(k, 'العيار'));
   for (const k of karats) if (![18, 21, 24].includes(k)) throw bad('العيار يجب أن يكون 18 أو 21 أو 24');
@@ -31,6 +37,7 @@ function productVals(b) {
     oneOf(b.availability || 'made_to_order', ['available', 'made_to_order', 'unavailable'], 'التوفر'),
     b.route_id ? int(b.route_id) : null, b.active === undefined ? true : b.active === true || b.active === 'true',
     JSON.stringify(parseDiamonds(b.diamonds)), optW(b.pearl_weight, 'وزن اللؤلؤ'), optW(b.stone_weight, 'وزن الحجر'), optW(b.zircon_weight, 'وزن الزركون'),
+    ...bullionVals(b),
   ];
 }
 
@@ -69,8 +76,8 @@ r.post('/products', requirePerm('products.manage'), upload.array('files', 20), a
     // رقم المنتج يُولَّد تلقائياً من نوع القطعة (RIN، SW، NK...) إذا لم يُدخل يدوياً
     if (!vals[0]) vals[0] = await nextSku(db, vals[2], { lock: true });
     const p = (await db.query(`insert into products(sku, name, product_type, description, karats, colors, approx_weight, final_weight, sizes, labor_method, labor_rate, availability, route_id, active,
-        diamonds, pearl_weight, stone_weight, zircon_weight)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning *`, vals).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; })).rows[0];
+        diamonds, pearl_weight, stone_weight, zircon_weight, bullion_type, bullion_weight)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning *`, vals).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; })).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
     const ids = [];
     for (const [i, f] of files.entries()) ids.push((await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,$4) returning id', [p.id, f.path, f.mime?.startsWith('video') ? 'video' : 'image', i])).rows[0].id);
@@ -89,7 +96,7 @@ r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 20)
     if (!vals[0]) vals[0] = before.sku;
     await db.query(`update products set sku=$2, name=$3, product_type=$4, description=$5, karats=$6, colors=$7, approx_weight=$8, final_weight=$9, sizes=$10,
       labor_method=$11, labor_rate=$12, availability=$13, route_id=$14, active=$15,
-      diamonds=$16, pearl_weight=$17, stone_weight=$18, zircon_weight=$19 where id=$1`, [id, ...vals]).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; });
+      diamonds=$16, pearl_weight=$17, stone_weight=$18, zircon_weight=$19, bullion_type=$20, bullion_weight=$21 where id=$1`, [id, ...vals]).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; });
     const files = await registerFiles(db, req.files, req.user.id);
     const ids = [];
     for (const f of files) ids.push((await db.query('insert into product_media(product_id, path, kind, sort) values ($1,$2,$3,99) returning id', [id, f.path, f.mime?.startsWith('video') ? 'video' : 'image'])).rows[0].id);

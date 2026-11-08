@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { COLORS, METHODS, fmtW, fmtMoney } from '../../format.js';
+import BullionPick from '../../components/BullionPick.jsx';
 import { Btn, Field, Input, Loader, Modal, Page, Select, Table, Textarea, useAction, useFetch, Badge, FilePicker } from '../../ui.jsx';
 
 const AV = { available: 'متوفر', made_to_order: 'حسب الطلب', unavailable: 'غير متوفر' };
@@ -26,7 +27,7 @@ export default function Products() {
       fd.append(k, Array.isArray(v) ? v.join(',') : v);
     }
     fd.append('diamonds', JSON.stringify(f.has_diamonds === false ? [] : (f.diamonds || []).filter((d) => d.lot_id)));
-    for (const k of ['pearl_weight', 'stone_weight', 'zircon_weight']) if (f[k] == null) fd.append(k, '');
+    for (const k of ['pearl_weight', 'stone_weight', 'zircon_weight', 'bullion_type', 'bullion_weight']) if (f[k] == null) fd.append(k, '');
     for (const x of f.files || []) fd.append('files', x);
     if (f.main?.new != null) fd.append('main_new', String(f.main.new)); else if (f.main?.media) fd.append('main_media', String(f.main.media));
     if (f.id) await api.put(`/catalog/products/${f.id}`, fd); else await api.post('/catalog/products', fd);
@@ -115,11 +116,12 @@ function StonesSection({ f, setF }) {
   const shown = (k) => f[`show_${k}`] ?? (f[k] != null && f[k] !== '');
   return (
     <div className="card mb-3">
-      <div className="card-header bg-transparent py-2"><b>تفاصيل الأحجار</b> <span className="small text-body-secondary">(اختياري — لكل قطعة)</span></div>
+      <div className="card-header bg-transparent py-2"><b>تفاصيل الأحجار والسبائك</b> <span className="small text-body-secondary">(اختياري — لكل قطعة)</span></div>
       <div className="card-body d-grid gap-3">
         <div className="d-flex flex-wrap gap-2">
           <button type="button" className={`chip ${has ? 'on' : ''}`} onClick={() => setF({ ...f, has_diamonds: !has, diamonds: !has && !list.length ? [{ lot_id: '', carats: '', count: '' }] : list })}>💎 الألماس المخبري</button>
           {STONE_FIELDS.map(([k, l]) => <button key={k} type="button" className={`chip ${shown(k) ? 'on' : ''}`} onClick={() => setF({ ...f, [`show_${k}`]: !shown(k), [k]: shown(k) ? null : f[k] })}>{l}</button>)}
+          <button type="button" className={`chip ${f.bullion_type ? 'on' : ''}`} onClick={() => setF({ ...f, bullion_type: f.bullion_type ? null : 'coin', bullion_weight: f.bullion_type ? null : f.bullion_weight })}>🪙 السبائك</button>
         </div>
         {has && (
           <div className="d-grid gap-2">
@@ -137,6 +139,7 @@ function StonesSection({ f, setF }) {
             <div className="small text-body-secondary">عند اعتماد أي طلب لهذا المنتج يُخصم الألماس المخبري من المخزون (الوزن × عدد القطع) ويُحجز للطلب، ويُعاد للمخزون إذا أُلغي الطلب.</div>
           </div>
         )}
+        {f.bullion_type && <BullionPick f={f} setF={setF} />}
         {STONE_FIELDS.some(([k]) => shown(k)) && (
           <div className="grid g3">
             {STONE_FIELDS.filter(([k]) => shown(k)).map(([k, , label]) => <Field key={k} label={label} hint="للعرض فقط"><Input dir="ltr" inputMode="decimal" value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: num(e.target.value) })} /></Field>)}

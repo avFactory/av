@@ -747,3 +747,31 @@ test('الطاقة الإنتاجية اليومية: اليوم الممتلئ 
   assert.equal(await w('5'), nextWork(base), '8 + 5 > 10 → اليوم التالي');
   await call('PUT', '/admin/settings', { capacity: {} });
 });
+
+test('السبائك: صنف في المتجر، سبائك أو جنيهات بوزن القطعة، وتنتقل للطلب', async () => {
+  const mk = async (name, extra = {}) => { const f = new FormData(); for (const [k, v] of Object.entries({ name, product_type: 'تعليقة', karats: '21', colors: 'yellow', ...extra })) f.append(k, v); return (await call('POST', '/catalog/products', null, f)); };
+  assert.equal((await mk('جنيه خطأ', { bullion_type: 'gold' })).status, 400);
+  const coin = (await mk('تعليقة جنيه', { bullion_type: 'coin', bullion_weight: '8' })).data;
+  const plain = (await mk('تعليقة ذهب')).data;
+  assert.deepEqual([coin.bullion_type, Number(coin.bullion_weight)], ['coin', 8]);
+  const { hashPassword } = await import('../src/lib/auth.js');
+  const cid = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('محل السبائك','م','0500004444','approved') returning id")).rows[0].id;
+  await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, must_change_password) values ('bullshop',$1,'م','customer',$2,false)", [hashPassword('Bull#2026shop'), cid]);
+  let ck = '';
+  const cu = async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  await cu('POST', '/auth/login', { username: 'bullshop', password: 'Bull#2026shop' });
+  const ids = (q) => cu('GET', `/store/products?limit=200&${q}`).then((r) => r.data.products.map((p) => p.id));
+  const bull = await ids('cat=bullion');
+  assert.ok(bull.includes(coin.id) && !bull.includes(plain.id), 'صنف السبائك');
+  const gold = await ids('cat=gold');
+  assert.ok(gold.includes(plain.id) && !gold.includes(coin.id), 'الذهب لا يشمل السبائك');
+  assert.equal((await cu('GET', `/store/products/${coin.id}`)).data.bullion_type, 'coin');
+  // تنتقل للطلب
+  const o = (await cu('POST', '/store/orders', { items: [{ product_id: coin.id, karat: 21, quantity: 2 }] })).data.orders[0];
+  const row = (await pool.query('select bullion_type, bullion_weight::float w from orders where id=$1', [o.id])).rows[0];
+  assert.deepEqual([row.bullion_type, row.w], ['coin', 8]);
+  // تصميم خاص بسبيكة
+  const fd = new FormData(); for (const [k, v] of Object.entries({ product_type: 'تعليقة', karat: '21', bullion_type: 'bar', bullion_weight: '20' })) fd.append(k, v);
+  const c = await fetch(base + '/api/store/custom', { method: 'POST', headers: { cookie: ck }, body: fd }).then((r) => r.json());
+  assert.equal((await pool.query('select bullion_type from orders where id=$1', [c.id])).rows[0].bullion_type, 'bar');
+});

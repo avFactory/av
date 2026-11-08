@@ -7,8 +7,8 @@ import { Loader, Search, useFetch, Empty, LinkBtn } from '../../ui.jsx';
 const PAGE = 48;
 import { useCart } from '../../components/StoreLayout.jsx';
 
-const CATS = [['', 'الكل', '✦'], ['gold', 'ذهب', '◯'], ['diamond', 'ألماس مخبري', '💎'], ['pearl', 'لؤلؤ', '⚪'], ['stone', 'أحجار', '◆']];
-const catBadges = (p) => [p.has_diamond && 'ألماس مخبري', p.has_pearl && 'لؤلؤ', p.has_stone && 'أحجار', p.is_gold && 'ذهب'].filter(Boolean);
+const CATS = [['', 'الكل', '✦'], ['gold', 'ذهب', '◯'], ['diamond', 'ألماس مخبري', '💎'], ['pearl', 'لؤلؤ', '⚪'], ['stone', 'أحجار', '◆'], ['bullion', 'سبائك', '🪙']];
+const catBadges = (p) => [p.has_diamond && 'ألماس مخبري', p.has_pearl && 'لؤلؤ', p.has_stone && 'أحجار', p.has_bullion && (p.bullion_type === 'coin' ? 'جنيهات' : 'سبائك'), p.is_gold && 'ذهب'].filter(Boolean);
 
 export default function Catalog() {
   const [f, setF] = useState({ q: '', type: '', karat: '', cat: '' });

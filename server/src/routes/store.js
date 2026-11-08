@@ -14,6 +14,7 @@ import { materialFor, orderColor } from './orders.js';
 import { parseDiamonds, optW, releaseDiamonds } from '../lib/stoneReserve.js';
 import { invoiceDetail, withInvoiceExtras } from './finance.js';
 import { newGroupNo, nextItemNo } from '../lib/orderGroups.js';
+import { bullionVals } from './catalog.js';
 import { applyDueDate, leadDays, orderCategory } from '../lib/leadTime.js';
 import { listBranches, createBranch, updateBranch, assertMainAccount } from '../lib/branches.js';
 
@@ -78,17 +79,17 @@ r.get('/products', async (req, res) => {
   // صفحات: 48 منتجاً في كل مرة (التمرير يجلب المزيد)، وصورة الغلاف فقط في القائمة
   const limit = Math.min(Math.max(int(f.limit ?? 48, 'limit', { min: 1 }), 1), 200);
   const offset = Math.max(int(f.offset ?? 0, 'offset', { min: 0 }), 0);
-  const params = [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null, ['gold', 'diamond', 'pearl', 'stone'].includes(f.cat) ? f.cat : null];
+  const params = [f.type || null, f.karat ? int(f.karat) : null, f.q ? `%${f.q}%` : null, ['gold', 'diamond', 'pearl', 'stone', 'bullion'].includes(f.cat) ? f.cat : null];
   const where = `p.active and p.availability <> 'unavailable'
       and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3)
       and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
-        or ($4='stone' and coalesce(p.stone_weight,0) > 0)
-        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0))`;
+        or ($4='stone' and coalesce(p.stone_weight,0) > 0) or ($4='bullion' and p.bullion_type is not null)
+        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0 and p.bullion_type is null))`;
   const rows = await many(`select p.id, p.sku, p.name, p.product_type, p.karats, p.colors, p.approx_weight::text, p.final_weight::text, p.sizes,
       p.stock_qty, p.availability, p.labor_method, p.labor_rate,
       coalesce((select json_build_array(json_build_object('path', m.path, 'kind', m.kind)) from product_media m where m.product_id=p.id order by m.sort, m.id limit 1), '[]') as media,
       jsonb_array_length(p.diamonds) > 0 as has_diamond, coalesce(p.pearl_weight, 0) > 0 as has_pearl, coalesce(p.stone_weight, 0) > 0 as has_stone,
-  (jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight, 0) = 0 and coalesce(p.stone_weight, 0) = 0) as is_gold
+  (jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight, 0) = 0 and coalesce(p.stone_weight, 0) = 0 and p.bullion_type is null) as is_gold, p.bullion_type is not null as has_bullion, p.bullion_type, p.bullion_weight::text
     from products p where ${where}
     order by p.id desc limit ${limit + 1} offset ${offset}`, params);
   const hasMore = rows.length > limit;
@@ -107,7 +108,7 @@ r.get('/products', async (req, res) => {
 r.get('/products/:id', async (req, res) => {
   const p = await one(`select p.id, p.sku, p.name, p.product_type, p.description, p.karats, p.colors, p.approx_weight::text, p.final_weight::text, p.sizes, p.stock_qty, p.availability,
       coalesce((select json_agg(json_build_object('path', m.path, 'kind', m.kind) order by m.sort, m.id) from product_media m where m.product_id=p.id), '[]') as media,
-      p.pearl_weight::text, p.stone_weight::text, p.zircon_weight::text,
+      p.pearl_weight::text, p.stone_weight::text, p.zircon_weight::text, p.bullion_type, p.bullion_weight::text,
       coalesce((select json_agg(json_build_object('shape', s.name, 'size', l.size_label, 'color', l.color, 'clarity', l.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
         from jsonb_array_elements(p.diamonds) d join stone_lots l on l.id=(d->>'lot_id')::int left join stone_shapes s on s.id=l.shape_id), '[]') as diamond_details
     from products p where p.id=$1 and p.active`, [int(req.params.id)]);
@@ -147,11 +148,11 @@ r.post('/orders', async (req, res) => {
       const labor = await resolveLabor(db, { customer_id: req.user.customer_id, product_id: p.id, product_type: p.product_type });
       const w = p.final_weight || p.approx_weight;
       const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_id, product_type, title, material_id, approx_weight, size, quantity, notes,
-          status, labor_method, labor_rate, labor_estimate, created_by, route_id, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight)
-        values ($22,$1,'store_catalog',$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *`,
+          status, labor_method, labor_rate, labor_estimate, created_by, route_id, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight, bullion_type, bullion_weight)
+        values ($22,$1,'store_catalog',$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$23,$24) returning *`,
         [req.user.customer_id, cartRef, p.id, p.product_type, p.name, await materialFor(db, karat), w ? (await db.query('select ($1::numeric * $2)::text v', [w, qty])).rows[0].v : null,
          str(it.size, 'المقاس'), qty, str(it.notes, 'ملاحظات'), labor?.method || null, labor?.rate || null,
-         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null, orderColor(color), JSON.stringify(p.diamonds || []), p.pearl_weight, p.stone_weight, p.zircon_weight, `${cartRef}-${idx + 1}`])).rows[0];
+         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null, orderColor(color), JSON.stringify(p.diamonds || []), p.pearl_weight, p.stone_weight, p.zircon_weight, `${cartRef}-${idx + 1}`, p.bullion_type, p.bullion_weight])).rows[0];
       await prod.logStage(db, o.id, null, 'created', req.user.id, `طلب من المتجر (${cartRef})`, true);
       // المتوفر في المخزون لا يحتاج مدة تنفيذ
       if (!(p.availability === 'available' && Number(p.stock_qty) >= qty)) await applyDueDate(db, o.id);
@@ -183,12 +184,12 @@ r.post('/custom', upload.array('files', 20), async (req, res) => {
     }
     const orderNo = cartRef ? await nextItemNo(db, cartRef) : null;
     const karat = oneOf(int(b.karat, 'العيار'), [18, 21, 24], 'العيار');
-    const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight)
-      values (coalesce($18, next_doc_no('ORD')),$1,'store_custom',$17,$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11,$12,$13,$14,$15,$16) returning *`,
+    const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight, bullion_type, bullion_weight)
+      values (coalesce($18, next_doc_no('ORD')),$1,'store_custom',$17,$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11,$12,$13,$14,$15,$16,$19,$20) returning *`,
       [req.user.customer_id, str(b.product_type, 'نوع القطعة', { required: true }), str(b.title, 'اسم التصميم') || `تصميم خاص - ${b.product_type}`,
        await materialFor(db, karat), b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : null, str(b.size, 'المقاس'),
        int(b.quantity ?? 1, 'الكمية', { min: 1 }), b.due_date || null, str(b.notes, 'الملاحظات', { max: 5000 }), req.user.id, req.user.branch_id || null, orderColor(b.color) || 'yellow',
-       JSON.stringify(parseDiamonds(b.diamonds)), optW(b.pearl_weight, 'وزن اللؤلؤ'), optW(b.stone_weight, 'وزن الحجر'), optW(b.zircon_weight, 'وزن الزركون'), cartRef, orderNo])).rows[0];
+       JSON.stringify(parseDiamonds(b.diamonds)), optW(b.pearl_weight, 'وزن اللؤلؤ'), optW(b.stone_weight, 'وزن الحجر'), optW(b.zircon_weight, 'وزن الزركون'), cartRef, orderNo, ...bullionVals(b)])).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
     let kinds = [];
     try { kinds = JSON.parse(b.file_kinds || '[]'); } catch { kinds = []; }
@@ -244,7 +245,7 @@ r.get('/orders/:id', async (req, res) => {
   const notes = await many("select note, created_at from order_stage_log where order_id=$1 and event='customer_note' order by id desc", [o.id]);
   const designs = await many('select id, file_ids, message, sent_at, status, customer_note, decided_at from design_reviews where order_id=$1 order by id desc', [o.id]);
   const invoices = await many(`select distinct i.id, i.invoice_no, i.total::text, i.invoice_type from invoice_lines l join invoices i on i.id=l.invoice_id where l.order_id=$1`, [o.id]);
-  const stones = await one(`select o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text,
+  const stones = await one(`select o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.bullion_type, o.bullion_weight::text,
       coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
         from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details
     from orders o where o.id=$1`, [o.id]);

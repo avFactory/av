@@ -15,6 +15,7 @@ import * as prod from '../lib/production.js';
 import { resolveLabor, laborAmount } from '../lib/labor.js';
 import { nextItemNo, orderCopyColumns } from '../lib/orderGroups.js';
 import { applyDueDate, capacity } from '../lib/leadTime.js';
+import { bullionVals } from './catalog.js';
 
 const r = Router();
 
@@ -44,14 +45,15 @@ r.post('/', requirePerm('orders.manage'), async (req, res) => {
     const approx = b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : product?.approx_weight || null;
     const o = (await db.query(
       `insert into orders(order_no, customer_id, source, product_id, product_type, title, material_id, approx_weight, size, quantity, due_date, notes,
-         status, route_id, design_approval_required, labor_method, labor_rate, labor_estimate, created_by, color, diamonds, pearl_weight, stone_weight, zircon_weight)
-       values (next_doc_no('ORD'),$1,'internal',$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *`,
+         status, route_id, design_approval_required, labor_method, labor_rate, labor_estimate, created_by, color, diamonds, pearl_weight, stone_weight, zircon_weight, bullion_type, bullion_weight)
+       values (next_doc_no('ORD'),$1,'internal',$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) returning *`,
       [customerId, productId, productType, str(b.title, 'وصف الطلب') || product?.name || productType || 'طلب تصنيع', materialId, approx,
        str(b.size, 'المقاس'), qty, b.due_date || null, str(b.notes, 'ملاحظات'),
        b.route_id ? int(b.route_id) : await prod.pickRoute(db, productType, product?.route_id), !!b.design_approval_required,
        labor?.method || null, labor?.rate || null, labor && labor.method !== 'manual' ? laborAmount(labor.method, labor.rate, approx, qty) : (b.labor_rate || null), req.user.id, orderColor(b.color) || 'yellow',
        JSON.stringify(b.diamonds !== undefined ? parseDiamonds(b.diamonds) : product?.diamonds || []), b.pearl_weight !== undefined ? optW(b.pearl_weight, 'وزن اللؤلؤ') : product?.pearl_weight ?? null,
-       b.stone_weight !== undefined ? optW(b.stone_weight, 'وزن الحجر') : product?.stone_weight ?? null, b.zircon_weight !== undefined ? optW(b.zircon_weight, 'وزن الزركون') : product?.zircon_weight ?? null]
+       b.stone_weight !== undefined ? optW(b.stone_weight, 'وزن الحجر') : product?.stone_weight ?? null, b.zircon_weight !== undefined ? optW(b.zircon_weight, 'وزن الزركون') : product?.zircon_weight ?? null,
+       ...(b.bullion_type !== undefined ? bullionVals(b) : [product?.bullion_type ?? null, product?.bullion_weight ?? null])]
     )).rows[0];
     await prod.logStage(db, o.id, null, 'created', req.user.id, 'إنشاء الطلب', true);
     // موعد التسليم التلقائي حسب الفئة وتصنيف العميل (إن لم يُحدد يدوياً)
