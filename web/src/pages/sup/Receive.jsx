@@ -175,7 +175,7 @@ export default function Receive() {
                           <Field label="عدد القطع المستلمة"><Input inputMode="numeric" value={l.pieces} onChange={(e) => upd(c.id, 'pieces', e.target.value.replace(/\D/g, ''))} /></Field>
                         </div>
                         {l.showStones ? (
-                          <Field label="وزن الأحجار المركبة ضمن الوزن (جم)" hint="1 قيراط = 0.2 جرام - محسوب تلقائياً من حركات الأحجار"><WeightInput value={l.stones} onChange={(v) => upd(c.id, 'stones', v)} /></Field>
+                          <Field label="وزن الأحجار المركبة ضمن الوزن (جم)" hint="محسوب تلقائياً: الألماس المخبري (1 قيراط = 0.2 جم) + الحجر والزركون واللؤلؤ المؤكدة"><WeightInput value={l.stones} onChange={(v) => upd(c.id, 'stones', v)} /></Field>
                         ) : <button className="link small" style={{ justifySelf: 'start' }} onClick={() => upd(c.id, 'showStones', true)}>القطعة تحتوي أحجاراً؟</button>}
                         {c.order_id && (() => {
                           const srcs = (finds || []).filter((x) => x.material_id === c.material_id);

@@ -138,7 +138,7 @@ r.post('/orders/:id/set-stones', requirePerm('custody.issue', 'custody.receive')
     const vals = [v(req.body.pearl_weight, 'وزن اللؤلؤ'), v(req.body.stone_weight, 'وزن الحجر'), v(req.body.zircon_weight, 'وزن الزركون')];
     await db.query('update orders set set_pearl_weight=$2, set_stone_weight=$3, set_zircon_weight=$4, stones_confirmed_at=now(), stones_confirmed_by=$5, updated_at=now() where id=$1', [id, ...vals, req.user.id]);
     const g = await embeddedStonesGrams(db, id);
-    const parts = [vals[1] && `حجر ${Number(vals[1])} قيراط`, vals[2] && `زركون ${Number(vals[2])} جم`, vals[0] && `لؤلؤ ${Number(vals[0])} جم`].filter(Boolean);
+    const parts = [vals[1] && `حجر ${Number(vals[1])} جم`, vals[2] && `زركون ${Number(vals[2])} جم`, vals[0] && `لؤلؤ ${Number(vals[0])} جم`].filter(Boolean);
     await db.query("insert into order_stage_log(order_id, stage_id, event, user_id, note) values ($1,$2,'note',$3,$4)",
       [id, o.current_stage_id, req.user.id, `تأكيد وزن الأحجار المركبة: ${parts.join('، ') || 'لا يوجد'} (يُخصم ${Number(g.confirmed)} جم من وزن الميزان)`]);
     await audit(db, req, 'order.set_stones', 'order', id, { before: { pearl: o.set_pearl_weight, stone: o.set_stone_weight, zircon: o.set_zircon_weight }, after: { pearl: vals[0], stone: vals[1], zircon: vals[2] } });

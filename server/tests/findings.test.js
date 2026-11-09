@@ -107,12 +107,12 @@ test('تأكيد وزن الحجر والزركون: يُخصم من وزن ال
   await call('POST', `/admin/stages/${d.order.current_stage_id}/rate`, { rate_percent: '0', note: 'x' });
   const ic = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: o.id, weight: '5' }] })).data.custodies[0].id;
   const orderBal = await bal('order', o.id, mat);
-  // العامل ركّب زركون 1 جم وحجر 2.5 قيراط (0.5 جم)
-  const c = await call('POST', `/sup/orders/${o.id}/set-stones`, { zircon_weight: '1', stone_weight: '2.5', pearl_weight: '' });
+  // العامل ركّب زركون 1 جم وحجر 0.5 جم
+  const c = await call('POST', `/sup/orders/${o.id}/set-stones`, { zircon_weight: '1', stone_weight: '0.5', pearl_weight: '' });
   assert.equal(c.status, 200, JSON.stringify(c.data));
   assert.equal(n(c.data.confirmed_grams), 1.5);
   const lk = (await call('GET', `/sup/lookup?id=${o.id}`)).data;
-  assert.deepEqual([n(lk.set_zircon_weight), n(lk.set_stone_weight), lk.set_pearl_weight, n(lk.stones.used)], [1, 2.5, null, 1.5]);
+  assert.deepEqual([n(lk.set_zircon_weight), n(lk.set_stone_weight), lk.set_pearl_weight, n(lk.stones.used)], [1, 0.5, null, 1.5]);
   assert.equal(await bal('order', o.id, mat), orderBal, 'لا حركة ذهب');
   // الاستلام: الميزان 6.5 جم = ذهب 5 + أحجار 1.5 → بدون عجز
   const r = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: ic, returned_weight: '6.5' }] });

@@ -67,7 +67,7 @@ export default function Custom() {
   );
 }
 
-const STONES = [['pearl_weight', 'اللؤلؤ', 'وزن اللؤلؤ (جم)'], ['stone_weight', 'الحجر', 'وزن الحجر (قيراط)'], ['zircon_weight', 'الزركون', 'وزن الزركون (جم)']];
+const STONES = [['pearl_weight', 'اللؤلؤ', 'وزن اللؤلؤ (جم)'], ['stone_weight', 'الحجر', 'وزن الحجر (جم)'], ['zircon_weight', 'الزركون', 'وزن الزركون (جم)']];
 const num = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
 
 /** الألماس والأحجار في التصميم (اختياري): نوع الألماس ووزنه، واللؤلؤ والحجر والزركون */

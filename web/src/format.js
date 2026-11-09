@@ -46,7 +46,7 @@ export const LOCS = {
 export function stoneItems(o) {
   const out = (o.diamond_details || []).map((d, i, a) => [`الألماس المخبري${a.length > 1 ? ` ${i + 1}` : ''}`, `${[d.shape, d.size, d.color, d.clarity].filter(Boolean).join(' ')} · ${Number(d.carats)} قيراط${d.count ? ` · ${d.count} حبة` : ''}`]);
   if (Number(o.pearl_weight) > 0) out.push(['وزن اللؤلؤ', `${Number(o.pearl_weight)} جم`]);
-  if (Number(o.stone_weight) > 0) out.push(['وزن الحجر', `${Number(o.stone_weight)} قيراط`]);
+  if (Number(o.stone_weight) > 0) out.push(['وزن الحجر', `${Number(o.stone_weight)} جم`]);
   if (Number(o.zircon_weight) > 0) out.push(['وزن الزركون', `${Number(o.zircon_weight)} جم`]);
   if (o.bullion_type) out.push([o.bullion_type === 'coin' ? 'جنيهات' : 'سبائك', o.bullion_weight ? `${Number(o.bullion_weight)} جم ${o.bullion_type === 'coin' ? 'للجنيه' : 'للسبيكة'} (للقطعة الواحدة)` : '—']);
   return out;

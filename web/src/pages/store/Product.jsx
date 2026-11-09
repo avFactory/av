@@ -49,7 +49,7 @@ export default function Product() {
               <div key={`d${i}`}><dt>الألماس المخبري{p.diamond_details.length > 1 ? ` ${i + 1}` : ''}</dt><dd>{d.shape} <bdi dir="ltr">{d.size}</bdi>{[d.color, d.clarity].filter(Boolean).length ? ` ${[d.color, d.clarity].filter(Boolean).join(' ')}` : ''}<div className="small text-body-secondary"><bdi dir="ltr">{Number(d.carats)} ct</bdi>{d.count ? ` · ${d.count} حبة` : ''}</div></dd></div>
             ))}
             {Number(p.pearl_weight) > 0 && <div><dt>وزن اللؤلؤ</dt><dd>{fmtW(p.pearl_weight)} جم</dd></div>}
-            {Number(p.stone_weight) > 0 && <div><dt>وزن الحجر</dt><dd>{fmtW(p.stone_weight)} قيراط</dd></div>}
+            {Number(p.stone_weight) > 0 && <div><dt>وزن الحجر</dt><dd>{fmtW(p.stone_weight)} جم</dd></div>}
             {Number(p.zircon_weight) > 0 && <div><dt>وزن الزركون</dt><dd>{fmtW(p.zircon_weight)} جم</dd></div>}
             {p.bullion_type && <div><dt>{p.bullion_type === 'coin' ? 'جنيهات' : 'سبائك'}</dt><dd>{p.bullion_weight ? `${Number(p.bullion_weight)} جم ${p.bullion_type === 'coin' ? 'للجنيه' : 'للسبيكة'} (للقطعة)` : '—'}</dd></div>}
             <div><dt>التوفر</dt><dd>{p.availability === 'available' && p.stock_qty > 0 ? `متوفر (${p.stock_qty})` : 'يصنع حسب الطلب'}</dd></div>

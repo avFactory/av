@@ -152,7 +152,7 @@ function AudienceSection({ f, setF }) {
   );
 }
 
-const STONE_FIELDS = [['pearl_weight', 'اللؤلؤ', 'وزن اللؤلؤ (جم)'], ['stone_weight', 'الحجر', 'وزن الحجر (قيراط)'], ['zircon_weight', 'الزركون', 'وزن الزركون (جم)']];
+const STONE_FIELDS = [['pearl_weight', 'اللؤلؤ', 'وزن اللؤلؤ (جم)'], ['stone_weight', 'الحجر', 'وزن الحجر (جم)'], ['zircon_weight', 'الزركون', 'وزن الزركون (جم)']];
 
 /** تفاصيل أحجار المنتج: الألماس يُختار من مخزون الألماس ويُحجز عند اعتماد الطلب، والباقي للعرض فقط */
 function StonesSection({ f, setF }) {
