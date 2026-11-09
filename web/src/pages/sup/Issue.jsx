@@ -7,18 +7,19 @@ import { Btn, Card, Field, Input, Page, PageActions, ScanInput, WeightInput, use
 import { fmtDT } from '../../format.js';
 import WorkerPicker from '../../components/WorkerPicker.jsx';
 import DiamondIssue from './DiamondIssue.jsx';
+import StonesConfirm from './StonesConfirm.jsx';
 
 /** تسليم ذهب: (أ) لعامل واحد - طلب أو عدة طلبات، (ب) تقسيم طلب واحد على عدة عمال.
  *  لا توقيع يدوي: يصل للعامل إشعار، وقبوله من جواله هو توقيعه الإلكتروني. */
 export default function Issue() {
   const [sp] = useSearchParams();
   const { can } = useAuth();
-  const [mode, setMode] = useState(['split', 'general', 'diamond'].includes(sp.get('mode')) ? sp.get('mode') : 'single');
-  const tabs = [['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال'], ['general', 'عهدة عامة (بدون طلب)'], ...(can('stones.manage') ? [['diamond', 'تسليم الألماس المخبري']] : [])];
+  const [mode, setMode] = useState(['split', 'general', 'diamond', 'stones'].includes(sp.get('mode')) ? sp.get('mode') : 'single');
+  const tabs = [['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال'], ['general', 'عهدة عامة (بدون طلب)'], ...(can('stones.manage') ? [['diamond', 'تسليم الألماس المخبري']] : []), ['stones', 'تأكيد وزن الحجر والزركون']];
   return (
-    <Page title={mode === 'diamond' ? 'تسليم الألماس المخبري' : 'تسليم ذهب'} inline>
+    <Page title={mode === 'diamond' ? 'تسليم الألماس المخبري' : mode === 'stones' ? 'تأكيد وزن الحجر والزركون' : 'تسليم ذهب'} inline>
       <Tabs value={mode} onChange={setMode} tabs={tabs} />
-      {mode === 'single' ? <SingleIssue sp={sp} /> : mode === 'split' ? <SplitIssue sp={sp} /> : mode === 'diamond' ? <DiamondIssue /> : <GeneralIssue sp={sp} />}
+      {mode === 'single' ? <SingleIssue sp={sp} /> : mode === 'split' ? <SplitIssue sp={sp} /> : mode === 'diamond' ? <DiamondIssue /> : mode === 'stones' ? <StonesConfirm /> : <GeneralIssue sp={sp} />}
     </Page>
   );
 }

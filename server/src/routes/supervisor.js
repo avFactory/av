@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { orderThumb } from '../lib/orderThumb.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, has } from '../lib/auth.js';
-import { bad, notFound, forbidden, int, str } from '../lib/http.js';
+import { bad, notFound, forbidden, conflict, int, str, weight as W } from '../lib/http.js';
 import * as custody from '../lib/custody.js';
 import { embeddedStonesGrams } from '../lib/production.js';
 import * as ledger from '../lib/ledger.js';
 import { sendXlsx } from '../lib/xlsx.js';
 import { normalizeScan } from '../lib/shortName.js';
+import { audit } from '../lib/audit.js';
 
 const r = Router();
 const SUP = requirePerm('custody.issue', 'custody.receive', 'custody.view_all');
@@ -108,6 +109,7 @@ r.get('/lookup', requirePerm('scan.use', 'custody.issue', 'custody.receive', 'or
   const token = code.includes('/') ? code.split('/').pop() : code;
   const o = await one(`
     select o.id, o.order_no, o.title, o.status, o.quantity, o.material_id, o.current_stage_id, o.design_status, o.design_approval_required,
+           o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.set_pearl_weight::text, o.set_stone_weight::text, o.set_zircon_weight::text, o.stones_confirmed_at,
            o.assigned_worker_id, ${orderThumb()} as thumb, s.name as stage_name, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color
     from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
     where ($2::int is not null and o.id=$2) or ($2::int is null and (o.qr_token=lower($1) or upper(o.order_no)=upper($1) or (length($1) >= 10 and regexp_replace(o.order_no, '[^0-9]', '', 'g')=$1) or o.order_no ilike '%-' || lpad($1, 6, '0')))`, [token, byId]);
@@ -120,6 +122,28 @@ r.get('/lookup', requirePerm('scan.use', 'custody.issue', 'custody.receive', 'or
   o.stones = await embeddedStonesGrams(pool, o.id);
   o.open_custodies = await many("select c.id, c.custody_no, c.worker_id, u.full_name, c.weight_issued::text from custodies c join users u on u.id=c.worker_id where c.order_id=$1 and c.status='open'", [o.id]);
   res.json(o);
+});
+
+/**
+ * تأكيد وزن الحجر والزركون واللؤلؤ المركبة في الطلب (بدون مخزون):
+ * يُخصم تلقائياً من وزن الميزان عند الاستلام والوزن النهائي، ولا يُسجَّل كحركة ذهب.
+ */
+r.post('/orders/:id/set-stones', requirePerm('custody.issue', 'custody.receive'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const id = int(req.params.id);
+    const o = (await db.query('select id, order_no, status, current_stage_id, set_pearl_weight::text, set_stone_weight::text, set_zircon_weight::text from orders where id=$1 for update', [id])).rows[0];
+    if (!o) throw notFound('الطلب غير موجود');
+    if (!['approved', 'in_production', 'on_hold'].includes(o.status)) throw conflict('لا يمكن تعديل وزن الأحجار لطلب غير قيد التصنيع');
+    const v = (x, l) => (x == null || x === '' || Number(x) === 0 ? null : W(x, l));
+    const vals = [v(req.body.pearl_weight, 'وزن اللؤلؤ'), v(req.body.stone_weight, 'وزن الحجر'), v(req.body.zircon_weight, 'وزن الزركون')];
+    await db.query('update orders set set_pearl_weight=$2, set_stone_weight=$3, set_zircon_weight=$4, stones_confirmed_at=now(), stones_confirmed_by=$5, updated_at=now() where id=$1', [id, ...vals, req.user.id]);
+    const g = await embeddedStonesGrams(db, id);
+    const parts = [vals[1] && `حجر ${Number(vals[1])} قيراط`, vals[2] && `زركون ${Number(vals[2])} جم`, vals[0] && `لؤلؤ ${Number(vals[0])} جم`].filter(Boolean);
+    await db.query("insert into order_stage_log(order_id, stage_id, event, user_id, note) values ($1,$2,'note',$3,$4)",
+      [id, o.current_stage_id, req.user.id, `تأكيد وزن الأحجار المركبة: ${parts.join('، ') || 'لا يوجد'} (يُخصم ${Number(g.confirmed)} جم من وزن الميزان)`]);
+    await audit(db, req, 'order.set_stones', 'order', id, { before: { pearl: o.set_pearl_weight, stone: o.set_stone_weight, zircon: o.set_zircon_weight }, after: { pearl: vals[0], stone: vals[1], zircon: vals[2] } });
+    return { ok: true, confirmed_grams: g.confirmed, stones: g };
+  }));
 });
 
 r.post('/issue', requirePerm('custody.issue'), async (req, res) => {

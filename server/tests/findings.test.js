@@ -96,3 +96,28 @@ test('خامات المصنع: سلسال 1 جم يُضاف على طلب 5 جم
   assert.deepEqual([n(list.stock_weight), list.stock_pieces, n(list.at_workers)], [9, 9, 0]);
   assert.equal((await call('GET', '/inventory/reconciliation')).data.ok, true);
 });
+
+test('تأكيد وزن الحجر والزركون: يُخصم من وزن الميزان بدون مخزون وبدون حركة ذهب', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('zw1',$1,'عامل التركيب','worker','Z1') returning id", [hashPassword('Zw#2026xx')])).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '50', note: 'رصيد' });
+  const o = (await call('POST', '/orders', { title: 'خاتم زركون', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat, zircon_weight: '1' })).data;
+  let d = (await call('GET', `/orders/${o.id}`)).data;
+  for (let i = 0; i < 6 && !d.order.handles_gold; i++) { await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'اختبار' }); d = (await call('GET', `/orders/${o.id}`)).data; }
+  await call('POST', `/admin/stages/${d.order.current_stage_id}/rate`, { rate_percent: '0', note: 'x' });
+  const ic = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: o.id, weight: '5' }] })).data.custodies[0].id;
+  const orderBal = await bal('order', o.id, mat);
+  // العامل ركّب زركون 1 جم وحجر 2.5 قيراط (0.5 جم)
+  const c = await call('POST', `/sup/orders/${o.id}/set-stones`, { zircon_weight: '1', stone_weight: '2.5', pearl_weight: '' });
+  assert.equal(c.status, 200, JSON.stringify(c.data));
+  assert.equal(n(c.data.confirmed_grams), 1.5);
+  const lk = (await call('GET', `/sup/lookup?id=${o.id}`)).data;
+  assert.deepEqual([n(lk.set_zircon_weight), n(lk.set_stone_weight), lk.set_pearl_weight, n(lk.stones.used)], [1, 2.5, null, 1.5]);
+  assert.equal(await bal('order', o.id, mat), orderBal, 'لا حركة ذهب');
+  // الاستلام: الميزان 6.5 جم = ذهب 5 + أحجار 1.5 → بدون عجز
+  const r = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: ic, returned_weight: '6.5' }] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const st = r.data.results[0].settlement;
+  assert.deepEqual([n(st.returned_weight), n(st.stones_weight), n(st.actual_loss)], [5, 1.5, 0]);
+  assert.equal(await bal('worker', w, mat), 0);
+});

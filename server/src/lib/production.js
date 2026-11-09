@@ -50,8 +50,11 @@ export async function embeddedStonesGrams(db, orderId, workerId = null) {
      where order_id = $1 and kind <> 'reversal' and not exists (select 1 from stone_movements r where r.reverses_id = m.id)`,
     [orderId, workerId]
   );
-  const used = Number(r.rows[0].used_g), out = Number(r.rows[0].out_g);
-  return { total: (used + Math.max(0, out)).toFixed(4), used: used.toFixed(4) };
+  // أحجار وزركون ولؤلؤ مؤكدة الوزن في الطلب (بدون مخزون): تُعامل كأحجار مركبة
+  const c = (await db.query(`select coalesce(set_pearl_weight,0) + coalesce(set_stone_weight,0) * 0.2 + coalesce(set_zircon_weight,0) as g from orders where id=$1`, [orderId])).rows[0];
+  const confirmed = Number(c?.g || 0);
+  const used = Number(r.rows[0].used_g) + confirmed, out = Number(r.rows[0].out_g);
+  return { total: (used + Math.max(0, out)).toFixed(4), used: used.toFixed(4), confirmed: confirmed.toFixed(4) };
 }
 async function logStage(db, orderId, stageId, event, userId, note, customerVisible = false, workerId = null) {
   if (!orderId) return; // العهدة العامة لا ترتبط بطلب
