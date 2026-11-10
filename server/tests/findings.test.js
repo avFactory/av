@@ -121,3 +121,25 @@ test('تأكيد وزن الحجر والزركون: يُخصم من وزن ال
   assert.deepEqual([n(st.returned_weight), n(st.stones_weight), n(st.actual_loss)], [5, 1.5, 0]);
   assert.equal(await bal('worker', w, mat), 0);
 });
+
+test('الصور الداخلية: يرفعها فريق 3D فقط ولا تظهر للعميل', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  const o = (await call('POST', '/orders', { title: 'خاتم داخلي', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat })).data;
+  const mkW = async (u, spec) => { await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, specialty) values ($1,$2,$1,'worker',$1,$3)", [u, hashPassword('Int#2026xx'), spec]); let ck = '';
+    const go = async (m, p, body) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, ...(body instanceof FormData ? {} : { 'content-type': 'application/json' }) }, body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+    await go('POST', '/auth/login', { username: u, password: 'Int#2026xx' }); return go; };
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const img = () => { const f = new FormData(); f.append('files', new Blob([PNG], { type: 'image/png' }), 'in.png'); return f; };
+  const d3 = await mkW('int3d', 'طباعة الثري دي');
+  const tw = await mkW('inttw', 'تشبيك');
+  assert.equal((await d3('GET', '/auth/me')).data.is_3d, true);
+  assert.equal((await tw('GET', '/auth/me')).data.is_3d, false);
+  assert.equal((await tw('POST', `/w/orders/${o.id}/internal`, img())).status, 403, 'غير 3D ممنوع');
+  assert.equal((await call('POST', `/orders/${o.id}/internal`, null)).status, 403, 'المدير ليس 3D');
+  const up = await d3('POST', `/w/orders/${o.id}/internal`, img());
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+  assert.equal((await d3('GET', `/w/orders/${o.id}`)).status, 200, '3D يصل لأي طلب');
+  const f = (await pool.query("select id, kind, customer_visible from order_files where order_id=$1", [o.id])).rows;
+  assert.deepEqual(f.map((x) => [x.kind, x.customer_visible]), [['internal', false]]);
+  assert.equal((await call('POST', `/orders/${o.id}/design/send`, { file_ids: [f[0].id] })).status, 400, 'لا تُرسل للعميل');
+});

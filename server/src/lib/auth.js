@@ -38,8 +38,8 @@ export async function sessionMiddleware(req, _res, next) {
   const t = req.cookies?.[COOKIE];
   if (!t) return next();
   const r = await pool.query(
-    `select u.*, c.status as customer_status, c.shop_name, br.name as branch_name
-     from sessions s join users u on u.id = s.user_id left join customers c on c.id = u.customer_id left join customer_branches br on br.id = u.branch_id
+    `select u.*, c.status as customer_status, c.shop_name, br.name as branch_name, dp.name as department_name
+     from sessions s join users u on u.id = s.user_id left join customers c on c.id = u.customer_id left join customer_branches br on br.id = u.branch_id left join departments dp on dp.id = u.department_id
      where s.token_hash=$1 and s.expires_at > now() and u.active`,
     [hash(t)]
   );

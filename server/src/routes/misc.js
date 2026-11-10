@@ -9,6 +9,7 @@ import { HttpError, forbidden, notFound, int } from '../lib/http.js';
 import { UPLOAD_DIR } from '../lib/uploads.js';
 import { sseHandler } from '../lib/events.js';
 import { thumbnail } from '../lib/thumbs.js';
+import { is3D } from '../lib/internalImages.js';
 
 const r = Router();
 
@@ -65,7 +66,7 @@ r.get('/files/*filepath', async (req, res) => {
       // حساب الفرع يرى ملفات طلبات فرعه فقط
       if (allowed && u.branch_id) allowed = !!(await one('select 1 from orders where id=$1 and branch_id=$2', [of.order_id, u.branch_id]));
     }
-    else if (u.role_code === 'worker') allowed = of.assigned_worker_id === u.id || !!(await one("select 1 from custodies where order_id=$1 and worker_id=$2 limit 1", [of.order_id, u.id]));
+    else if (u.role_code === 'worker') allowed = of.assigned_worker_id === u.id || is3D(u) || !!(await one("select 1 from custodies where order_id=$1 and worker_id=$2 limit 1", [of.order_id, u.id]));
     else allowed = has(req, 'orders.view');
   } else if (rel.startsWith('signatures/')) {
     allowed = has(req, 'custody.view_all') || !!(await one('select 1 from custody_batches where signature_path=$1 and worker_id=$2', [rel, u.id]));

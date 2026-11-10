@@ -8,6 +8,7 @@ import { notifyPerm } from '../lib/notify.js';
 import { saveSignature, upload, registerFiles } from '../lib/uploads.js';
 import { advance, lockOrder, logStage } from '../lib/production.js';
 import { audit } from '../lib/audit.js';
+import { is3D, addInternalImages } from '../lib/internalImages.js';
 
 const r = Router();
 r.use(requirePerm('worker.self'));
@@ -21,7 +22,7 @@ async function myCustody(db, req, id, lock = false) {
 async function canSeeOrder(db, req, orderId) {
   const o = (await db.query('select * from orders where id=$1', [orderId])).rows[0];
   if (!o) throw notFound('الطلب غير موجود');
-  if (o.assigned_worker_id === req.user.id) return o;
+  if (o.assigned_worker_id === req.user.id || is3D(req.user)) return o;
   const c = await db.query("select 1 from custodies where order_id=$1 and worker_id=$2 and status <> 'reversed' limit 1", [orderId, req.user.id]);
   if (!c.rowCount) throw forbidden('هذا الطلب غير مسند إليك');
   return o;
@@ -182,6 +183,11 @@ r.post('/orders/:id/files', upload.array('files', 10), async (req, res) => {
     await logStage(db, o.id, o.current_stage_id, 'note', req.user.id, `رفع ${files.length} ملف`, false, req.user.id);
     return { ok: true, files };
   }));
+});
+
+/** صور داخلية على الطلب (فريق 3D فقط) */
+r.post('/orders/:id/internal', upload.array('files', 10), async (req, res) => {
+  res.json(await tx((db) => addInternalImages(db, req, int(req.params.id))));
 });
 
 r.post('/orders/:id/note', async (req, res) => {

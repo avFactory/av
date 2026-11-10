@@ -9,6 +9,7 @@ import * as ledger from '../lib/ledger.js';
 import { sendXlsx } from '../lib/xlsx.js';
 import { normalizeScan } from '../lib/shortName.js';
 import { audit } from '../lib/audit.js';
+import { is3D } from '../lib/internalImages.js';
 
 const r = Router();
 const SUP = requirePerm('custody.issue', 'custody.receive', 'custody.view_all');
@@ -114,7 +115,7 @@ r.get('/lookup', requirePerm('scan.use', 'custody.issue', 'custody.receive', 'or
     from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
     where ($2::int is not null and o.id=$2) or ($2::int is null and (o.qr_token=lower($1) or upper(o.order_no)=upper($1) or (length($1) >= 10 and regexp_replace(o.order_no, '[^0-9]', '', 'g')=$1) or o.order_no ilike '%-' || lpad($1, 6, '0')))`, [token, byId]);
   if (!o) throw notFound('لم يتم العثور على الطلب');
-  if (req.user.role_code === 'worker' && o.assigned_worker_id !== req.user.id) {
+  if (req.user.role_code === 'worker' && o.assigned_worker_id !== req.user.id && !is3D(req.user)) {
     const mine = await one("select 1 from custodies where order_id=$1 and worker_id=$2 and status <> 'reversed' limit 1", [o.id, req.user.id]);
     if (!mine) throw forbidden('هذا الطلب غير مسند إليك');
   }

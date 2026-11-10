@@ -6,6 +6,7 @@ import { audit } from '../lib/audit.js';
 import { notifyPerm } from '../lib/notify.js';
 import bcrypt from 'bcryptjs';
 import { upload, registerFiles } from '../lib/uploads.js';
+import { is3D } from '../lib/internalImages.js';
 
 // مستندات تسجيل المحل الإلزامية (صورة أو PDF لكل منها)
 export const REG_DOCS = [['cr_doc', 'cr', 'السجل التجاري'], ['vat_doc', 'vat', 'الشهادة الضريبية'], ['address_doc', 'national_address', 'العنوان الوطني']];
@@ -55,7 +56,7 @@ r.get('/me', requireAuth, async (req, res) => {
   res.json({
     id: u.id, username: u.username, full_name: u.full_name, role_code: u.role_code, employee_no: u.employee_no,
     customer_id: u.customer_id, customer_status: u.customer_status, shop_name: u.shop_name, branch_id: u.branch_id, branch_name: u.branch_name,
-    perms: [...u.perms], unread, must_change_password: u.must_change_password,
+    perms: [...u.perms], unread, must_change_password: u.must_change_password, is_3d: is3D(u),
   });
 });
 

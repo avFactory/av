@@ -16,6 +16,7 @@ import { resolveLabor, laborAmount } from '../lib/labor.js';
 import { nextItemNo, orderCopyColumns } from '../lib/orderGroups.js';
 import { applyDueDate, capacity } from '../lib/leadTime.js';
 import { bullionVals } from './catalog.js';
+import { addInternalImages } from '../lib/internalImages.js';
 
 const r = Router();
 
@@ -437,6 +438,11 @@ r.post('/:id/deliver', requirePerm('orders.manage', 'orders.advance'), async (re
   }));
 });
 
+/** صور داخلية على الطلب (فريق 3D فقط) — لا تظهر للعميل */
+r.post('/:id/internal', requirePerm('orders.view'), upload.array('files', 10), async (req, res) => {
+  res.json(await tx((db) => addInternalImages(db, req, int(req.params.id))));
+});
+
 r.post('/:id/files', requirePerm('orders.manage', 'design.manage', 'orders.advance'), upload.array('files', 10), async (req, res) => {
   res.json(await tx(async (db) => {
     const o = await prod.lockOrder(db, int(req.params.id));
@@ -460,7 +466,7 @@ r.post('/:id/design/send', requirePerm('design.manage'), async (req, res) => {
     const o = await prod.lockOrder(db, int(req.params.id));
     const fileIds = (req.body.file_ids || []).map((x) => int(x));
     if (!fileIds.length) throw bad('اختر ملفات التصميم المرسلة');
-    const f = await db.query('select count(*)::int n from order_files where order_id=$1 and id = any($2::int[])', [o.id, fileIds]);
+    const f = await db.query("select count(*)::int n from order_files where order_id=$1 and id = any($2::int[]) and kind <> 'internal'", [o.id, fileIds]);
     if (f.rows[0].n !== fileIds.length) throw bad('ملفات غير صالحة');
     await db.query('update order_files set customer_visible=true where id = any($1::int[])', [fileIds]);
     await db.query("update design_reviews set status='rejected', customer_note=coalesce(customer_note,'استبدل بتصميم أحدث') where order_id=$1 and status='pending'", [o.id]);

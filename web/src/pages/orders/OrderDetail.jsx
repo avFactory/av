@@ -31,9 +31,11 @@ function TrackLinkBtn({ o }) {
   );
 }
 
+const FILE_KIND = { design: 'تصميم', model3d: 'ملف 3D', reference: 'مرجع', sketch: 'رسم يدوي', execution: 'صورة تنفيذ', other: 'أخرى', internal: '🔒 داخلية (3D) — لا تظهر للعميل' };
+
 export default function OrderDetail() {
   const { id } = useParams();
-  const { can, lookups } = useAuth();
+  const { can, lookups, me } = useAuth();
   const { data, error, reload } = useFetch(`/orders/${id}`, { live: ['orders', 'custodies', 'settlements'] });
   const [tab, setTab] = useState('overview');
   const [modal, setModal] = useState(null);
@@ -56,6 +58,13 @@ export default function OrderDetail() {
     await api.post(`/orders/${o.id}/files`, fd);
     reload();
   }, 'تم رفع الملفات');
+  const uploadInternal = (e) => run(async () => {
+    const fd = new FormData();
+    for (const x of e.target.files) fd.append('files', x);
+    e.target.value = '';
+    await api.post(`/orders/${o.id}/internal`, fd);
+    reload();
+  }, 'تم رفع الصورة الداخلية');
 
   const inProd = o.status === 'in_production';
   return (
@@ -148,15 +157,18 @@ export default function OrderDetail() {
         )}
         {tab === 'files' && (
           <div className="grid">
-            <Card title="الملفات" actions={can('orders.manage', 'design.manage', 'orders.advance') && (
+            <Card title="الملفات" actions={(can('orders.manage', 'design.manage', 'orders.advance') || me?.is_3d) && (
               <div className="hrow gap">
+                {me?.is_3d && <label className="btn btn-outline-dark btn-sm">🔒 صورة داخلية (3D)<input type="file" accept="image/*" multiple hidden onChange={uploadInternal} /></label>}
+                {can('orders.manage', 'design.manage', 'orders.advance') && <>
                 <Select value={f.kind || 'design'} onChange={setv('kind')} options={[['design', 'تصميم'], ['model3d', 'ملف 3D'], ['reference', 'مرجع'], ['sketch', 'رسم يدوي'], ['execution', 'صورة تنفيذ'], ['other', 'أخرى']]} style={{ width: 140 }} />
                 <label className="btn btn-outline-secondary btn-sm">رفع ملفات<input type="file" multiple hidden onChange={upload} /></label>
+                </>}
               </div>
             )}>
               <div className="files">{files.map((x) => (
                 <a key={x.id} href={fileUrl(x.path)} target="_blank" rel="noreferrer">{x.mime?.startsWith('image') ? <img src={fileUrl(x.path, 400)} alt="" /> : <div className="doc">{(x.original_name || '').split('.').pop()?.toUpperCase()}</div>}
-                  <span>{x.original_name}<br /><span className="muted">{x.kind}{x.customer_visible ? ' · ظاهر للعميل' : ''}</span></span></a>
+                  <span>{x.original_name}<br /><span className="muted">{FILE_KIND[x.kind] || x.kind}{x.customer_visible ? ' · ظاهر للعميل' : ''}</span></span></a>
               ))}</div>
             </Card>
             {can('design.manage') && o.customer_id && (

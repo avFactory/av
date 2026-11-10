@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtDT, COLORS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Loader, Textarea, useAction, useFetch, Kv, ErrorBox } from '../../ui.jsx';
+import { useAuth } from '../../auth.jsx';
 
 /** طلب مسند للعامل (مثل التصميم): مشاهدة التفاصيل، رفع الملفات، إنهاء المهمة */
 export default function WOrder() {
@@ -10,6 +11,7 @@ export default function WOrder() {
   const { data, error, reload } = useFetch(`/w/orders/${id}`, { live: ['orders'] });
   const [note, setNote] = useState('');
   const [run, busy] = useAction();
+  const { me } = useAuth();
   if (error) return <div className="wk-body"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
   const { order: o, files, custodies, log } = data;
@@ -21,6 +23,12 @@ export default function WOrder() {
     await api.post(`/w/orders/${o.id}/files`, fd);
     reload();
   }, 'تم الرفع');
+  const uploadInternal = (fl) => run(async () => {
+    const fd = new FormData();
+    for (const f of fl) fd.append('files', f);
+    await api.post(`/w/orders/${o.id}/internal`, fd);
+    reload();
+  }, 'تم رفع الصورة الداخلية');
   return (
     <div className="wk-body">
       <Link to="/w" className="back">→ مهامي</Link>
@@ -29,8 +37,9 @@ export default function WOrder() {
         <Kv items={[['الوصف', o.title], ['المرحلة', o.stage?.name], ['المادة', o.material], o.color && ['اللون', COLORS[o.color] || o.color], ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن التقريبي', o.approx_weight], ...stoneItems(o), ['ملاحظات', o.notes]]} />
       </Card>
       <Card title="الملفات والتصاميم">
-        <div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
+        <div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.kind === 'internal' ? '🔒 داخلية · ' : ''}{f.original_name}</span></a>)}</div>
         {o.assigned_to_me && <label className="btn btn-outline-secondary mt">{isDesign ? 'رفع ملفات التصميم (صور / 3D)' : 'رفع صور التنفيذ'}<input type="file" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>}
+        {me?.is_3d && <label className="btn btn-outline-dark mt ms-2">🔒 رفع صورة داخلية (3D)<input type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files.length) uploadInternal(e.target.files); e.target.value = ''; }} /></label>}
       </Card>
       {o.assigned_to_me && (
         <Card title="ملاحظة / طلب توضيح">
