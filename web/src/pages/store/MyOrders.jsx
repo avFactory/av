@@ -14,16 +14,33 @@ export default function MyOrders() {
       {!data.length && <Empty>لا توجد طلبات بعد</Empty>}
       <div className="grid">
         {groups(data).map((g) => (g.items.length === 1 ? <OrderCard key={g.key} o={g.items[0]} nav={nav} /> : (
-          <div key={g.key} className="card">
-            <div className="card-header bg-transparent hrow between wrap gap">
-              <div><b dir="ltr">{g.key}</b> <span className="small muted">· {g.items.length} أصناف · {fmtDate(g.items[0].created_at)}{g.items[0].branch_name ? ` · ${g.items[0].branch_name}` : ''}</span></div>
-              <span className="small muted">إجمالي القطع {g.items.reduce((a, o) => a + Number(o.quantity || 0), 0)}</span>
-            </div>
-            <div className="grid p-2" style={{ gap: 6 }}>{g.items.map((o) => <OrderCard key={o.id} o={o} nav={nav} compact />)}</div>
-          </div>
+          <GroupCard key={g.key} g={g} nav={nav} open={loc.state?.cart === g.key} />
         )))}
       </div>
     </Page>
+  );
+}
+
+/** طلب بأكثر من منتج: قائمة منسدلة (ملخص بالصور والعدد والحالة، وتفتح لعرض البنود) */
+function GroupCard({ g, nav, open }) {
+  const pieces = g.items.reduce((a, o) => a + Number(o.quantity || 0), 0);
+  const labor = g.items.reduce((a, o) => a + Number(o.labor_estimate || 0), 0);
+  const imgs = g.items.map((o) => o.image || o.product_image).filter(Boolean);
+  const st = Object.entries(g.items.reduce((m, o) => { m[o.status] = (m[o.status] || 0) + 1; return m; }, {}));
+  const action = g.items.some((o) => o.status === 'quoted' || o.design_status === 'sent');
+  return (
+    <details className="card order-group" open={open}>
+      <summary className="card-body">
+        <div className="og-thumbs">{imgs.slice(0, 4).map((p, i) => <img key={i} src={fileUrl(p, 400)} alt="" />)}{imgs.length > 4 && <span>+{imgs.length - 4}</span>}{!imgs.length && <span>◇</span>}</div>
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="hrow between wrap gap"><b dir="ltr">{g.key}</b><span className="d-flex gap-1 flex-wrap">{st.map(([k, n]) => <span key={k} className="d-inline-flex align-items-center gap-1"><StatusBadge map={STATUS} value={k} />{st.length > 1 && <small className="muted">{n}</small>}</span>)}</span></div>
+          <div className="small muted">{g.items.length} أصناف · {pieces} قطعة · {fmtDate(g.items[0].created_at)}{g.items[0].branch_name ? ` · ${g.items[0].branch_name}` : ''}{labor > 0 ? ` · أجور تقديرية ${fmtMoney(labor)}` : ''}</div>
+          {action && <div className="small" style={{ color: 'var(--warn)' }}>بنود بانتظار موافقتكم</div>}
+        </div>
+        <span className="og-chev" aria-hidden="true">⌄</span>
+      </summary>
+      <div className="grid px-2 pb-2" style={{ gap: 6 }}>{g.items.map((o) => <OrderCard key={o.id} o={o} nav={nav} compact />)}</div>
+    </details>
   );
 }
 
