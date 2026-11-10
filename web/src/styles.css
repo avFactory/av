@@ -897,3 +897,14 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .og-chev { flex: none; font-size: 1.3rem; color: var(--muted); transition: transform .2s; line-height: 1; }
 .order-group[open] .og-chev { transform: rotate(180deg); }
 @media (max-width: 600px) { .og-thumbs img, .og-thumbs span { width: 36px; height: 36px; } .og-thumbs > :nth-child(n+4) { display: none; } }
+
+/* منتجات الطلب (أعلى صفحة الطلب) */
+.oi-list { display: grid; gap: 8px; }
+.oi-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.oi-row.current { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%, transparent); cursor: default; }
+.oi-row > img, .oi-ph { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; background: #fff; border: 1px solid var(--line); display: grid; place-items: center; color: var(--gold-ink); }
+.oi-main { min-width: 0; display: grid; gap: 2px; }
+.oi-side { display: grid; justify-items: end; cursor: default; }
+.chip-sm { padding: 2px 10px; font-size: .78rem; }
+@media (max-width: 700px) { .oi-row { grid-template-columns: 52px minmax(0, 1fr); } .oi-row > img, .oi-ph { width: 52px; height: 52px; } .oi-side { grid-column: 1 / -1; justify-items: start; } }
+.d3-group { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 10px; display: grid; gap: 8px; }

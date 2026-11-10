@@ -143,3 +143,39 @@ test('الصور الداخلية: يرفعها فريق 3D فقط ولا تظه
   assert.deepEqual(f.map((x) => [x.kind, x.customer_visible]), [['internal', false]]);
   assert.equal((await call('POST', `/orders/${o.id}/design/send`, { file_ids: [f[0].id] })).status, 400, 'لا تُرسل للعميل');
 });
+
+test('مرحلة 3D: تحديد التصميم/الطباعة لكل قطعة ونقل الطلب كاملاً بدون المشرف', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  const mk = async (t) => (await call('POST', '/orders', { title: t, product_type: t, karat: 21, quantity: 2, material_id: mat })).data;
+  const a = await mk('خاتم'), b = await mk('عقد');
+  await pool.query("update orders set cart_ref='ORD-2026-555555' where id = any($1::int[])", [[a.id, b.id]]);
+  const stageOf = async (id) => (await pool.query('select s.code from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [id])).rows[0].code;
+  const login = async (u, spec) => { await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, specialty) values ($1,$2,$1,'worker',$1,$3)", [u, hashPassword('D3d#2026xx'), spec]); let ck = '';
+    const go = async (m, p, body) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+    await go('POST', '/auth/login', { username: u, password: 'D3d#2026xx' }); return go; };
+  const d3 = await login('d3q', 'طباعة الثري دي');
+  const tw = await login('d3tw', 'تشبيك');
+  // المشرف ينقل الطلب كاملاً حتى مرحلة 3D
+  for (let i = 0; i < 4 && (await stageOf(a.id)) !== 'design3d'; i++) {
+    const r = await call('POST', `/orders/${a.id}/group-advance`);
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+  }
+  assert.deepEqual([await stageOf(a.id), await stageOf(b.id)], ['design3d', 'design3d'], 'البنود انتقلت معاً');
+  // طابور 3D
+  const q = (await d3('GET', '/w/3d')).data;
+  assert.ok(q.some((x) => x.id === a.id) && q.some((x) => x.id === b.id));
+  assert.equal((await tw('GET', '/w/3d')).status, 403);
+  assert.equal((await d3('POST', `/w/orders/${a.id}/3d`, { needs_design: true, needs_print: true })).status, 200);
+  assert.equal((await d3('POST', `/w/orders/${b.id}/3d`, { needs_design: false, needs_print: false })).status, 200);
+  const fl = (await pool.query('select needs_3d_design, needs_3d_print from orders where id=$1', [a.id])).rows[0];
+  assert.deepEqual([fl.needs_3d_design, fl.needs_3d_print], [true, true]);
+  assert.equal((await tw('POST', `/w/orders/${a.id}/group-advance`)).status, 403, 'غير 3D');
+  // موظف 3D ينقل الطلب كاملاً بدون اعتماد المشرف
+  const mv = await d3('POST', `/w/orders/${a.id}/group-advance`);
+  assert.equal(mv.status, 200, JSON.stringify(mv.data));
+  assert.equal(mv.data.moved.length, 2);
+  assert.notEqual(await stageOf(a.id), 'design3d');
+  assert.equal(await stageOf(a.id), await stageOf(b.id));
+  // خارج مرحلة 3D لا يستطيع النقل
+  assert.equal((await d3('POST', `/w/orders/${a.id}/group-advance`)).status, 403);
+});

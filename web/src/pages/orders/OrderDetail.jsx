@@ -78,6 +78,12 @@ export default function OrderDetail() {
         {['pending_review', 'quoted', 'approved'].includes(o.status) && can('orders.manage') && <Btn kind="ghost" onClick={() => setModal('reject')}>رفض</Btn>}
         {!['delivered', 'cancelled', 'rejected'].includes(o.status) && can('orders.manage') && <Btn kind="ghost" onClick={() => setModal('cancel')}>إلغاء</Btn>}
       </>}>
+      {(siblings.length > 1 || (['pending_review', 'quoted'].includes(o.status) && o.quantity > 1 && can('orders.manage'))) && (
+        <OrderItems o={o} siblings={siblings} canManage={can('orders.manage')} busy={busy} routes={lookups?.routes || []} reload={reload} run={run}
+          canMove={inProd && (can('orders.advance') || (me?.is_3d && cur?.kind === 'design'))} can3d={!!me?.is_3d || can('orders.advance')}
+          onSplit={() => open('split', { quantity: '', route_id: o.route_id ? String(o.route_id) : '' })}
+          onStartAll={() => run(async () => { const r = await api.post('/orders/group/start', { ref: o.cart_ref }); reload(); if (r.skipped?.length) window.alert(`لم يبدأ:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`); }, 'تم بدء إنتاج الطلب')} />
+      )}
       <div className="grid g3 mb" style={{ gridTemplateColumns: '1fr 1fr auto' }}>
         <Card title="الطلب">
           <Kv items={[o.shop_name && ['العميل', o.branch_name ? `${o.shop_name} — ${o.branch_name}` : o.shop_name],
@@ -131,11 +137,6 @@ export default function OrderDetail() {
             <div key={l.id} className="alert alert-warning py-2 mb-0"><div>{l.note}</div><div className="small text-body-secondary">{l.user_name} · {fmtDT(l.created_at)}</div></div>
           ))}</div>
         </Card>
-      )}
-      {(siblings.length > 1 || (['pending_review', 'quoted'].includes(o.status) && o.quantity > 1 && can('orders.manage'))) && (
-        <OrderItems o={o} siblings={siblings} canManage={can('orders.manage')} busy={busy} routes={lookups?.routes || []}
-          onSplit={() => open('split', { quantity: '', route_id: o.route_id ? String(o.route_id) : '' })}
-          onStartAll={() => run(async () => { const r = await api.post('/orders/group/start', { ref: o.cart_ref }); reload(); if (r.skipped?.length) window.alert(`لم يبدأ:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`); }, 'تم بدء إنتاج الطلب')} />
       )}
 
       <div className="mt">
@@ -244,23 +245,60 @@ export default function OrderDetail() {
   );
 }
 
-/** بنود الطلب الواحد: كل بند أمر إنتاج مستقل (يمكن أن يختلف مساره: صب / بدون صب …) */
-function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll }) {
+/** بنود الطلب الواحد (أعلى الصفحة): تفاصيل كل منتج، ونقل الطلب كاملاً للمرحلة التالية، وتحديد احتياج 3D لكل قطعة */
+function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove, can3d, run, reload }) {
   const nav = useNavigate();
   const list = siblings.length ? siblings : [{ id: o.id, order_no: o.order_no, title: o.title, quantity: o.quantity, status: o.status, approx_weight: o.approx_weight, route_name: o.route_name, stage_name: o.stage_name }];
   const canSplit = canManage && ['pending_review', 'quoted'].includes(o.status) && o.quantity > 1;
   const startable = canManage && o.cart_ref && siblings.some((x) => ['pending_review', 'approved'].includes(x.status));
+  const sameStage = list.filter((x) => x.status === 'in_production' && x.current_stage_id === o.current_stage_id);
+  const pieces = list.reduce((a, x) => a + Number(x.quantity || 0), 0);
+  const moveAll = () => run(async () => {
+    const r = await api.post(`/orders/${o.id}/group-advance`);
+    reload();
+    if (r.skipped?.length) window.alert(`لم ينتقل:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`);
+  }, 'انتقل الطلب كاملاً للمرحلة التالية');
+  const mark = (x, k) => run(async () => {
+    const next = { needs_design: x.needs_3d_design, needs_print: x.needs_3d_print, [k]: !(k === 'needs_design' ? x.needs_3d_design : x.needs_3d_print) };
+    await api.post(`/orders/${x.id}/3d`, next); reload();
+  });
+  const markNone = (x) => run(async () => { await api.post(`/orders/${x.id}/3d`, { needs_design: false, needs_print: false }); reload(); });
   return (
-    <Card className="mb" title={<span>بنود الطلب {o.cart_ref && <b dir="ltr">{o.cart_ref}</b>} <span className="small text-body-secondary fw-normal">({list.length})</span></span>}
+    <Card className="mb" title={<span>منتجات الطلب {o.cart_ref && <b dir="ltr">{o.cart_ref}</b>} <span className="small text-body-secondary fw-normal">({list.length} أصناف · {pieces} قطعة)</span></span>}
       actions={<>
         {canSplit && <Btn size="sm" kind="ghost" onClick={onSplit}>✂ تقسيم الكمية</Btn>}
         {startable && <Btn size="sm" loading={busy} onClick={onStartAll}>بدء إنتاج الطلب كاملاً</Btn>}
+        {canMove && sameStage.length > 1 && <Btn size="sm" kind="dark" loading={busy} onClick={moveAll}>نقل الطلب كاملاً للمرحلة التالية ({sameStage.length})</Btn>}
       </>}>
-      <Table rows={list} onRow={(x) => x.id !== o.id && nav(`/orders/${x.id}`)} rowClass={(x) => (x.id === o.id ? 'row-current' : '')} columns={[
-        ['البند', (x) => <b dir="ltr">{x.order_no}</b>], ['الوصف', 'title'], ['الكمية', 'quantity'],
-        ['الوزن التقريبي', (x) => <span className="n">{fmtW(x.approx_weight)}</span>], ['المسار', (x) => x.route_name || '—'],
-        ['الحالة', (x) => <StatusBadge map={STATUS} value={x.status} />], ['المرحلة', (x) => x.stage_name || '—'],
-      ]} />
+      <div className="oi-list">
+        {list.map((x) => {
+          const extra = [x.size && `مقاس ${x.size}`, x.color && (COLORS[x.color] || x.color), ...stoneItems(x).map(([k, v]) => `${k} ${v}`)].filter(Boolean);
+          const in3d = x.status === 'in_production' && x.stage_kind === 'design';
+          return (
+            <div key={x.id} className={`oi-row${x.id === o.id ? ' current' : ''}`} onClick={() => x.id !== o.id && nav(`/orders/${x.id}`)} role={x.id !== o.id ? 'link' : undefined}>
+              {x.thumb ? <img src={fileUrl(x.thumb, 400)} alt="" /> : <span className="oi-ph">◇</span>}
+              <div className="oi-main">
+                <div className="oi-title"><b>{x.product_type || x.title} × {x.quantity}</b> <span className="small text-body-secondary">{x.title !== x.product_type ? x.title : ''}</span></div>
+                <div className="small text-body-secondary"><span dir="ltr">{x.order_no}</span>{x.approx_weight ? ` · ${fmtW(x.approx_weight)} جم تقريبي` : ''}{x.route_name ? ` · ${x.route_name}` : ''}</div>
+                {extra.length > 0 && <div className="small">{extra.join(' · ')}</div>}
+                {x.notes && <div className="small text-body-secondary">📝 {x.notes}</div>}
+              </div>
+              <div className="oi-side" onClick={(e) => e.stopPropagation()}>
+                <div className="d-flex gap-1 flex-wrap justify-content-end"><StatusBadge map={STATUS} value={x.status} />{x.stage_name && <Badge tone="gold">{x.stage_name}</Badge>}</div>
+                {(in3d || x.d3_checked_at) && (
+                  <div className="d-flex gap-1 flex-wrap justify-content-end mt-1">
+                    {can3d && in3d ? <>
+                      <button type="button" className={`chip chip-sm ${x.needs_3d_design ? 'on' : ''}`} onClick={() => mark(x, 'needs_design')}>✏️ تصميم</button>
+                      <button type="button" className={`chip chip-sm ${x.needs_3d_print ? 'on' : ''}`} onClick={() => mark(x, 'needs_print')}>🖨 طباعة</button>
+                      <button type="button" className={`chip chip-sm ${x.d3_checked_at && !x.needs_3d_design && !x.needs_3d_print ? 'on' : ''}`} onClick={() => markNone(x)}>لا يحتاج</button>
+                    </> : <span className="small">{x.needs_3d_design || x.needs_3d_print ? `3D: ${[x.needs_3d_design && 'تصميم', x.needs_3d_print && 'طباعة'].filter(Boolean).join(' + ')}` : '3D: لا يحتاج'}</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
       {canSplit && <div className="small text-body-secondary mt-2">التقسيم يفصل جزءاً من كمية هذا البند في بند مستقل بمساره الخاص (مثلاً جزء يحتاج صب وجزء لا) — متاح قبل بدء الإنتاج.</div>}
     </Card>
   );

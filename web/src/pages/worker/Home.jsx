@@ -2,16 +2,20 @@ import { Link } from 'react-router-dom';
 import { fileUrl } from '../../api.js';
 import { fmtW, fmtDate, WORK_STATE } from '../../format.js';
 import { Badge, Loader, Empty, useFetch } from '../../ui.jsx';
+import { useAuth } from '../../auth.jsx';
+import Queue3d from './Queue3d.jsx';
 
 export default function WHome() {
   const { data } = useFetch('/w/tasks', { live: ['custodies', 'orders'] });
+  const { me } = useAuth();
   if (!data) return <Loader />;
   const { custodies, tasks } = data;
   const total = custodies.filter((c) => c.status === 'open').reduce((s, c) => s + Number(c.weight_issued), 0);
   return (
     <div className="wk-body">
       <div className="card card-body hrow between"><span className="muted">الذهب في عهدتي</span><b dir="ltr" style={{ fontSize: '1.4rem' }}>{fmtW(total)} جم</b></div>
-      {!custodies.length && !tasks.length && <Empty>لا توجد مهام مسندة إليك حالياً</Empty>}
+      {me?.is_3d && <Queue3d />}
+      {!custodies.length && !tasks.length && !me?.is_3d && <Empty>لا توجد مهام مسندة إليك حالياً</Empty>}
       {custodies.map((c) => (
         <Link key={c.id} to={`/w/custody/${c.id}`} className="task">
           <div className="task-h">

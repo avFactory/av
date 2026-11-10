@@ -17,6 +17,7 @@ import { nextItemNo, orderCopyColumns } from '../lib/orderGroups.js';
 import { applyDueDate, capacity } from '../lib/leadTime.js';
 import { bullionVals } from './catalog.js';
 import { addInternalImages } from '../lib/internalImages.js';
+import { advanceGroup, set3d } from '../lib/orderGroup3d.js';
 
 const r = Router();
 
@@ -194,8 +195,13 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
   const stonesG = await prod.embeddedStonesGrams(pool, id);
   const labor = await resolveLabor(pool, { customer_id: o.customer_id, product_id: o.product_id, product_type: o.product_type });
   // بنود نفس الطلب (من السلة أو بعد التقسيم)
-  const siblings = o.cart_ref ? await many(`select o.id, o.order_no, o.title, o.quantity, o.status, o.approx_weight::text, r.name as route_name, s.name as stage_name
-      from orders o left join routes r on r.id=o.route_id left join stages s on s.id=o.current_stage_id where o.cart_ref=$1 order by o.id`, [o.cart_ref]) : [];
+  const siblings = o.cart_ref ? await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, o.color, o.notes, o.status, o.approx_weight::text,
+        o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.bullion_type, o.bullion_weight::text, o.labor_estimate::text,
+        o.needs_3d_design, o.needs_3d_print, o.d3_checked_at, o.current_stage_id, s.kind as stage_kind,
+        r.name as route_name, s.name as stage_name, ${orderThumb()} as thumb,
+        coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
+          from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details
+      from orders o left join routes r on r.id=o.route_id left join stages s on s.id=o.current_stage_id where o.cart_ref=$1 order by o.order_no`, [o.cart_ref]) : [];
   res.json({ order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams: stonesG, suggestedLabor: labor, siblings });
 });
 
@@ -403,6 +409,16 @@ r.post('/:id/deallocate', requirePerm('custody.issue', 'inventory.manage', 'orde
     await audit(db, req, 'order.deallocate', 'order', o.id, { weight: w });
     return { ok: true };
   }));
+});
+
+/** نقل الطلب كاملاً (كل بنوده في نفس المرحلة) للمرحلة التالية */
+r.post('/:id/group-advance', requirePerm('orders.view'), async (req, res) => {
+  res.json(await tx((db) => advanceGroup(db, req, int(req.params.id))));
+});
+
+/** مرحلة 3D: هل تحتاج القطعة تصميم أو طباعة */
+r.post('/:id/3d', requirePerm('orders.view'), async (req, res) => {
+  res.json(await tx((db) => set3d(db, req, int(req.params.id), req.body)));
 });
 
 r.post('/:id/advance', requirePerm('orders.advance'), async (req, res) => {

@@ -10,6 +10,7 @@ import { advance, lockOrder, logStage } from '../lib/production.js';
 import { audit } from '../lib/audit.js';
 import { orderThumb } from '../lib/orderThumb.js';
 import { is3D, addInternalImages } from '../lib/internalImages.js';
+import { advanceGroup, set3d, queue3d } from '../lib/orderGroup3d.js';
 
 const r = Router();
 r.use(requirePerm('worker.self'));
@@ -190,6 +191,20 @@ r.post('/orders/:id/files', upload.array('files', 10), async (req, res) => {
     await logStage(db, o.id, o.current_stage_id, 'note', req.user.id, `رفع ${files.length} ملف`, false, req.user.id);
     return { ok: true, files };
   }));
+});
+
+/** طابور مرحلة 3D (فريق 3D فقط) */
+r.get('/3d', async (req, res) => {
+  if (!is3D(req.user)) throw forbidden('لفريق 3D فقط');
+  res.json(await queue3d(pool));
+});
+r.post('/orders/:id/3d', async (req, res) => {
+  if (!is3D(req.user)) throw forbidden('لفريق 3D فقط');
+  res.json(await tx((db) => set3d(db, req, int(req.params.id), req.body)));
+});
+r.post('/orders/:id/group-advance', async (req, res) => {
+  if (!is3D(req.user)) throw forbidden('لفريق 3D فقط');
+  res.json(await tx((db) => advanceGroup(db, req, int(req.params.id))));
 });
 
 /** صور داخلية على الطلب (فريق 3D فقط) */
