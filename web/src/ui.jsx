@@ -247,6 +247,20 @@ export function Tabs({ tabs, value, onChange }) {
   );
 }
 
+/** أزرار أوضاع احترافية (بدل التبويبات): أيقونة + عنوان + وصف قصير */
+export function ModeTiles({ tiles, value, onChange }) {
+  return (
+    <div className="mode-tiles mb-3" role="tablist">
+      {tiles.map(([k, icon, label, hint]) => (
+        <button key={k} type="button" role="tab" aria-selected={value === k} className={`mode-tile${value === k ? ' on' : ''}`} onClick={() => onChange(k)}>
+          <span className="mt-ic" aria-hidden="true">{icon}</span>
+          <span className="mt-tx"><b>{label}</b>{hint && <small>{hint}</small>}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Stat({ label, value, unit, tone, to, sub }) {
   const body = (
     <>

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api, newKey, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, sub } from '../../format.js';
-import { Btn, Card, Field, Input, Page, PageActions, ScanInput, WeightInput, useAction, useFetch, useToast, Badge, Kv, Tabs, Select, Table } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Page, PageActions, ScanInput, WeightInput, useAction, useFetch, useToast, Badge, Kv, Select, Table, ModeTiles } from '../../ui.jsx';
 import { fmtDT } from '../../format.js';
 import WorkerPicker from '../../components/WorkerPicker.jsx';
 import DiamondIssue from './DiamondIssue.jsx';
@@ -15,10 +15,15 @@ export default function Issue() {
   const [sp] = useSearchParams();
   const { can } = useAuth();
   const [mode, setMode] = useState(['split', 'general', 'diamond', 'stones'].includes(sp.get('mode')) ? sp.get('mode') : 'single');
-  const tabs = [['single', 'تسليم لعامل واحد'], ['split', 'تقسيم طلب على عدة عمال'], ['general', 'عهدة عامة (بدون طلب)'], ...(can('stones.manage') ? [['diamond', 'تسليم الألماس المخبري']] : []), ['stones', 'تأكيد وزن الحجر والزركون']];
+  const tiles = [
+    ['single', '👤', 'تسليم لعامل', 'طلب أو عدة طلبات لعامل واحد'],
+    ['split', '👥', 'تقسيم على عمال', 'طلب واحد على أكثر من عامل'],
+    ['general', '🪙', 'عهدة عامة', 'ذهب بدون طلب'],
+    ...(can('stones.manage') ? [['diamond', '💎', 'الألماس المخبري', 'صرف الألماس على طلب']] : []),
+    ['stones', '⚖️', 'وزن الحجر والزركون', 'تأكيد الوزن المركب']];
   return (
     <Page title={mode === 'diamond' ? 'تسليم الألماس المخبري' : mode === 'stones' ? 'تأكيد وزن الحجر والزركون' : 'تسليم ذهب'} inline>
-      <Tabs value={mode} onChange={setMode} tabs={tabs} />
+      <ModeTiles value={mode} onChange={setMode} tiles={tiles} />
       {mode === 'single' ? <SingleIssue sp={sp} /> : mode === 'split' ? <SplitIssue sp={sp} /> : mode === 'diamond' ? <DiamondIssue /> : mode === 'stones' ? <StonesConfirm /> : <GeneralIssue sp={sp} />}
     </Page>
   );
