@@ -70,11 +70,16 @@ const Track = L(() => import('./pages/store/Track.jsx'));
 const SInvoices = L(() => import('./pages/store/Invoices.jsx'));
 const SAccount = L(() => import('./pages/store/Account.jsx'));
 
-function Guard({ perms, children }) {
+function Guard({ perms, staff, children }) {
   const { me, can } = useAuth();
   const loc = useLocation();
   if (me === undefined) return <Loader />;
   if (!me) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
+  // العامل يبقى دائماً في واجهة العامل (مهامي، السجل...) حتى لو فُتح رابط من واجهة المشرف
+  if (staff && me.role_code === 'worker') {
+    const code = new URLSearchParams(loc.search).get('code');
+    return <Navigate to={loc.pathname.startsWith('/sup/scan') ? `/w/scan${code ? `?code=${encodeURIComponent(code)}` : ''}` : '/w'} replace />;
+  }
   if (perms && !can(...perms)) return <div className="page"><div className="alert alert-danger">ليست لديك صلاحية لعرض هذه الصفحة</div></div>;
   return children;
 }
@@ -102,7 +107,7 @@ export default function App() {
         <Route path="/print/labels" element={S(<Labels />, ['orders.view'])} />
         <Route path="/print/invoice/:id" element={S(<InvoiceView print />)} />
 
-        <Route element={<Guard><StaffLayout /></Guard>}>
+        <Route element={<Guard staff><StaffLayout /></Guard>}>
           <Route path="/sup" element={S(<SupHome />, ['custody.issue', 'custody.receive', 'custody.view_all'])} />
           <Route path="/sup/issue" element={S(<Issue />, ['custody.issue'])} />
           <Route path="/sup/receive" element={S(<Receive />, ['custody.receive'])} />

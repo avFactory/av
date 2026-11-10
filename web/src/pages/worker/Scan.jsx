@@ -1,4 +1,5 @@
-import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { ScanInput, useToast } from '../../ui.jsx';
 
@@ -15,5 +16,7 @@ export default function WScan() {
       nav(c ? `/w/custody/${c.id}` : `/w/orders/${o.id}`);
     } catch (e) { toast(e.message, 'bad'); }
   };
+  const [sp] = useSearchParams();
+  useEffect(() => { if (sp.get('code')) scan(sp.get('code')); }, [sp]); // eslint-disable-line react-hooks/exhaustive-deps
   return <div className="wk-body"><h2>مسح QR الطلب</h2><ScanInput onScan={scan} /></div>;
 }

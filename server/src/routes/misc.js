@@ -13,6 +13,14 @@ import { is3D } from '../lib/internalImages.js';
 
 const r = Router();
 
+/** أخطاء الواجهة (للتشخيص): تُسجَّل في سجل الخادم فقط */
+r.post('/client-error', async (req, res) => {
+  const b = req.body || {};
+  const t = (v, n) => String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, n);
+  console.error('[client-error]', JSON.stringify({ user: req.user?.username || null, path: t(b.path, 300), message: t(b.message, 500), stack: t(b.stack, 1500), component: t(b.component, 600), ua: t(req.headers['user-agent'], 200) }));
+  res.json({ ok: true });
+});
+
 r.get('/lookups', requireAuth, async (req, res) => {
   const staff = req.user.role_code !== 'customer';
   const materials = await many('select id, name, karat, color from materials where active order by id');
