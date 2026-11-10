@@ -84,7 +84,8 @@ export default function OrderDetail() {
           onSplit={() => open('split', { quantity: '', route_id: o.route_id ? String(o.route_id) : '' })}
           onStartAll={() => run(async () => { const r = await api.post('/orders/group/start', { ref: o.cart_ref }); reload(); if (r.skipped?.length) window.alert(`لم يبدأ:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`); }, 'تم بدء إنتاج الطلب')} />
       )}
-      <div className="grid g3 mb" style={{ gridTemplateColumns: '1fr 1fr auto' }}>
+      {(() => { const grid = (
+      <div className={`grid g3 ${siblings.length > 1 ? '' : 'mb'}`} style={{ gridTemplateColumns: '1fr 1fr auto' }}>
         <Card title="الطلب">
           <Kv items={[o.shop_name && ['العميل', o.branch_name ? `${o.shop_name} — ${o.branch_name}` : o.shop_name],
             o.shop_name && ['رقم التواصل', (o.branch_phone || o.customer_phone) ? <a href={`tel:${o.branch_phone || o.customer_phone}`} dir="ltr">{o.branch_phone || o.customer_phone}</a> : null],
@@ -107,7 +108,11 @@ export default function OrderDetail() {
           {o.thumb && <a href={fileUrl(o.thumb)} target="_blank" rel="noreferrer" className="order-hero"><img src={fileUrl(o.thumb, 800)} alt={o.title} /></a>}
           <img src={qrUrl(o.qr_token)} alt="QR" style={{ width: 110, height: 110, justifySelf: 'center' }} /><div className="small muted">QR الطلب</div>
         </div>
-      </div>
+      </div>);
+      // الطلب بأكثر من منتج: تُخفى هذه البطاقات (المنتجات تظهر في الأعلى) وتبقى تفاصيل البند وأجرته في قائمة مطوية
+      return siblings.length > 1 ? (
+        <details className="card mb order-item-more"><summary className="card-body py-2 small">تفاصيل البند <b dir="ltr">{o.order_no}</b> وأجوره</summary><div className="p-2">{grid}</div></details>
+      ) : grid; })()}
 
       {inProd || o.status === 'ready' ? (
         <Card title={<span>المرحلة الحالية: {o.stage_name}</span>} actions={<span className="small muted">{o.worker_name ? `العامل: ${o.worker_name}` : ''}</span>}>
@@ -270,6 +275,12 @@ function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove
         {startable && <Btn size="sm" loading={busy} onClick={onStartAll}>بدء إنتاج الطلب كاملاً</Btn>}
         {canMove && sameStage.length > 1 && <Btn size="sm" kind="dark" loading={busy} onClick={moveAll}>نقل الطلب كاملاً للمرحلة التالية ({sameStage.length})</Btn>}
       </>}>
+      <div className="d-flex flex-wrap gap-3 small mb-2 text-body-secondary">
+        {o.shop_name && <span>العميل: <b className="text-body">{o.branch_name ? `${o.shop_name} — ${o.branch_name}` : o.shop_name}</b></span>}
+        {(o.branch_phone || o.customer_phone) && <span>الجوال: <a href={`tel:${o.branch_phone || o.customer_phone}`} dir="ltr">{o.branch_phone || o.customer_phone}</a></span>}
+        {o.due_date && <span>موعد التسليم: <b className="text-body">{fmtDate(o.due_date)}</b></span>}
+        <span>المصدر: {{ internal: 'داخلي', store_catalog: 'المتجر - منتج', store_custom: 'المتجر - تصميم خاص' }[o.source]}</span>
+      </div>
       <div className="oi-list">
         {list.map((x) => {
           const extra = [x.size && `مقاس ${x.size}`, x.color && (COLORS[x.color] || x.color), ...stoneItems(x).map(([k, v]) => `${k} ${v}`)].filter(Boolean);
