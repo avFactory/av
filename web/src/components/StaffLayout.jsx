@@ -56,7 +56,7 @@ export default function StaffLayout() {
   const { me, can, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
-  useEffect(() => setOpen(false), [loc.pathname]);
+  useEffect(() => setOpen(false), [loc.pathname, loc.search]);
   // القوائم المنسدلة: المجموعة التي فيها الصفحة الحالية تُفتح تلقائياً، والاختيار يُحفظ على الجهاز
   const [groups, setGroups] = useState(() => { try { return JSON.parse(localStorage.getItem('nav_groups') || '{}'); } catch { return {}; } });
   const activeGrp = NAV.find(([, items]) => items.some(([to, , , end]) => (end ? loc.pathname === to : loc.pathname === to || loc.pathname.startsWith(`${to}/`))))?.[0];

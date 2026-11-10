@@ -22,6 +22,7 @@
   --bs-focus-ring-color: rgba(168,132,74,.25); --bs-card-bg: var(--card); --bs-emphasis-color: var(--ink);
 }
 [data-bs-theme="dark"] { --bs-link-color-rgb: 230,210,166; }
+html, body { max-width: 100%; overflow-x: clip; }
 body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
 h1, h2, h3, h4 { font-weight: 700; line-height: 1.3; margin: 0; }
 h1 { font-size: 1.55rem; } h3 { font-size: 1.05rem; }
@@ -127,12 +128,14 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .menu-btn { display: none; }
 @media (max-width: 960px) {
   .shell { grid-template-columns: 1fr; }
-  .side { position: fixed; inset: 0 0 0 auto; width: 270px; z-index: 50; transform: translateX(100%); transition: transform .2s; }
-  .side.open { transform: none; }
+  .side { position: fixed; inset-block: 0; inset-inline-start: 0; inset-inline-end: auto; width: min(290px, 86vw); height: 100dvh; z-index: 1050; transform: translateX(100%); visibility: hidden; transition: transform .22s ease, visibility 0s linear .22s; box-shadow: none; }
+  .side.open { transform: none; visibility: visible; transition: transform .22s ease; box-shadow: -12px 0 40px rgba(0,0,0,.35); }
+  /* منع التكبير التلقائي عند التركيز على الحقول في الجوال (يسبب انزياح الصفحة بعد المسح) */
+  .form-control, .form-select, input, textarea, select { font-size: max(16px, 1em); }
   .menu-btn { display: inline-flex; }
   .topbar { padding: 10px 16px; }
 }
-.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; }
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1040; }
 .bell { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: .65rem; width: 38px; height: 38px; cursor: pointer; color: var(--ink); font-size: 1.05rem; text-decoration: none; }
 .bell .dot { position: absolute; top: -5px; left: -5px; background: var(--bad); color: #fff; font-size: .7rem; border-radius: 999px; padding: 0 6px; min-width: 18px; }
 
