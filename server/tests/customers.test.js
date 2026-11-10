@@ -232,7 +232,18 @@ test('الاسم المختصر على الملصق، ورمز QR رقمي يُ�
   assert.equal(g[0].qr_code, '2026777777');
   const lk = (await call('GET', `/sup/lookup?code=${g[0].qr_code}`)).data;
   assert.equal(lk.id, i1, 'مسح ملصق الطلب يفتح البند الأول');
-  assert.equal(lk.group_items.length, 3);
+  assert.equal(lk.group.length, 3, 'مسح ملصق الطلب يعرض الطلب كاملاً');
+  // العامل المسند له بند واحد يرى الطلب كاملاً
+  const { hashPassword } = await import('../src/lib/auth.js');
+  const wid = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('grpw',$1,'عامل','worker','G1') returning id", [hashPassword('Grp#2026xx')])).rows[0].id;
+  await pool.query('update orders set assigned_worker_id=$1 where id=$2', [wid, i1]);
+  let ck = '';
+  const wk = async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  await wk('POST', '/auth/login', { username: 'grpw', password: 'Grp#2026xx' });
+  const w2 = await wk('GET', `/w/orders/${i2}`);
+  assert.equal(w2.status, 200, 'يرى بقية بنود طلبه');
+  assert.equal(w2.data.group.length, 3);
+  assert.equal((await wk('GET', `/sup/lookup?code=${g[0].qr_code}`)).data.group.length, 3, 'العامل يمسح ملصق الطلب ويرى الطلب كاملاً');
 });
 
 test('رقم المنتج تلقائي حسب نوع القطعة', async () => {

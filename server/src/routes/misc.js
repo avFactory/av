@@ -66,7 +66,8 @@ r.get('/files/*filepath', async (req, res) => {
       // حساب الفرع يرى ملفات طلبات فرعه فقط
       if (allowed && u.branch_id) allowed = !!(await one('select 1 from orders where id=$1 and branch_id=$2', [of.order_id, u.branch_id]));
     }
-    else if (u.role_code === 'worker') allowed = of.assigned_worker_id === u.id || is3D(u) || !!(await one("select 1 from custodies where order_id=$1 and worker_id=$2 limit 1", [of.order_id, u.id]));
+    else if (u.role_code === 'worker') allowed = of.assigned_worker_id === u.id || is3D(u) || !!(await one(`select 1 from orders x where (x.id=$1 or (x.cart_ref is not null and x.cart_ref = (select cart_ref from orders where id=$1)))
+      and (x.assigned_worker_id=$2 or exists (select 1 from custodies k where k.order_id=x.id and k.worker_id=$2)) limit 1`, [of.order_id, u.id]));
     else allowed = has(req, 'orders.view');
   } else if (rel.startsWith('signatures/')) {
     allowed = has(req, 'custody.view_all') || !!(await one('select 1 from custody_batches where signature_path=$1 and worker_id=$2', [rel, u.id]));

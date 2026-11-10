@@ -8,6 +8,7 @@ import { notifyPerm } from '../lib/notify.js';
 import { saveSignature, upload, registerFiles } from '../lib/uploads.js';
 import { advance, lockOrder, logStage } from '../lib/production.js';
 import { audit } from '../lib/audit.js';
+import { orderThumb } from '../lib/orderThumb.js';
 import { is3D, addInternalImages } from '../lib/internalImages.js';
 
 const r = Router();
@@ -23,7 +24,9 @@ async function canSeeOrder(db, req, orderId) {
   const o = (await db.query('select * from orders where id=$1', [orderId])).rows[0];
   if (!o) throw notFound('الطلب غير موجود');
   if (o.assigned_worker_id === req.user.id || is3D(req.user)) return o;
-  const c = await db.query("select 1 from custodies where order_id=$1 and worker_id=$2 and status <> 'reversed' limit 1", [orderId, req.user.id]);
+  // أي بند من نفس الطلب مسند للعامل أو لديه عهدة عليه ← يرى الطلب كاملاً
+  const c = await db.query(`select 1 from orders x where (x.id=$1 or (x.cart_ref is not null and x.cart_ref = $3))
+      and (x.assigned_worker_id=$2 or exists (select 1 from custodies k where k.order_id=x.id and k.worker_id=$2 and k.status <> 'reversed')) limit 1`, [orderId, req.user.id, o.cart_ref]);
   if (!c.rowCount) throw forbidden('هذا الطلب غير مسند إليك');
   return o;
 }
@@ -71,6 +74,10 @@ r.get('/orders/:id', async (req, res) => {
              product_type: o.product_type, approx_weight: o.approx_weight, material: material?.name, stage, stage_state: o.stage_state,
              assigned_to_me: o.assigned_worker_id === req.user.id, ...stones },
     files, custodies: myCustodies, log,
+    // بنود الطلب كاملة (الطلب يُعامل كقطعة واحدة)
+    group: o.cart_ref ? await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, o.notes, o.color, o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text,
+        s.name as stage_name, ${orderThumb()} as thumb
+      from orders o left join stages s on s.id=o.current_stage_id where o.cart_ref=$1 and o.status not in ('cancelled','rejected') order by o.order_no`, [o.cart_ref]) : [],
   });
 });
 

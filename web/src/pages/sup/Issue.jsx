@@ -58,7 +58,7 @@ function SingleIssue({ sp }) {
     const wid = sp.get('worker');
     if (wid && !worker) api.get(`/sup/workers/${wid}`).then((p) => setWorker(p.worker)).catch(() => {});
     const oid = sp.get('order');
-    if (oid && sp.get('mode') !== 'split') lookupOrder({ id: oid }).then(add).catch((e) => toast(e.message, 'bad'));
+    if (oid && sp.get('mode') !== 'split') lookupOrder({ id: oid }).then(addAll).catch((e) => toast(e.message, 'bad'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -70,7 +70,14 @@ function SingleIssue({ sp }) {
       return [...x, { order: o, weight: bal ? String(+bal.toFixed(4)) : '', pieces: String(o.quantity), notes: '', stones: o.stones?.used || '0' }];
     });
   }
-  const scan = async (code) => { try { add(await lookupOrder({ code })); } catch (e) { toast(e.message, 'bad'); } };
+  const addAll = (o) => {
+    if (!o?.group?.length) return add(o);
+    const ok = o.group.filter((g) => g.status === 'in_production' && g.handles_gold);
+    if (!ok.length) return add(o);
+    ok.forEach(add);
+    if (ok.length < o.group.length) toast(`أُضيف ${ok.length} من ${o.group.length} بنود (الباقي ليس في مرحلة تسليم ذهب)`, 'info');
+  };
+  const scan = async (code) => { try { addAll(await lookupOrder({ code })); } catch (e) { toast(e.message, 'bad'); } };
   const upd = (i, k, v) => setItems((x) => x.map((it, j) => (j === i ? { ...it, [k]: v } : it)));
   const total = useMemo(() => items.reduce((s, i) => s + Number(sub(i.weight, i.stones) || 0), 0), [items]);
   const valid = worker && items.length && items.every((i) => Number(i.weight) > 0 && Number(sub(i.weight, i.stones)) > 0);

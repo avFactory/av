@@ -108,27 +108,35 @@ r.get('/lookup', requirePerm('scan.use', 'custody.issue', 'custody.receive', 'or
   const byId = req.query.id ? int(req.query.id) : null;
   if (!code && !byId) throw bad('أدخل رقم الطلب أو امسح الرمز');
   const token = code.includes('/') ? code.split('/').pop() : code;
-  const o = await one(`
-    select o.id, o.order_no, o.title, o.status, o.quantity, o.material_id, o.current_stage_id, o.design_status, o.design_approval_required,
-           o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.set_pearl_weight::text, o.set_stone_weight::text, o.set_zircon_weight::text, o.stones_confirmed_at,
-           o.assigned_worker_id, ${orderThumb()} as thumb, s.name as stage_name, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color
-    from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
+  const hit = await one(`select o.id from orders o
     where ($2::int is not null and o.id=$2) or ($2::int is null and (o.qr_token=lower($1) or upper(o.order_no)=upper($1) or (length($1) >= 10 and regexp_replace(o.order_no, '[^0-9]', '', 'g')=$1) or o.order_no ilike '%-' || lpad($1, 6, '0')
       or upper(o.cart_ref)=upper($1) or (length($1) >= 10 and regexp_replace(o.cart_ref, '[^0-9]', '', 'g')=$1)))
     order by (o.qr_token=lower($1) or upper(o.order_no)=upper($1) or regexp_replace(o.order_no, '[^0-9]', '', 'g')=$1) desc,
       (o.assigned_worker_id = $3) desc, (o.status in ('delivered','cancelled','rejected')) asc, o.order_no
     limit 1`, [token, byId, req.user.id]);
-  // بنود الطلب نفسه (عند مسح ملصق الطلب الرئيسي) للتنقل بينها
-  if (o) o.group_items = await many(`select id, order_no, title, product_type, quantity, status from orders
-    where cart_ref is not null and cart_ref = (select cart_ref from orders where id=$1) order by order_no`, [o.id]);
-  if (!o) throw notFound('لم يتم العثور على الطلب');
-  if (req.user.role_code === 'worker' && o.assigned_worker_id !== req.user.id && !is3D(req.user)) {
-    const mine = await one("select 1 from custodies where order_id=$1 and worker_id=$2 and status <> 'reversed' limit 1", [o.id, req.user.id]);
+  if (!hit) throw notFound('لم يتم العثور على الطلب');
+  // الطلب كامل: كل بنوده (حالياً يُعامل الطلب كقطعة واحدة)
+  const ids = (await many(`select id from orders where id=$1 or (cart_ref is not null and cart_ref = (select cart_ref from orders where id=$1))
+    order by (id=$1) desc, order_no`, [hit.id])).map((x) => x.id);
+  const rows = await many(`
+    select o.id, o.order_no, o.cart_ref, o.title, o.product_type, o.size, o.notes, o.status, o.quantity, o.material_id, o.current_stage_id, o.design_status, o.design_approval_required,
+           o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.set_pearl_weight::text, o.set_stone_weight::text, o.set_zircon_weight::text, o.stones_confirmed_at,
+           o.assigned_worker_id, ${orderThumb()} as thumb, s.name as stage_name, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color
+    from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
+    where o.id = any($1::int[])`, [ids]);
+  const rowById = new Map(rows.map((x) => [x.id, x]));
+  const group = ids.map((id) => rowById.get(id));
+  if (req.user.role_code === 'worker' && !is3D(req.user)) {
+    const mine = group.some((x) => x.assigned_worker_id === req.user.id)
+      || !!(await one("select 1 from custodies where order_id = any($1::int[]) and worker_id=$2 and status <> 'reversed' limit 1", [ids, req.user.id]));
     if (!mine) throw forbidden('هذا الطلب غير مسند إليك');
   }
-  o.order_balance = await ledger.balance(pool, 'order', o.id, o.material_id);
-  o.stones = await embeddedStonesGrams(pool, o.id);
-  o.open_custodies = await many("select c.id, c.custody_no, c.worker_id, u.full_name, c.weight_issued::text from custodies c join users u on u.id=c.worker_id where c.order_id=$1 and c.status='open'", [o.id]);
+  for (const x of group) {
+    x.order_balance = await ledger.balance(pool, 'order', x.id, x.material_id);
+    x.stones = await embeddedStonesGrams(pool, x.id);
+    x.open_custodies = await many("select c.id, c.custody_no, c.worker_id, u.full_name, c.weight_issued::text from custodies c join users u on u.id=c.worker_id where c.order_id=$1 and c.status='open'", [x.id]);
+  }
+  const o = { ...group[0], group: group.length > 1 ? group : [] };
   res.json(o);
 });
 

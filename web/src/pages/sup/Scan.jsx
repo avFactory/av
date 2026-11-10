@@ -4,6 +4,7 @@ import { useScanner } from '../../useScanner.js';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, DESIGN_STATUS } from '../../format.js';
+import OrderGroupItems from '../../components/OrderGroupItems.jsx';
 import { Card, Page, ScanInput, useToast, Kv, LinkBtn, Badge } from '../../ui.jsx';
 
 /** مسح QR الطلب للوصول المباشر لبياناته (مع تطبيق الصلاحيات في الخادم) */
@@ -19,7 +20,7 @@ export default function Scan() {
     <Page title="مسح QR" subtitle="امسح ملصق الطلب بالكاميرا أو قارئ الباركود">
       <ScanInput onScan={scan} />
       {o && (
-        <Card className="mt" title={<span>{o.order_no} — {o.title}</span>} actions={<Badge tone="gold">{o.stage_name || o.status}</Badge>}>
+        <Card className="mt" title={<span>{o.group?.length > 1 ? <>{o.cart_ref} <span className="small text-body-secondary">— الطلب كامل ({o.group.length} أصناف)</span></> : <>{o.order_no} — {o.title}</>}</span>} actions={<Badge tone="gold">{o.stage_name || o.status}</Badge>}>
           {o.thumb && <a href={fileUrl(o.thumb)} target="_blank" rel="noreferrer" className="order-hero mb-3" style={{ maxWidth: 360 }}><img src={fileUrl(o.thumb, 800)} alt={o.title} /></a>}
           <Kv items={[['المادة', o.material_name], ['الكمية', o.quantity], ['رصيد ذهب الطلب', `${fmtW(o.order_balance)} جم`], ['حالة التصميم', DESIGN_STATUS[o.design_status]],
             ['لدى العمال', o.open_custodies.map((c) => `${c.full_name} (${fmtW(c.weight_issued)})`).join('، ') || '—']]} />
@@ -31,6 +32,9 @@ export default function Scan() {
             {!can('orders.view') && <Link to="/" className="link">رجوع</Link>}
           </div>
         </Card>
+      )}
+      {o?.group?.length > 1 && (
+        <div className="mt"><OrderGroupItems items={o.group} current={o.id} link={can('orders.view') ? (x) => `/orders/${x.id}` : null} /></div>
       )}
     </Page>
   );

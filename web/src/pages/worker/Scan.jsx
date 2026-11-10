@@ -10,7 +10,8 @@ export default function WScan() {
     try {
       const o = await api.get(`/sup/lookup?code=${encodeURIComponent(code)}`);
       const t = await api.get('/w/tasks');
-      const c = t.custodies.find((x) => x.order_id === o.id);
+      const ids = [o.id, ...(o.group || []).map((g) => g.id)];
+      const c = t.custodies.find((x) => ids.includes(x.order_id));
       nav(c ? `/w/custody/${c.id}` : `/w/orders/${o.id}`);
     } catch (e) { toast(e.message, 'bad'); }
   };

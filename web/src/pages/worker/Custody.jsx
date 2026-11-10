@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtW, fmtDT, fmtPct, WORK_STATE, calcLoss, CUSTODY_STATUS, COLORS, stoneItems } from '../../format.js';
+import OrderGroupItems from '../../components/OrderGroupItems.jsx';
 import { Btn, Card, Field, Input, Loader, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal } from '../../ui.jsx';
 
 /** شاشة العهدة للعامل: تأكيد الاستلام، بدء/إيقاف العمل، تسجيل الأوزان، رفع الصور، إنهاء المرحلة */
@@ -38,6 +39,7 @@ export default function WCustody() {
           c.kind === 'general' && ['نوع العهدة', 'عهدة عامة (رصيد بدون طلب)'],
           c.kind !== 'general' && ['عدد القطع', c.pieces], ['المقاس', c.size], ['تاريخ التسليم', fmtDT(c.issued_at)], c.order_notes && ['ملاحظات الطلب', c.order_notes], od?.order?.color && ['اللون', COLORS[od.order.color] || od.order.color], ...(od?.order ? stoneItems(od.order) : [])]} />
       </Card>
+      <OrderGroupItems items={od?.group} current={c.order_id} />
       {od?.files?.length > 0 && (
         <Card title="التصاميم والصور">
           <div className="files">{od.files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt={f.original_name} /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>

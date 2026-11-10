@@ -4,6 +4,7 @@ import { api, fileUrl } from '../../api.js';
 import { fmtDT, COLORS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Loader, Textarea, useAction, useFetch, Kv, ErrorBox } from '../../ui.jsx';
 import { useAuth } from '../../auth.jsx';
+import OrderGroupItems from '../../components/OrderGroupItems.jsx';
 
 /** طلب مسند للعامل (مثل التصميم): مشاهدة التفاصيل، رفع الملفات، إنهاء المهمة */
 export default function WOrder() {
@@ -14,7 +15,7 @@ export default function WOrder() {
   const { me } = useAuth();
   if (error) return <div className="wk-body"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
-  const { order: o, files, custodies, log } = data;
+  const { order: o, files, custodies, log, group } = data;
   const isDesign = o.stage?.kind === 'design';
   const upload = (fl) => run(async () => {
     const fd = new FormData();
@@ -36,6 +37,7 @@ export default function WOrder() {
         {files.find((f) => f.mime?.startsWith('image')) && (() => { const im = files.find((f) => f.mime?.startsWith('image')); return <a href={fileUrl(im.path)} target="_blank" rel="noreferrer" className="wk-hero-img"><img src={fileUrl(im.path, 800)} alt={o.title} /></a>; })()}
         <Kv items={[['الوصف', o.title], ['المرحلة', o.stage?.name], ['المادة', o.material], o.color && ['اللون', COLORS[o.color] || o.color], ['الكمية', o.quantity], ['المقاس', o.size], ['الوزن التقريبي', o.approx_weight], ...stoneItems(o), ['ملاحظات', o.notes]]} />
       </Card>
+      <OrderGroupItems items={group} current={o.id} />
       <Card title="الملفات والتصاميم">
         <div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.kind === 'internal' ? '🔒 داخلية · ' : ''}{f.original_name}</span></a>)}</div>
         {o.assigned_to_me && <label className="btn btn-outline-secondary mt">{isDesign ? 'رفع ملفات التصميم (صور / 3D)' : 'رفع صور التنفيذ'}<input type="file" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>}
