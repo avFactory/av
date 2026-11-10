@@ -37,12 +37,18 @@ export function createApp() {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'same-origin');
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
     res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=(), usb=()');
     res.setHeader('Content-Security-Policy', req.path.startsWith('/api/') ? "default-src 'none'; frame-ancestors 'none'; sandbox" : csp);
     if (prod) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     if (req.path.startsWith('/api/') && !req.path.startsWith('/api/files/') && req.path !== '/api/qr') res.setHeader('Cache-Control', 'no-store');
     next();
   });
+  // حد معدل الطلبات لكل عنوان: يحمي من الإغراق والتخمين (الروابط العامة أشد)
+  app.use('/api/public', rateLimit(180));
+  // عام مرتفع: أجهزة المصنع قد تخرج من عنوان واحد
+  app.use('/api', rateLimit(6000));
   app.use(express.json({ limit: '2mb' }));
   app.use((req, _res, next) => { if (req.body === undefined) req.body = {}; next(); });
   app.use(cookieParser());
@@ -157,4 +163,17 @@ function buildCsp(dist) {
     "base-uri 'self'",
     "form-action 'self'",
   ].join('; ');
+}
+
+/** حد بسيط للطلبات لكل عنوان IP في الدقيقة (ذاكرة الخادم) */
+function rateLimit(perMinute) {
+  const hits = new Map();
+  setInterval(() => hits.clear(), 60_000).unref();
+  return (req, res, next) => {
+    const k = req.ip;
+    const n = (hits.get(k) || 0) + 1;
+    hits.set(k, n);
+    if (n > perMinute) { res.setHeader('Retry-After', '60'); return res.status(429).json({ error: 'طلبات كثيرة، حاول بعد دقيقة' }); }
+    next();
+  };
 }

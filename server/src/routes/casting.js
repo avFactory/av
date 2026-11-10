@@ -6,7 +6,8 @@ import { bad, notFound, int, str } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 
 const r = Router();
-const PERMS = ['custody.issue', 'custody.receive', 'orders.advance', 'scan.use'];
+// الصب للمشرفين ومن يدير المراحل فقط (ليس للعمال: صلاحية المسح وحدها لا تكفي)
+const PERMS = ['custody.issue', 'custody.receive', 'orders.advance'];
 
 const num = (v, name) => {
   if (v === undefined) return undefined;

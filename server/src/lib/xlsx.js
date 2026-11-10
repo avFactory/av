@@ -27,10 +27,16 @@ export async function sendXlsx(res, sheetName, columns, rows, filename) {
   const head = ws.addRow(columns.map((c) => c[0]));
   head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   head.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFA8844A' } }; });
-  for (const r of rows) ws.addRow(columns.map(([, k]) => (typeof k === 'function' ? k(r) : r[k] ?? '')));
+  for (const r of rows) ws.addRow(columns.map(([, k]) => safeCell(typeof k === 'function' ? k(r) : r[k] ?? '')));
   ws.columns.forEach((c) => { c.width = 18; });
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   await wb.xlsx.write(res);
   res.end();
+}
+
+/** حماية من حقن المعادلات في Excel: نص يبدأ بـ = + - @ يُعرض كنص لا كمعادلة (أسماء العملاء والملاحظات من المستخدمين) */
+export function safeCell(v) {
+  if (typeof v !== 'string') return v;
+  return /^[=+@\t\r]/.test(v) || /^-(?!\d+(\.\d+)?$)/.test(v) ? `'${v}` : v;
 }

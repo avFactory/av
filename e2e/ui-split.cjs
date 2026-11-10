@@ -15,7 +15,7 @@ async function login(page, u, p) { await page.goto(BASE + '/login'); await page.
   const browser = await chromium.launch();
   const s = await newPage(browser, { width: 1280, height: 900 });
   await login(s, 'demo_sup', 'Demo#2026');
-  await s.goto(BASE + '/sup/issue'); await s.click('button[role=tab]:has-text("تقسيم طلب")');
+  await s.goto(BASE + '/sup/issue'); await s.click('.mode-tile:has-text("تقسيم على عمال")');
   await s.locator('.pick').first().click(); await s.waitForSelector('text=العامل 1');
   const sel = s.locator('.line-item select');
   await sel.nth(0).selectOption({ label: 'عامل تجريبي 7 (W-007)' });

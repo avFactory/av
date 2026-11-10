@@ -26,7 +26,7 @@ export default function Scan() {
             ['لدى العمال', o.open_custodies.map((c) => `${c.full_name} (${fmtW(c.weight_issued)})`).join('، ') || '—']]} />
           <div className="hrow gap wrap mt">
             {can('orders.view') && <LinkBtn to={`/orders/${o.id}`} kind="dark">فتح الطلب</LinkBtn>}
-            {can('custody.issue', 'custody.receive', 'orders.advance', 'scan.use') && <LinkBtn to={`/sup/casting?order=${o.id}`} kind="primary">الصب</LinkBtn>}
+            {can('custody.issue', 'custody.receive', 'orders.advance') && <LinkBtn to={`/sup/casting?order=${o.id}`} kind="primary">الصب</LinkBtn>}
             {can('custody.issue') && o.handles_gold && !o.open_custodies.length && <LinkBtn to={`/sup/issue?order=${o.id}`} kind="primary">تسليم لعامل</LinkBtn>}
             {can('custody.receive') && o.open_custodies.map((c) => <LinkBtn key={c.id} to={`/sup/receive?worker=${c.worker_id}`}>استلام من {c.full_name}</LinkBtn>)}
             {!can('orders.view') && <Link to="/" className="link">رجوع</Link>}

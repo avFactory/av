@@ -112,7 +112,7 @@ export default function App() {
           <Route path="/sup/log" element={S(<Log />, ['custody.view_all', 'inventory.view', 'reports.view'])} />
           <Route path="/sup/batch/:id" element={S(<Batch />)} />
           <Route path="/sup/scan" element={S(<Scan />, ['scan.use', 'orders.view'])} />
-          <Route path="/sup/casting" element={S(<Casting />, ['custody.issue', 'custody.receive', 'orders.advance', 'scan.use'])} />
+          <Route path="/sup/casting" element={S(<Casting />, ['custody.issue', 'custody.receive', 'orders.advance'])} />
           <Route path="/orders" element={S(<Orders />, ['orders.view'])} />
           <Route path="/orders/new" element={S(<NewOrder />, ['orders.manage'])} />
           <Route path="/orders/:id" element={S(<OrderDetail />, ['orders.view'])} />

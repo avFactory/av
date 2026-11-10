@@ -201,3 +201,65 @@ test('جدول الطلبات: للمشرف وبصلاحية خاصة، حسب �
   assert.equal((await sup.c('GET', '/orders/schedule?from=2026-01-01&to=2028-01-01')).status, 400, 'فترة طويلة جداً');
   assert.equal((await sup.c('GET', '/orders/schedule')).status, 400);
 });
+
+test('مصفوفة الصلاحيات: كل مسارات الموظفين مغلقة على الزائر والعميل والعامل', async () => {
+  const fs = await import('node:fs');
+  const MOUNTS = { 'supervisor.js': '/sup', 'orders.js': '/orders', 'admin.js': '/admin', 'inventory.js': '/inventory', 'stones.js': '/stones', 'catalog.js': '/catalog',
+    'finance.js': '/finance', 'reports.js': '/reports', 'casting.js': '/casting', 'findings.js': '/findings' };
+  const routes = [];
+  for (const [file, prefix] of Object.entries(MOUNTS)) {
+    const src = fs.readFileSync(new URL(`../src/routes/${file}`, import.meta.url), 'utf8');
+    for (const m of src.matchAll(/^r\.(get|post|put|delete)\('([^']+)'/gm)) routes.push([m[1].toUpperCase(), prefix + m[2]]);
+  }
+  for (const m of fs.readFileSync(new URL('../src/routes/statements.js', import.meta.url), 'utf8').matchAll(/^staff\.(get|post|put|delete)\('([^']+)'/gm)) routes.push([m[1].toUpperCase(), '/finance' + m[2]]);
+  assert.ok(routes.length > 150, `عدد المسارات ${routes.length}`);
+  const guest = client();
+  const cu = await user('mx_cust', 'customer');
+  const wk = await user('mx_worker', 'worker');
+  // مسموح للعامل بالمسح فقط (يتحقق الخادم بعدها أن الطلب مسند إليه)
+  // /sup/batches: العامل يرى/يوقّع جلساته فقط (يتحقق الخادم من الملكية)، والأقسام أسماء فقط
+  const workerOk = new Set(['GET /sup/lookup', 'GET /sup/batches/:id', 'POST /sup/batches/:id/sign', 'GET /admin/departments']);
+  const leaks = [];
+  for (const [method, path] of routes) {
+    const p = path.replace(/:[a-z_]+/gi, '1').replace(/\{?\*[a-z]+\}?/gi, 'x');
+    const g = await guest(method, p, method === 'GET' ? undefined : {});
+    if (![401, 403].includes(g.status)) leaks.push(`زائر ${method} ${p} → ${g.status}`);
+    const c = await cu.c(method, p, method === 'GET' ? undefined : {});
+    if (c.status !== 403) leaks.push(`عميل ${method} ${p} → ${c.status}`);
+    if (!workerOk.has(`${method} ${path}`)) {
+      const w = await wk.c(method, p, method === 'GET' ? undefined : {});
+      if (w.status !== 403) leaks.push(`عامل ${method} ${p} → ${w.status}`);
+    }
+  }
+  assert.deepEqual(leaks, []);
+});
+
+test('عزل العملاء: عميل لا يرى طلبات أو ملفات أو فواتير أو كشف عميل آخر', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  const mkCust = async (name, u) => {
+    const cid = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ($1,'م',$2,'approved') returning id", [name, `05${Math.floor(Math.random() * 1e8)}`])).rows[0].id;
+    await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, must_change_password) values ($1,$2,'م','customer',$3,false)", [u, hashPassword('Secure#2026x'), cid]);
+    const c = client(); await c('POST', '/auth/login', { username: u, password: 'Secure#2026x' });
+    return { cid, c };
+  };
+  const A = await mkCust('محل أ', 'iso_a'), B = await mkCust('محل ب', 'iso_b');
+  const ob = (await admin('POST', '/orders', { title: 'طلب ب', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat, customer_id: B.cid })).data;
+  const fd = new FormData(); fd.append('files', new Blob([PNG], { type: 'image/png' }), 'b.png'); fd.append('kind', 'design'); fd.append('customer_visible', 'true');
+  await admin('POST', `/orders/${ob.id}/files`, null, fd);
+  await pool.query('update order_files set customer_visible=true where order_id=$1', [ob.id]);
+  const file = (await pool.query('select path from order_files where order_id=$1', [ob.id])).rows[0].path;
+  assert.equal((await B.c('GET', `/files/${file}`)).status, 200, 'صاحب الطلب يرى ملفه');
+  assert.equal((await A.c('GET', `/files/${file}`)).status, 403, 'غيره لا يرى');
+  assert.equal((await A.c('GET', `/store/orders/${ob.id}`)).status, 404);
+  for (const [m, p] of [['POST', `/store/orders/${ob.id}/cancel`], ['POST', `/store/orders/${ob.id}/note`], ['POST', `/store/orders/${ob.id}/quote`], ['POST', `/store/orders/${ob.id}/design`]]) {
+    assert.ok([403, 404].includes((await A.c(m, p, { note: 'x', accept: true, decision: 'approved' })).status), `${m} ${p}`);
+  }
+  assert.ok(!(await A.c('GET', '/store/orders')).data.some((x) => x.id === ob.id), 'لا يظهر في قائمته');
+  const stA = (await A.c('GET', '/store/statement')).data;
+  assert.equal(stA.customer?.id ?? A.cid, A.cid, 'كشف حسابه فقط');
+  assert.equal((await A.c('GET', `/finance/customers/${B.cid}/statement`)).status, 403);
+  // لا يستطيع تزوير رقم العميل أو الفرع في الطلب
+  const r = await A.c('PUT', '/store/account', { customer_id: B.cid, shop_name: 'اختراق' });
+  assert.notEqual((await pool.query('select shop_name from customers where id=$1', [B.cid])).rows[0].shop_name, 'اختراق');
+  assert.ok(r.status < 500);
+});
