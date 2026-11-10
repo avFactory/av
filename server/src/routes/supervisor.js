@@ -6,6 +6,7 @@ import { bad, notFound, forbidden, conflict, int, str, weight as W } from '../li
 import * as custody from '../lib/custody.js';
 import { embeddedStonesGrams, goldStonesGrams } from '../lib/production.js';
 import { groupInfo } from '../lib/orderGroups.js';
+import { withdrawCustody, SHORTAGE_KINDS } from '../lib/shortage.js';
 import * as ledger from '../lib/ledger.js';
 import { sendXlsx } from '../lib/xlsx.js';
 import { normalizeScan } from '../lib/shortName.js';
@@ -43,7 +44,7 @@ r.get('/awaiting-issue', SUP, async (_req, res) => {
     left join users u on u.id=o.assigned_worker_id
     left join lateral (select count(*)::int n, sum(x.quantity)::int qty, array_agg(x.id) ids, min(x.id) lead from orders x
       where o.cart_ref is not null and x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) g on true
-    where o.status='in_production' and s.handles_gold and (coalesce(g.n, 0) < 2 or o.id = g.lead)
+    where o.status='in_production' and o.stage_state <> 'shortage' and s.handles_gold and (coalesce(g.n, 0) < 2 or o.id = g.lead)
       and not exists (select 1 from custodies c where c.order_id=o.id and c.status in ('open','under_review'))
     order by o.due_date nulls last, o.id`));
 });
@@ -199,6 +200,22 @@ r.post('/issue-split', requirePerm('custody.issue'), async (req, res) => {
     }
     return { parts: results };
   }));
+});
+
+/** سحب الطلب من العامل (غياب أو ضرورة): وزن مؤكد وسبب إلزامي، والطلب يبقى في مرحلته */
+r.post('/custody/:id/withdraw', requirePerm('custody.receive'), async (req, res) => {
+  res.json(await tx((db) => withdrawCustody(db, req, req.params.id, req.body)));
+});
+
+/** قائمة النواقص */
+r.get('/shortages', requirePerm('orders.view', 'custody.issue', 'custody.receive'), async (req, res) => {
+  const rows = await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.shortage_kind, o.shortage_reason, o.shortage_at, o.shortage_from, o.due_date,
+      c.shop_name, br.name as branch_name, s.name as stage_name, u.full_name as by_name, ${orderThumb()} as thumb,
+      coalesce((select sum(balance) from gold_balances b where b.loc_type='order' and b.loc_ref=o.id),0)::text as gold
+    from orders o left join customers c on c.id=o.customer_id left join customer_branches br on br.id=o.branch_id
+    left join stages s on s.id=o.current_stage_id left join users u on u.id=o.shortage_by
+    where o.stage_state='shortage' and o.status='in_production' order by o.shortage_at`);
+  res.json({ rows, kinds: SHORTAGE_KINDS });
 });
 
 r.post('/preview', requirePerm('custody.receive'), async (req, res) => {

@@ -22,7 +22,7 @@ export const sub = (a, b) => (U(a) - U(b)) / 10000;
 
 export const STATUS = {
   pending_review: ['بانتظار المراجعة', 'warn'], quoted: ['عرض مرسل', 'info'], approved: ['معتمد', 'info'], in_production: ['قيد التصنيع', 'gold'],
-  ready: ['جاهز للتسليم', 'ok'], delivered: ['تم التسليم', 'ok'], cancelled: ['ملغي', 'muted'], rejected: ['مرفوض', 'bad'],
+  ready: ['جاهز للتسليم', 'ok'], delivered: ['تم التسليم', 'ok'], cancelled: ['ملغي', 'muted'], rejected: ['مرفوض', 'bad'], shortage: ['النواقص', 'bad'],
 };
 export const CUSTODY_STATUS = { open: ['لدى العامل', 'gold'], under_review: ['تحت المراجعة', 'warn'], closed: ['مغلقة', 'ok'], reversed: ['ملغاة بحركة عكسية', 'muted'] };
 export const SETTLEMENT_STATUS = { approved: ['معتمدة', 'ok'], pending_review: ['بانتظار المراجعة', 'warn'], investigating: ['قيد التحقيق', 'bad'], resolved: ['تم البت', 'ok'], reversed: ['مصححة', 'muted'] };

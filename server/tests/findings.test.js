@@ -223,3 +223,94 @@ test('الطلب متعدد المنتجات قطعة واحدة: صرف بوز�
   const fr = (await pool.query('select id, final_weight::float f from orders where id = any($1::int[]) order by id', [[a.id, b.id]])).rows.map((x) => x.f);
   assert.deepEqual(fr, [4, 6]);
 });
+
+test('النواقص وسحب الطلب من العامل', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '200', note: 'رصيد' });
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('sw1',$1,'عامل النواقص','worker','SW1') returning id", [hashPassword('Sw#2026xx')])).rows[0].id;
+  const w2 = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('sw2',$1,'عامل بديل','worker','SW2') returning id", [hashPassword('Sw#2026xx')])).rows[0].id;
+  const cust = (await call('POST', '/admin/customers', { shop_name: 'محل النواقص' })).data.id;
+  const mk = async (t) => (await call('POST', '/orders', { title: t, product_type: t, karat: 21, quantity: 10, material_id: mat, customer_id: cust })).data;
+  const ring = await mk('خاتم'), chain = await mk('عقد سلسلة'), rob = await mk('عقد روبتشن');
+  const REF = 'ORD-2026-333333';
+  for (const [i, o] of [ring, chain, rob].entries()) await pool.query('update orders set cart_ref=$2, order_no=$3 where id=$1', [o.id, REF, `${REF}-${i + 1}`]);
+  const stage = async (id) => (await pool.query('select o.order_no, o.stage_state, o.current_stage_id, o.cart_ref, o.quantity, s.handles_gold from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [id])).rows[0];
+  for (let i = 0; i < 8 && !(await stage(ring.id)).handles_gold; i++) await call('POST', `/orders/${ring.id}/group-advance`);
+  const st = (await stage(ring.id)).current_stage_id;
+  await call('POST', `/admin/stages/${st}/rate`, { rate_percent: '0', note: 'x' });
+  // الطلب كامل لدى العامل بوزن 30
+  const cus = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: ring.id, weight: '30' }] })).data.custodies[0];
+  assert.equal(cus.pieces, 30);
+  // اتضح عدم توفر الروبتشن: سحب 10 عقود روبتشن (8 جم) من العامل إلى النواقص
+  assert.equal((await call('POST', `/orders/${rob.id}/shortage`, { kind: 'chain', weight: '8' })).status, 400, 'البيان إلزامي');
+  const sh = await call('POST', `/orders/${rob.id}/shortage`, { kind: 'chain', weight: '8', reason: 'لا يوجد روبتشن 45 سم' });
+  assert.equal(sh.status, 200, JSON.stringify(sh.data));
+  const robNow = await stage(rob.id);
+  assert.equal(robNow.stage_state, 'shortage');
+  assert.notEqual(robNow.cart_ref, REF, 'طلب جديد برقم جديد');
+  assert.equal(robNow.order_no, sh.data.order_no);
+  assert.equal(await bal('order', rob.id, mat), 8, 'ذهب القطع الناقصة على الطلب الجديد');
+  assert.equal(await bal('worker', w, mat), 22, 'خُصم من العامل');
+  const c1 = (await pool.query('select weight_issued::float i, weight_used::float u, pieces from custodies where id=$1', [cus.id])).rows[0];
+  assert.deepEqual([c1.i - c1.u, c1.pieces], [22, 20]);
+  // الطلب الأصلي: صنفان، والملصق الجديد للنواقص
+  const lk = (await call('GET', `/sup/lookup?code=${REF}`)).data;
+  assert.equal(lk.group.length, 2);
+  const lab = (await call('GET', `/orders/labels?ids=${rob.id}`)).data[0];
+  assert.equal(lab.order_no, robNow.cart_ref);
+  // لا يُسلَّم ولا ينتقل وهو في النواقص
+  assert.equal((await call('POST', `/orders/${rob.id}/advance`)).status, 409);
+  assert.equal((await call('POST', '/sup/issue', { worker_id: w2, items: [{ order_id: rob.id, weight: '8' }] })).status, 409);
+  assert.ok((await call('GET', '/sup/shortages')).data.rows.some((x) => x.id === rob.id));
+  // استلام باقي الطلب بدون عجز، والطلب الأصلي يكمل
+  const rc = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: cus.id, returned_weight: '22' }] });
+  assert.equal(Number(rc.data.results[0].settlement.actual_loss), 0);
+  assert.notEqual((await stage(ring.id)).current_stage_id, st, 'الأصلي انتقل');
+  assert.equal((await stage(rob.id)).current_stage_id, st, 'النواقص بقيت في مرحلتها');
+  // العميل يرى القطع في النواقص
+  const { hashPassword: hp } = await import('../src/lib/auth.js');
+  await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, must_change_password) values ('shcust',$1,'م','customer',$2,false)", [hp('Sh#2026cust'), cust]);
+  await pool.query("update customers set status='approved' where id=$1", [cust]);
+  let ck = '';
+  const cu = async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  await cu('POST', '/auth/login', { username: 'shcust', password: 'Sh#2026cust' });
+  const mine = (await cu('GET', '/store/orders')).data;
+  assert.equal(mine.find((x) => x.id === rob.id).status, 'shortage');
+  assert.equal(mine.find((x) => x.id === ring.id).status, 'in_production');
+  // توفرت النواقص: استئناف
+  assert.equal((await call('POST', `/orders/${rob.id}/shortage/resume`)).status, 200);
+  assert.equal((await stage(rob.id)).stage_state, 'waiting');
+  // جزء من الكمية + البند القائد: 4 خواتم من 10 للنواقص (والطلب لدى عامل)
+  const cus2 = (await call('POST', '/sup/issue', { worker_id: w2, items: [{ order_id: ring.id, weight: '20' }] })).data.custodies[0];
+  const p = await call('POST', `/orders/${ring.id}/shortage`, { kind: 'diamond', quantity: 4, weight: '3', reason: 'ألماس 1.5 مم غير متوفر' });
+  assert.equal(p.status, 200, JSON.stringify(p.data));
+  assert.equal((await stage(ring.id)).quantity, 6);
+  assert.equal((await stage(p.data.order_id)).quantity, 4);
+  assert.equal(await bal('worker', w2, mat), 17);
+  // سحب الطلب من العامل (غائب): وزن وسبب، والطلب يبقى في مرحلته بدون عامل
+  const before = (await stage(ring.id)).current_stage_id;
+  assert.equal((await call('POST', `/sup/custody/${cus2.id}/withdraw`, { returned_weight: '17' })).status, 400, 'السبب إلزامي');
+  const wd = await call('POST', `/sup/custody/${cus2.id}/withdraw`, { returned_weight: '17', reason: 'العامل غائب' });
+  assert.equal(wd.status, 200, JSON.stringify(wd.data));
+  assert.equal(await bal('worker', w2, mat), 0);
+  assert.equal((await stage(ring.id)).current_stage_id, before, 'لم ينتقل');
+  assert.equal((await pool.query('select assigned_worker_id from orders where id=$1', [ring.id])).rows[0].assigned_worker_id, null);
+});
+
+test('النواقص: نقل البند القائد كاملاً ينقل ذهب وعهدة الطلب للبند التالي', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('lw1',$1,'عامل','worker','LW1') returning id", [hashPassword('Lw#2026xx')])).rows[0].id;
+  const mk = async (t) => (await call('POST', '/orders', { title: t, product_type: t, karat: 21, quantity: 5, material_id: mat })).data;
+  const a = await mk('خاتم'), b = await mk('حلق');
+  await pool.query("update orders set cart_ref='ORD-2026-222222' where id = any($1::int[])", [[a.id, b.id]]);
+  for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [a.id])).rows[0].h; i++) await call('POST', `/orders/${a.id}/group-advance`);
+  await call('POST', `/orders/${a.id}/allocate`, { weight: '2' });
+  const cus = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: a.id, weight: '10' }] })).data.custodies[0];
+  assert.equal(cus.order_id, a.id);
+  const r = await call('POST', `/orders/${a.id}/shortage`, { kind: 'stones', weight: '4', reason: 'زركون غير متوفر' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await pool.query('select order_id from custodies where id=$1', [cus.id])).rows[0].order_id, b.id, 'العهدة انتقلت للبند التالي');
+  assert.equal(await bal('order', a.id, mat), 4);
+  const rc = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: cus.id, returned_weight: '6' }] });
+  assert.equal(Number(rc.data.results[0].settlement.actual_loss), 0);
+});

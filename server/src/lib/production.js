@@ -133,6 +133,7 @@ async function enterStage(db, order, stage, userId) {
  */
 export async function advance(db, order, userId, opts = {}) {
   if (order.status !== 'in_production' && order.status !== 'ready') throw conflict('الطلب ليس قيد التصنيع');
+  if (order.stage_state === 'shortage') throw conflict(`${order.order_no} في النواقص - استأنفه بعد توفر النواقص`);
   const stages = await routeStages(db, order.route_id);
   const idx = stages.findIndex((s) => s.seq === order.stage_seq);
   const cur = stages[idx];

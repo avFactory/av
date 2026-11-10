@@ -18,6 +18,7 @@ import { applyDueDate, capacity } from '../lib/leadTime.js';
 import { bullionVals } from './catalog.js';
 import { addInternalImages } from '../lib/internalImages.js';
 import { advanceGroup, set3d } from '../lib/orderGroup3d.js';
+import { moveToShortage, resumeShortage } from '../lib/shortage.js';
 
 const r = Router();
 
@@ -78,7 +79,7 @@ r.get('/schedule', requirePerm('schedule.view'), async (req, res) => {
   if (!from || !to) throw bad('حدد الفترة');
   if ((new Date(to) - new Date(from)) / 864e5 > 400) throw bad('الفترة طويلة جداً');
   const cols = `o.id, o.order_no, o.cart_ref, o.title, o.quantity, o.status, to_char(o.due_date, 'YYYY-MM-DD') as due, coalesce(o.final_weight, o.approx_weight)::float as grams, o.approx_weight::text, o.final_weight::text,
-      c.shop_name, br.name as branch_name, s.name as stage_name, w.full_name as worker_name, o.delivered_at, o.ready_at,
+      c.shop_name, br.name as branch_name, case when o.stage_state='shortage' then '⚠ النواقص' else s.name end as stage_name, w.full_name as worker_name, o.delivered_at, o.ready_at,
       (o.due_date < (now() at time zone 'Asia/Riyadh')::date and o.status not in ('delivered','cancelled','rejected')) as late, ${orderThumb()} as thumb`;
   const joins = `from orders o left join customers c on c.id=o.customer_id left join customer_branches br on br.id=o.branch_id
       left join stages s on s.id=o.current_stage_id left join users w on w.id=o.assigned_worker_id`;
@@ -108,7 +109,7 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
   res.json(await many(`
     select o.id, o.order_no, o.cart_ref, o.customer_id, o.title, o.status, o.quantity, o.due_date, o.created_at, o.source, o.design_status, o.stage_state,
            o.final_weight::text, o.approx_weight::text, o.labor_estimate::text,
-           c.shop_name, br.name as branch_name, s.name as stage_name, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, w.full_name as worker_name,
+           c.shop_name, br.name as branch_name, case when o.stage_state='shortage' then '⚠ النواقص' else s.name end as stage_name, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, w.full_name as worker_name,
            (o.due_date < current_date and o.status not in ('delivered','cancelled','rejected')) as late, ${orderThumb()} as thumb
     from orders o left join customers c on c.id=o.customer_id left join stages s on s.id=o.current_stage_id
     join materials m on m.id=o.material_id left join users w on w.id=o.assigned_worker_id left join customer_branches br on br.id=o.branch_id
@@ -179,7 +180,7 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
   const files = await many('select f.*, u.full_name as uploaded_by_name from order_files f left join users u on u.id=f.uploaded_by where order_id=$1 order by id', [id]);
   const grp = await groupInfo(pool, id);
   const goldIds = grp?.isGroup ? grp.ids : [id];
-  const custodies = await many(`select c.id, c.worker_id, c.stage_id, c.custody_no, c.status, c.work_state, c.weight_issued::text, c.issued_at, c.closed_at, c.loss_rate_snapshot::text,
+  const custodies = await many(`select c.id, c.worker_id, c.stage_id, c.custody_no, c.status, c.work_state, (c.weight_issued - c.weight_used)::numeric(16,4)::text as weight_issued, c.issued_at, c.closed_at, c.loss_rate_snapshot::text,
       u.full_name as worker_name, s.name as stage_name, st.settlement_no, st.returned_weight::text, st.scrap_weight::text, st.actual_loss::text,
       st.normal_loss::text, st.abnormal_loss::text, st.status as settlement_status, st.id as settlement_id
     from custodies c join users u on u.id=c.worker_id join stages s on s.id=c.stage_id
@@ -206,7 +207,7 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
   const siblings = o.cart_ref ? await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, o.color, o.notes, o.status, o.approx_weight::text,
         o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.bullion_type, o.bullion_weight::text, o.labor_estimate::text,
         o.needs_3d_design, o.needs_3d_print, o.d3_checked_at, o.current_stage_id, s.kind as stage_kind,
-        r.name as route_name, s.name as stage_name, ${orderThumb()} as thumb,
+        r.name as route_name, case when o.stage_state='shortage' then '⚠ النواقص' else s.name end as stage_name, ${orderThumb()} as thumb,
         coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
           from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details
       from orders o left join routes r on r.id=o.route_id left join stages s on s.id=o.current_stage_id where o.cart_ref=$1 order by o.order_no`, [o.cart_ref]) : [];
@@ -417,6 +418,14 @@ r.post('/:id/deallocate', requirePerm('custody.issue', 'inventory.manage', 'orde
     await audit(db, req, 'order.deallocate', 'order', o.id, { weight: w });
     return { ok: true };
   }));
+});
+
+/** نقل قطع من الطلب للنواقص (طلب جديد برقم وباركود جديدين) */
+r.post('/:id/shortage', requirePerm('custody.receive', 'orders.advance'), async (req, res) => {
+  res.json(await tx((db) => moveToShortage(db, req, req.params.id, req.body)));
+});
+r.post('/:id/shortage/resume', requirePerm('orders.advance', 'custody.issue'), async (req, res) => {
+  res.json(await tx((db) => resumeShortage(db, req, req.params.id, req.body)));
 });
 
 /** نقل الطلب كاملاً (كل بنوده في نفس المرحلة) للمرحلة التالية */

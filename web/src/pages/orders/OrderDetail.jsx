@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, fileUrl, qrUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
+import { ShortageModal, WithdrawModal, SHORTAGE_KINDS } from '../../components/ShortageTools.jsx';
 import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal } from '../../ui.jsx';
 
@@ -40,6 +41,8 @@ export default function OrderDetail() {
   const [tab, setTab] = useState('overview');
   const [modal, setModal] = useState(null);
   const [f, setF] = useState({});
+  const [short, setShort] = useState(null);
+  const [withdraw, setWithdraw] = useState(null);
   const [run, busy] = useAction();
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
@@ -82,10 +85,19 @@ export default function OrderDetail() {
       </>}>
       {(siblings.length > 1 || (['pending_review', 'quoted'].includes(o.status) && o.quantity > 1 && can('orders.manage'))) && (
         <OrderItems o={o} siblings={siblings} canManage={can('orders.manage')} busy={busy} routes={lookups?.routes || []} reload={reload} run={run}
+          onShortage={can('custody.receive', 'orders.advance') ? setShort : null}
           canMove={inProd && (can('orders.advance') || (me?.is_3d && cur?.kind === 'design'))} can3d={!!me?.is_3d || can('orders.advance')}
           onSplit={() => open('split', { quantity: '', route_id: o.route_id ? String(o.route_id) : '' })}
           onStartAll={() => run(async () => { const r = await api.post('/orders/group/start', { ref: o.cart_ref }); reload(); if (r.skipped?.length) window.alert(`لم يبدأ:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`); }, 'تم بدء إنتاج الطلب')} />
       )}
+      {o.stage_state === 'shortage' && (
+        <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2 mb">
+          <span>⚠ <b>في النواقص</b>: {SHORTAGE_KINDS[o.shortage_kind] || o.shortage_kind} — {o.shortage_reason}{o.shortage_from ? <> · من الطلب <b dir="ltr">{o.shortage_from}</b></> : ''}</span>
+          {can('orders.advance', 'custody.issue') && <Btn size="sm" kind="ok" className="ms-auto" loading={busy} onClick={() => act('shortage/resume', {}, 'استؤنف الإنتاج')}>توفرت النواقص — استئناف</Btn>}
+        </div>
+      )}
+      {short && <ShortageModal item={short} custody={openCust.find((c) => c.status === 'open')} onClose={() => setShort(null)} onDone={() => reload()} />}
+      {withdraw && <WithdrawModal custody={withdraw} onClose={() => setWithdraw(null)} onDone={() => reload()} />}
       {(() => { const grid = (
       <div className={`grid g3 ${siblings.length > 1 ? '' : 'mb'}`} style={{ gridTemplateColumns: '1fr 1fr auto' }}>
         <Card title="الطلب">
@@ -122,6 +134,8 @@ export default function OrderDetail() {
           <div className="hrow gap wrap">
             {cur?.handles_gold && !openCust.length && can('custody.issue') && <LinkBtn kind="primary" to={`/sup/issue?order=${o.id}${o.assigned_worker_id ? `&worker=${o.assigned_worker_id}` : ''}`}>تسليم الذهب لعامل</LinkBtn>}
             {can('custody.receive') && openCust.filter((c) => c.status === 'open').map((c) => <LinkBtn key={c.id} kind="dark" to={`/sup/receive?worker=${c.worker_id}`}>استلام من {c.worker_name}</LinkBtn>)}
+            {can('custody.receive') && openCust.filter((c) => c.status === 'open').map((c) => <Btn key={`w${c.id}`} kind="ghost" onClick={() => setWithdraw(c)}>سحب من {c.worker_name}</Btn>)}
+            {inProd && o.stage_state !== 'shortage' && siblings.length < 2 && can('custody.receive', 'orders.advance') && <Btn kind="ghost" onClick={() => setShort(o)}>⚠ نقل للنواقص</Btn>}
             {(can('custody.issue') || can('orders.manage')) && inProd && <Btn kind="ghost" onClick={() => open('allocate', { source: 'vault' })}>تسجيل ذهب على الطلب</Btn>}
             {can('orders.advance') && inProd && <Btn kind="ghost" onClick={() => open('assign', { worker_id: o.assigned_worker_id || '' })}>إسناد لعامل</Btn>}
             {cur?.kind === 'final_weight' && can('orders.advance') && !openCust.length && (!cur.handles_gold || custodies.some((c) => c.stage_id === cur.id && c.status === 'closed')) && <Btn onClick={() => open('final', { weight: orderBal })}>{o.final_weight ? 'تعديل الوزن النهائي' : 'تسجيل الوزن النهائي'}</Btn>}
@@ -264,7 +278,7 @@ export default function OrderDetail() {
 }
 
 /** بنود الطلب الواحد (أعلى الصفحة): تفاصيل كل منتج، ونقل الطلب كاملاً للمرحلة التالية، وتحديد احتياج 3D لكل قطعة */
-function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove, can3d, run, reload }) {
+function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove, can3d, run, reload, onShortage }) {
   const nav = useNavigate();
   const list = siblings.length ? siblings : [{ id: o.id, order_no: o.order_no, title: o.title, quantity: o.quantity, status: o.status, approx_weight: o.approx_weight, route_name: o.route_name, stage_name: o.stage_name }];
   const canSplit = canManage && ['pending_review', 'quoted'].includes(o.status) && o.quantity > 1;
@@ -308,7 +322,8 @@ function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove
                 {x.notes && <div className="small text-body-secondary">📝 {x.notes}</div>}
               </div>
               <div className="oi-side" onClick={(e) => e.stopPropagation()}>
-                <div className="d-flex gap-1 flex-wrap justify-content-end"><StatusBadge map={STATUS} value={x.status} />{x.stage_name && <Badge tone="gold">{x.stage_name}</Badge>}</div>
+                <div className="d-flex gap-1 flex-wrap justify-content-end"><StatusBadge map={STATUS} value={x.status} />{x.stage_name && <Badge tone="gold">{x.stage_name}</Badge>}
+                  {onShortage && x.status === 'in_production' && <button type="button" className="chip chip-sm" onClick={() => onShortage(x)}>⚠ نواقص</button>}</div>
                 {(in3d || x.d3_checked_at) && (
                   <div className="d-flex gap-1 flex-wrap justify-content-end mt-1">
                     {can3d && in3d ? <>

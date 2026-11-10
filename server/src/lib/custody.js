@@ -64,6 +64,7 @@ export async function issue(db, req, body) {
   for (const { it, idx } of ordered) {
     const order = await lockOrder(db, int(it.order_id));
     if (order.status !== 'in_production') throw conflict(`الطلب ${order.order_no} ليس قيد التصنيع`);
+    if (order.stage_state === 'shortage') throw conflict(`الطلب ${order.order_no} في النواقص`);
     const stageId = it.stage_id ? int(it.stage_id) : order.current_stage_id;
     const stage = (await db.query('select * from stages where id=$1', [stageId])).rows[0];
     if (!stage) throw bad('المرحلة غير موجودة');

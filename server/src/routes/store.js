@@ -215,8 +215,8 @@ async function myOrder(db, req, id, lock = false) {
 }
 
 r.get('/orders', async (req, res) => {
-  res.json(await many(`select o.id, o.order_no, o.title, o.status, o.quantity, o.due_date, o.created_at, o.design_status, o.labor_estimate::text, o.cart_ref,
-      s.name as stage_name, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, o.stage_seq, br.name as branch_name,
+  res.json(await many(`select o.id, o.order_no, o.title, case when o.stage_state='shortage' and o.status='in_production' then 'shortage' else o.status end as status, o.shortage_kind, o.shortage_from, o.quantity, o.due_date, o.created_at, o.design_status, o.labor_estimate::text, o.cart_ref,
+      case when o.stage_state='shortage' then 'النواقص' else s.name end as stage_name, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, o.stage_seq, br.name as branch_name,
       (select count(*) from route_stages rs where rs.route_id=o.route_id)::int as total_stages,
       (select f.path from order_files f where f.order_id=o.id and f.customer_visible and f.mime like 'image/%' order by f.id desc limit 1) as image,
       (select pm.path from product_media pm where pm.product_id=o.product_id order by pm.sort, pm.id limit 1) as product_image
@@ -234,8 +234,8 @@ r.get('/orders/:id', async (req, res) => {
   const stages = o.route_id ? (await prod.routeStages(pool, o.route_id)).filter((s) => s.customer_visible && (diamond || s.code !== 'lab')).map((s) => ({ seq: s.seq, name: s.name })) : [];
   const total = o.route_id ? (await one('select count(*)::int n from route_stages where route_id=$1', [o.route_id])).n : 0;
   // منتجات الطلب (كل بنود نفس الطلب) بصورة مصغّرة وتفاصيل مختصرة
-  const items = await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, o.status, o.approx_weight::text, o.final_weight::text,
-      m.karat, coalesce(o.color, m.color) as color, s.name as stage_name,
+  const items = await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, case when o.stage_state='shortage' and o.status='in_production' then 'shortage' else o.status end as status, o.approx_weight::text, o.final_weight::text,
+      m.karat, coalesce(o.color, m.color) as color, case when o.stage_state='shortage' then 'النواقص' else s.name end as stage_name,
       coalesce((select pm.path from product_media pm where pm.product_id=o.product_id and pm.kind='image' order by pm.sort, pm.id limit 1),
                (select f.path from order_files f where f.order_id=o.id and f.customer_visible and f.mime like 'image/%' order by f.id limit 1)) as image
     from orders o join materials m on m.id=o.material_id left join stages s on s.id=o.current_stage_id
@@ -254,10 +254,10 @@ r.get('/orders/:id', async (req, res) => {
   const stageName = o.current_stage_id ? (await one('select name from stages where id=$1', [o.current_stage_id])).name : null;
   res.json({
     order: {
-      id: o.id, order_no: o.order_no, title: o.title, status: o.status, branch_name: o.branch_id ? (await one('select name from customer_branches where id=$1', [o.branch_id]))?.name : null, karat: m.karat, color: o.color || m.color, material: m.name, size: o.size, quantity: o.quantity,
+      id: o.id, order_no: o.order_no, title: o.title, status: o.stage_state === 'shortage' && o.status === 'in_production' ? 'shortage' : o.status, shortage_from: o.shortage_from, branch_name: o.branch_id ? (await one('select name from customer_branches where id=$1', [o.branch_id]))?.name : null, karat: m.karat, color: o.color || m.color, material: m.name, size: o.size, quantity: o.quantity,
       approx_weight: o.approx_weight, final_weight: o.final_weight, labor_method: o.labor_method, labor_rate: o.labor_rate, labor_estimate: o.labor_estimate,
       quote_note: o.quote_note, quote_sent_at: o.quote_sent_at, customer_accepted_at: o.customer_accepted_at, due_date: o.due_date, notes: o.notes,
-      design_status: o.design_status, design_approval_required: o.design_approval_required, stage_name: stageName, created_at: o.created_at,
+      design_status: o.design_status, design_approval_required: o.design_approval_required, stage_name: o.stage_state === 'shortage' ? 'النواقص' : stageName, created_at: o.created_at,
       progress: total && o.stage_seq ? Math.round((100 * (o.status === 'delivered' ? total : o.stage_seq - 1)) / total) : 0, delivered_at: o.delivered_at,
       product_image: productImage, cart_ref: o.cart_ref,
       ...stones,

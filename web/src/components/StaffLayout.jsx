@@ -13,6 +13,7 @@ const NAV = [
     ['/sup/receive', 'استلام ذهب من العامل', ['custody.receive']],
     ['/sup/workers', 'العمال والعهد', ['workers.view', 'custody.issue']],
     ['/sup/schedule', 'جدول الطلبات', ['schedule.view']],
+    ['/sup/shortages', 'النواقص', ['orders.view', 'custody.issue', 'custody.receive']],
     ['/sup/review', 'مراجعة العجز', ['loss.review', 'loss.investigate']],
     ['/admin/loss-advances', 'سلف العجز', ['loss.advances']],
     ['/sup/log', 'سجل العمليات', ['custody.view_all', 'inventory.view', 'reports.view']],

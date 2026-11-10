@@ -65,6 +65,7 @@ function OrderCard({ o, nav, compact }) {
       <div className="grow" style={{ minWidth: 0 }}>
         <div className="hrow between wrap gap"><b>{o.order_no} — {o.title}</b><StatusBadge map={STATUS} value={o.status} /></div>
         <div className="small muted">{!compact && o.branch_name ? `${o.branch_name} · ` : ''}{o.material_name} · الكمية {o.quantity}{compact ? '' : ` · ${fmtDate(o.created_at)}`}{Number(o.labor_estimate) > 0 ? ` · أجور تقديرية ${fmtMoney(o.labor_estimate)}` : ''}</div>
+        {o.status === 'shortage' && <div className="small text-danger">بانتظار توفر {({ diamond: 'الألماس', chain: 'السلاسل / الروبتشن', findings: 'الخامات', stones: 'الأحجار', gold: 'الذهب' })[o.shortage_kind] || 'النواقص'}{o.shortage_from ? ` · من الطلب ${o.shortage_from}` : ''}</div>}
         {o.status === 'quoted' && <div className="small" style={{ color: 'var(--warn)' }}>عرض أجور بانتظار موافقتكم</div>}
         {o.design_status === 'sent' && <div className="small" style={{ color: 'var(--warn)' }}>تصميم بانتظار اعتمادكم</div>}
         {['in_production', 'ready', 'delivered'].includes(o.status) && <div className="hrow gap small mt" style={{ marginTop: 6 }}><div className="progress grow"><div style={{ width: `${pct}%` }} /></div><span>{pct}%</span><span className="muted">{o.stage_name}</span></div>}
