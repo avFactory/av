@@ -104,6 +104,18 @@ export default function Schedule() {
           <div className="late"><span>متأخرة</span><b>{count('late')}</b></div>
         </div>
 
+        {!rows.length && data.next_due && (
+          <div className="alert alert-light border d-flex flex-wrap align-items-center gap-2 mb-3">
+            <span>لا توجد طلبات بموعد تسليم في هذه الفترة. أقرب موعد تسليم: <b>{data.next_due.day}</b> ({data.next_due.count} طلب)</span>
+            <button type="button" className="btn btn-sm btn-dark ms-auto" onClick={() => setA(data.next_due.day)}>الذهاب إليه ←</button>
+          </div>
+        )}
+        {data.no_due?.length > 0 && (
+          <details className="card mb-3">
+            <summary className="p-2">📌 طلبات مفتوحة بدون موعد تسليم (لا تظهر في التقويم): <b>{data.no_due.length}</b></summary>
+            <div className="sch-list p-2">{data.no_due.map((o) => <OrderRow key={o.id} o={o} />)}</div>
+          </details>
+        )}
         {data.overdue.length > 0 && (
           <details className="card sch-overdue mb-3">
             <summary>⚠ طلبات تجاوزت موعد التسليم ولم تُسلَّم: <b>{data.overdue.length}</b></summary>

@@ -86,7 +86,13 @@ r.get('/schedule', requirePerm('schedule.view'), async (req, res) => {
     where o.due_date between $1::date and $2::date and o.status not in ('cancelled','rejected') order by o.due_date, o.id`, [from, to]);
   const overdue = await many(`select ${cols} ${joins}
     where o.due_date < (now() at time zone 'Asia/Riyadh')::date and o.status not in ('delivered','cancelled','rejected') order by o.due_date, o.id limit 300`);
-  res.json({ from, to, rows, overdue, capacity: await capacity(pool), today: new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10) });
+  // الطلبات المفتوحة بدون موعد تسليم (لا تظهر في التقويم)، وأقرب موعد قادم بعد الفترة
+  const noDue = await many(`select ${cols} ${joins}
+    where o.due_date is null and o.status not in ('delivered','cancelled','rejected') order by o.id desc limit 300`);
+  const next = await one(`select to_char(min(due_date), 'YYYY-MM-DD') as day from orders
+    where due_date > $1::date and status not in ('delivered','cancelled','rejected')`, [to]);
+  const nextCount = next?.day ? (await one("select count(*)::int n from orders where due_date=$1::date and status not in ('delivered','cancelled','rejected')", [next.day])).n : 0;
+  res.json({ from, to, rows, overdue, no_due: noDue, next_due: next?.day ? { day: next.day, count: nextCount } : null, capacity: await capacity(pool), today: new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10) });
 });
 
 r.get('/', requirePerm('orders.view'), async (req, res) => {
