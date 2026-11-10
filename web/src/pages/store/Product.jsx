@@ -24,7 +24,8 @@ export default function Product() {
     if (p.sizes.length && !sel.size) return toast('اختر المقاس', 'bad');
     setCart([...cart, { product_id: p.id, name: p.name, sku: p.sku, product_type: p.product_type, karat, color, size: sel.size, quantity: Number(sel.quantity) || 1, notes: sel.notes, image: p.media[0]?.path, labor: p.labor }]);
     toast('أضيف إلى السلة');
-    nav('/store/cart');
+    // الرجوع لنفس مكان العميل في المتجر (نفس الفلاتر وموضع التمرير)
+    if ((window.history.state?.idx ?? 0) > 0) nav(-1); else nav('/store');
   };
   return (
     <Page title={p.name} subtitle={`${p.sku} · ${p.product_type}`} back="/store">

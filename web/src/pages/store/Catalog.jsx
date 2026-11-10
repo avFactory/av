@@ -1,31 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { api, fileUrl, qs } from '../../api.js';
 import { fmtW, fmtMoney, METHODS } from '../../format.js';
-import { Loader, Search, useFetch, Empty, LinkBtn, useToast } from '../../ui.jsx';
+import { Loader, Search, useFetch, Empty, LinkBtn } from '../../ui.jsx';
 
 const PAGE = 48;
+/** حالة المتجر الأخيرة في هذه الجلسة (للرجوع لنفس المكان) */
+let SNAP = null;
 import { useCart } from '../../components/StoreLayout.jsx';
 
 const CATS = [['', 'الكل', '✦'], ['gold', 'ذهب', '◯'], ['diamond', 'ألماس مخبري', '💎'], ['pearl', 'لؤلؤ', '⚪'], ['stone', 'أحجار', '◆'], ['bullion', 'سبائك', '🪙']];
 const catBadges = (p) => [p.has_diamond && 'ألماس مخبري', p.has_pearl && 'لؤلؤ', p.has_stone && 'أحجار', p.has_bullion && (p.bullion_type === 'coin' ? 'جنيهات' : 'سبائك'), p.is_gold && 'ذهب'].filter(Boolean);
 
 export default function Catalog() {
-  const [f, setF] = useState({ q: '', type: '', karat: '', cat: '' });
-  const { apiBase, approved, loginUrl, cart, setCart } = useCart();
-  const toast = useToast();
-  const nav = useNavigate();
-  // إضافة سريعة من الكرت: مباشرة إن لم يكن للمنتج خيارات، وإلا تفتح صفحته لاختيار العيار/اللون/المقاس
-  const quickAdd = (e, p) => {
-    e.preventDefault(); e.stopPropagation();
-    const need = [p.sizes?.length && 'المقاس', p.karats.length > 1 && 'العيار', p.colors.length > 1 && 'اللون'].filter(Boolean);
-    if (need.length) { toast(`اختر ${need.join(' و')} ثم أضف إلى السلة`, 'info'); nav(`/store/products/${p.id}`); return; }
-    setCart([...cart, { product_id: p.id, name: p.name, sku: p.sku, product_type: p.product_type, karat: p.karats[0], color: p.colors[0], size: '', quantity: 1, notes: '', image: p.media[0]?.path, labor: p.labor }]);
-    toast(`أضيف «${p.name}» إلى السلة`);
-  };
+  // يرجع العميل لنفس المكان (الفلاتر والمنتجات المحمّلة وموضع التمرير) بعد فتح منتج والرجوع منه
+  const [f, setF] = useState(() => SNAP?.f || { q: '', type: '', karat: '', cat: '' });
+  const { apiBase, approved, loginUrl } = useCart();
   // الصفحة الأولى ثم تحميل المزيد تلقائياً عند الوصول لآخر القائمة
   const { data: first } = useFetch(`${apiBase}/products${qs({ ...f, limit: PAGE })}`, { deps: [apiBase] });
-  const [more, setMore] = useState({ key: '', items: [], hasMore: false, loading: false });
+  const [more, setMore] = useState(() => (SNAP?.more ? { ...SNAP.more, loading: false } : { key: '', items: [], hasMore: false, loading: false }));
+  const restoreY = useRef(SNAP?.yClick || 0);
+  if (SNAP) SNAP.yClick = 0;
+  useEffect(() => { SNAP = { ...(SNAP || {}), f, more }; }, [f, more]);
+
   const key = `${apiBase}${qs(f)}`;
   const items = first ? [...first.products, ...(more.key === key ? more.items : [])] : [];
   const hasMore = first ? (more.key === key && more.items.length ? more.hasMore : first.has_more) : false;
@@ -46,6 +43,11 @@ export default function Catalog() {
     return () => io.disconnect();
   });
   const data = first;
+  useEffect(() => {
+    if (!first || !restoreY.current) return;
+    const y = restoreY.current; restoreY.current = 0;
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));
+  }, [first]);
   return (
     <div className="page">
       <div className="hero mb d-none d-md-flex">
@@ -72,7 +74,7 @@ export default function Catalog() {
       {!data ? <Loader /> : !items.length ? <Empty>لا توجد منتجات مطابقة{(f.q || f.type || f.karat || f.cat) && <div className="mt-2"><button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setF({ q: '', type: '', karat: '', cat: '' })}>عرض كل المنتجات</button></div>}</Empty> : (
         <><div className="products">
           {items.map((p) => (
-            <Link key={p.id} to={`/store/products/${p.id}`} className="product">
+            <Link key={p.id} to={`/store/products/${p.id}`} className="product" onClick={() => { SNAP = { ...(SNAP || {}), yClick: window.scrollY }; }}>
               <div className="img">{p.media[0]?.kind === 'image' ? <img src={fileUrl(p.media[0].path, 400)} alt={p.name} loading="lazy" decoding="async" /> : '◇'}</div>
               <div className="info">
                 <b>{p.name}</b>
@@ -83,7 +85,6 @@ export default function Catalog() {
                 {!approved && <span className="small muted">أجور التصنيع تظهر بعد تسجيل الدخول</span>}
                 <span className="small muted">{p.in_stock || (p.availability === 'available' && p.stock_qty > 0) ? (p.stock_qty ? `متوفر (${p.stock_qty})` : 'متوفر') : 'يصنع حسب الطلب'}</span>
               </div>
-              {approved && <div className="product-foot"><button type="button" className="btn btn-sm btn-dark w-100" onClick={(e) => quickAdd(e, p)}>🛒 أضف إلى السلة</button></div>}
             </Link>
           ))}
         </div>
