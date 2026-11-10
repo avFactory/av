@@ -14,6 +14,15 @@ function fit(ctx, text, max) {
 }
 
 /** يرسم ملصقاً واحداً على Canvas بحجم الطابعة الفعلي (نقاط) */
+/** ملخص قطع الطلب: «خاتم 3 · عقد 2» بنوعين في السطر وحتى 3 سطور */
+export function typeLines(types = [], perLine = 2, maxLines = 3) {
+  const parts = types.map((t) => `${t.type} ${t.qty}`);
+  const lines = [];
+  for (let i = 0; i < parts.length; i += perLine) lines.push(parts.slice(i, i + perLine).join(' · '));
+  if (lines.length > maxLines) { const rest = parts.length - (maxLines - 1) * perLine; lines.splice(maxLines - 1, lines.length, `+${rest} أنواع أخرى`); }
+  return lines;
+}
+
 export async function drawLabel(o, { dpi = 203, w = 62, h = 38 } = {}) {
   const d = dpi / MM;
   const W = Math.round(w * d), H = Math.round(h * d);
@@ -40,9 +49,8 @@ export async function drawLabel(o, { dpi = 203, w = 62, h = 38 } = {}) {
   const k = small ? 0.9 : 1;
   const lines = [
     [`700 ${pt(7.6 * k)}px 'Courier New', monospace`, o.order_no, 'ltr'],
-    [`700 ${pt(7.8 * k)}px ${FONT}`, o.title],
-    [`600 ${pt(7 * k)}px ${FONT}`, o.material_name],
-    [`600 ${pt(7 * k)}px ${FONT}`, `الكمية ${o.quantity}${o.size ? ` · مقاس ${o.size}` : ''}`],
+    ...(o.types ? typeLines(o.types).map((t) => [`700 ${pt(7.4 * k)}px ${FONT}`, t])
+      : [[`700 ${pt(7.8 * k)}px ${FONT}`, o.title], [`600 ${pt(7 * k)}px ${FONT}`, o.material_name], [`600 ${pt(7 * k)}px ${FONT}`, `الكمية ${o.quantity}${o.size ? ` · مقاس ${o.size}` : ''}`]]),
   ];
   const cust = o.customer_label || null;
   if (cust) lines.push([`700 ${pt(7.8 * k)}px ${FONT}`, cust, 'rtl', true]);

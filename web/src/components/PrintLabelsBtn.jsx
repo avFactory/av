@@ -47,7 +47,7 @@ export default function PrintLabelsBtn({ ids, children = 'طباعة الملص�
     setBusy(true);
     try {
       const how = await printLabels(ids);
-      if (how === 'zebra') toast(`أُرسل ${ids.length} ملصق للطابعة`, 'ok');
+      if (how === 'zebra') toast("أُرسلت الملصقات للطابعة", "ok");
     } catch (e) {
       toast(`${e.message} — افتح إعدادات الطباعة`, 'bad');
     } finally { setBusy(false); }

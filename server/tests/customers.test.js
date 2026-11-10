@@ -219,6 +219,20 @@ test('الاسم المختصر على الملصق، ورمز QR رقمي يُ�
   assert.match(lab.qr_code, /^\d{10}$/);
   assert.equal((await call('GET', `/sup/lookup?code=${lab.qr_code}`)).data.id, o.data.id, 'المسح بالأرقام');
   assert.equal((await call('GET', `/sup/lookup?code=${encodeURIComponent(lab.qr_code.replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]))}`)).data.id, o.data.id, 'أرقام عربية');
+  assert.deepEqual(lab.types, [{ type: 'خاتم', qty: 1 }]);
+  // طلب من السلة ببنود: ملصق واحد للطلب بعدد كل نوع، والمسح يفتح بنده
+  const ref = 'ORD-2026-777777';
+  const mk = async (no, type, qty) => (await pool.query(`insert into orders(order_no, cart_ref, customer_id, source, product_type, title, material_id, quantity, status)
+    values ($1,$2,$3,'store_catalog',$4,$4,$5,$6,'in_production') returning id`, [no, ref, c.data.id, type, mat.id, qty])).rows[0].id;
+  const i1 = await mk(`${ref}-1`, 'خاتم', 3); const i2 = await mk(`${ref}-2`, 'عقد', 2); const i3 = await mk(`${ref}-3`, 'خاتم', 1);
+  const g = (await call('GET', `/orders/labels?ids=${i1},${i2},${i3}`)).data;
+  assert.equal(g.length, 1, 'ملصق واحد للطلب');
+  assert.equal(g[0].order_no, ref);
+  assert.deepEqual(g[0].types, [{ type: 'خاتم', qty: 4 }, { type: 'عقد', qty: 2 }]);
+  assert.equal(g[0].qr_code, '2026777777');
+  const lk = (await call('GET', `/sup/lookup?code=${g[0].qr_code}`)).data;
+  assert.equal(lk.id, i1, 'مسح ملصق الطلب يفتح البند الأول');
+  assert.equal(lk.group_items.length, 3);
 });
 
 test('رقم المنتج تلقائي حسب نوع القطعة', async () => {

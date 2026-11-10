@@ -113,7 +113,14 @@ r.get('/lookup', requirePerm('scan.use', 'custody.issue', 'custody.receive', 'or
            o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.set_pearl_weight::text, o.set_stone_weight::text, o.set_zircon_weight::text, o.stones_confirmed_at,
            o.assigned_worker_id, ${orderThumb()} as thumb, s.name as stage_name, s.handles_gold, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, m.karat, o.color
     from orders o left join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
-    where ($2::int is not null and o.id=$2) or ($2::int is null and (o.qr_token=lower($1) or upper(o.order_no)=upper($1) or (length($1) >= 10 and regexp_replace(o.order_no, '[^0-9]', '', 'g')=$1) or o.order_no ilike '%-' || lpad($1, 6, '0')))`, [token, byId]);
+    where ($2::int is not null and o.id=$2) or ($2::int is null and (o.qr_token=lower($1) or upper(o.order_no)=upper($1) or (length($1) >= 10 and regexp_replace(o.order_no, '[^0-9]', '', 'g')=$1) or o.order_no ilike '%-' || lpad($1, 6, '0')
+      or upper(o.cart_ref)=upper($1) or (length($1) >= 10 and regexp_replace(o.cart_ref, '[^0-9]', '', 'g')=$1)))
+    order by (o.qr_token=lower($1) or upper(o.order_no)=upper($1) or regexp_replace(o.order_no, '[^0-9]', '', 'g')=$1) desc,
+      (o.assigned_worker_id = $3) desc, (o.status in ('delivered','cancelled','rejected')) asc, o.order_no
+    limit 1`, [token, byId, req.user.id]);
+  // بنود الطلب نفسه (عند مسح ملصق الطلب الرئيسي) للتنقل بينها
+  if (o) o.group_items = await many(`select id, order_no, title, product_type, quantity, status from orders
+    where cart_ref is not null and cart_ref = (select cart_ref from orders where id=$1) order by order_no`, [o.id]);
   if (!o) throw notFound('لم يتم العثور على الطلب');
   if (req.user.role_code === 'worker' && o.assigned_worker_id !== req.user.id && !is3D(req.user)) {
     const mine = await one("select 1 from custodies where order_id=$1 and worker_id=$2 and status <> 'reversed' limit 1", [o.id, req.user.id]);

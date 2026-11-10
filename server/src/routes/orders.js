@@ -120,27 +120,43 @@ export async function orderDetail(db, id) {
   return o;
 }
 
-/** بيانات الملصقات في طلب واحد مع رموز QR جاهزة (طباعة سريعة) */
+/**
+ * ملصق واحد لكل طلب (الطلب الرئيسي ORD-… وليس لكل قطعة/بند):
+ * رقم الطلب، ثم عدد القطع لكل نوع (خاتم 3 · عقد 2 …)، ثم خط وتحته العميل.
+ * رمز QR = أرقام رقم الطلب الرئيسي، ومسحه يفتح بنود الطلب.
+ */
 r.get('/labels', requirePerm('orders.view'), async (req, res) => {
   const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 200).map((x) => int(x));
   if (!ids.length) throw bad('لم يتم تحديد طلبات');
-  const rows = await many(`select o.id, o.order_no, o.qr_token, o.title, o.quantity, o.size, m.name || coalesce(' ' || case o.color when 'yellow' then 'أصفر' when 'white' then 'أبيض' when 'rose' then 'روز' end, '') as material_name, c.shop_name, c.short_name
-    from orders o join materials m on m.id=o.material_id left join customers c on c.id=o.customer_id where o.id = any($1::int[])`, [ids]);
-  const byId = new Map(rows.map((r) => [r.id, r]));
+  const picked = await many('select id, coalesce(cart_ref, order_no) as grp from orders where id = any($1::int[])', [ids]);
+  const grpOf = new Map(picked.map((r) => [r.id, r.grp]));
+  const groups = [...new Set(ids.map((id) => grpOf.get(id)).filter(Boolean))];
+  if (!groups.length) return res.json([]);
+  const items = await many(`select o.id, coalesce(o.cart_ref, o.order_no) as grp, o.product_type, o.quantity, o.status, c.shop_name, c.short_name, br.name as branch_name
+    from orders o left join customers c on c.id=o.customer_id left join customer_branches br on br.id=o.branch_id
+    where coalesce(o.cart_ref, o.order_no) = any($1::text[]) order by o.id`, [groups]);
   const out = [];
-  for (const id of ids) {
-    const o = byId.get(id);
-    if (!o) continue;
-    // محتوى QR أرقام فقط (سنة + تسلسل الطلب): يقرؤه أي ماسح باركود مهما كانت لغة لوحة المفاتيح، ومربعاته أكبر وأوضح
-    const code = o.order_no.replace(/\D/g, '');
-    o.qr_code = code;
-    o.qr_svg = await QRCode.toString(code, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
-    // مصفوفة نقاط QR لرسمها بدقة على طابعات Zebra (ZPL)
+  for (const g of groups) {
+    const all = items.filter((x) => x.grp === g);
+    const live = all.filter((x) => !['cancelled', 'rejected'].includes(x.status));
+    const rows = live.length ? live : all;
+    const counts = new Map();
+    for (const x of rows) counts.set(x.product_type || 'قطعة', (counts.get(x.product_type || 'قطعة') || 0) + Number(x.quantity || 0));
+    const types = [...counts].map(([type, qty]) => ({ type, qty }));
+    const first = rows[0] || {};
+    // محتوى QR أرقام فقط (سنة + تسلسل الطلب): يقرؤه أي ماسح باركود مهما كانت لغة لوحة المفاتيح
+    const code = g.replace(/\D/g, '');
     const m = QRCode.create(code, { errorCorrectionLevel: 'M' }).modules;
-    o.qr_matrix = { size: m.size, bits: Array.from(m.data, (b) => (b ? '1' : '0')).join('') };
-    delete o.qr_token;
-    o.customer_label = o.shop_name ? (o.short_name || autoShortName(o.shop_name)) : null;
-    out.push(o);
+    const shop = first.shop_name ? (first.short_name || autoShortName(first.shop_name)) : null;
+    out.push({
+      id: first.id, order_no: g, items_count: rows.length, types,
+      total_qty: types.reduce((a, t) => a + t.qty, 0),
+      qr_code: code,
+      qr_svg: await QRCode.toString(code, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' }),
+      // مصفوفة نقاط QR لرسمها بدقة على طابعات Zebra (ZPL)
+      qr_matrix: { size: m.size, bits: Array.from(m.data, (b) => (b ? '1' : '0')).join('') },
+      customer_label: shop ? `${shop}${first.branch_name ? ` - ${first.branch_name}` : ''}` : null,
+    });
   }
   res.json(out);
 });

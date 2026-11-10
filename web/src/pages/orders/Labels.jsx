@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { Btn, Loader, ErrorBox, Select, useAction } from '../../ui.jsx';
-import { labelsToZpl, zebraPrinters, zebraSend, downloadZpl, drawLabel } from '../../zebra.js';
+import { labelsToZpl, zebraPrinters, zebraSend, downloadZpl, drawLabel, typeLines } from '../../zebra.js';
 
 const CFG_KEY = 'zebra_cfg';
 const loadCfg = () => { try { return { mode: 'browser', dpi: 203, w: 50, h: 25, darkness: '', ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { mode: 'browser', dpi: 203, w: 50, h: 25, darkness: '' }; } };
 
 /**
- * ملصقات الطلبات 62×38 مم.
+ * ملصق واحد لكل طلب: رقم الطلب، عدد القطع لكل نوع، ثم خط وتحته العميل.
  * - طباعة المتصفح: A4 متجاورة أو طابعة ملصقات (ملصق لكل ورقة) عبر تعريف الطابعة.
  * - Zebra مباشر: أوامر ZPL عبر برنامج Zebra Browser Print المثبت على الجهاز (إعدادات كل جهاز تُحفظ فيه).
  * ?auto=1 يطبع تلقائياً بالطريقة المحفوظة على هذا الجهاز.
@@ -140,9 +140,7 @@ export default function Labels() {
             <div className="label-info">
               <img className="label-logo" src="/logo.png" alt="AV" />
               <span className="label-no">{o.order_no}</span>
-              <span className="label-title">{o.title}</span>
-              <span className="label-line">{o.material_name}</span>
-              <span className="label-line">الكمية {o.quantity}{o.size ? ` · مقاس ${o.size}` : ''}</span>
+              {typeLines(o.types).map((t) => <span key={t} className="label-line label-types">{t}</span>)}
               {o.customer_label && <span className="label-line label-shop">{o.customer_label}</span>}
             </div>
           </div>
