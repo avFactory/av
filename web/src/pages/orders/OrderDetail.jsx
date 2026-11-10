@@ -44,7 +44,9 @@ export default function OrderDetail() {
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
   const { order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams, suggestedLabor, siblings = [] } = data;
-  const orderBal = gold.find((g) => g.loc_type === 'order')?.balance || '0';
+  // الطلب متعدد المنتجات: رصيد ذهب الطلب كاملاً (مجموع البنود)
+  const orderBal = String(gold.filter((g) => g.loc_type === 'order').reduce((a, g) => a + Number(g.balance), 0));
+  const grp = data.group;
   const cur = stages.find((s) => s.seq === o.stage_seq);
   const openCust = custodies.filter((c) => ['open', 'under_review'].includes(c.status));
   const act = (path, body, msg) => run(async () => { const r = await api.post(`/orders/${o.id}/${path}`, body); setModal(null); setF({}); reload(); return r; }, msg);
@@ -204,9 +206,20 @@ export default function OrderDetail() {
         <Field label="العامل"><Select value={f.worker_id} onChange={setv('worker_id')} placeholder="بدون" options={(lookups?.workers || []).map((w) => [w.id, `${w.full_name} (${w.employee_no || ''})`])} /></Field>
         <Btn loading={busy} onClick={() => act('assign', f, 'تم الإسناد')}>حفظ</Btn>
       </Modal>
-      <Modal open={modal === 'final'} onClose={() => setModal(null)} title="الوزن النهائي">
-        <p className="small muted">رصيد ذهب الطلب: {fmtW(orderBal, 4)} جم{Number(stonesGrams.used) > 0 ? ` · أحجار مركبة ${fmtW(stonesGrams.used)} جم (تخصم تلقائياً)` : ''}</p>
-        <Field label="الوزن النهائي على الميزان (جم)"><WeightInput big value={f.weight || ''} onChange={setv('weight')} autoFocus /></Field>
+      <Modal open={modal === 'final'} onClose={() => setModal(null)} title={grp ? 'الوزن النهائي للطلب كاملاً' : 'الوزن النهائي'}>
+        <p className="small muted">رصيد ذهب الطلب{grp ? ' كاملاً' : ''}: {fmtW(orderBal, 4)} جم{!grp && Number(stonesGrams.used) > 0 ? ` · أحجار مركبة ${fmtW(stonesGrams.used)} جم (تخصم تلقائياً)` : ''}</p>
+        {grp ? (
+          <div className="d-grid gap-2 mb-2">
+            <div className="small text-body-secondary">زِن كل منتج على حدة (للفاتورة)، ويُطابق المجموع مع رصيد ذهب الطلب. الأحجار المركبة تُخصم تلقائياً.</div>
+            {siblings.filter((x) => grp.ids.includes(x.id)).map((x, i) => (
+              <div key={x.id} className="d-flex align-items-center gap-2">
+                <span className="flex-grow-1 small"><b>{x.product_type || x.title} × {x.quantity}</b> <span className="text-body-secondary" dir="ltr">{x.order_no}</span></span>
+                <div style={{ width: 150 }}><WeightInput value={f.weights?.[x.id] || ''} onChange={(v) => setF({ ...f, weights: { ...(f.weights || {}), [x.id]: v } })} autoFocus={i === 0} /></div>
+              </div>
+            ))}
+            <div className="small">المجموع: <b>{fmtW(Object.values(f.weights || {}).reduce((a, v) => a + Number(v || 0), 0), 3)}</b> جم</div>
+          </div>
+        ) : <Field label="الوزن النهائي على الميزان (جم)"><WeightInput big value={f.weight || ''} onChange={setv('weight')} autoFocus /></Field>}
         <Field label="سبب الفرق (إلزامي عند الاختلاف عن الرصيد)"><Input value={f.note || ''} onChange={setv('note')} /></Field>
         <Btn loading={busy} onClick={() => act('final-weight', f, 'تم تسجيل الوزن النهائي')}>حفظ</Btn>
       </Modal>

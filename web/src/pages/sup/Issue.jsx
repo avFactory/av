@@ -71,11 +71,10 @@ function SingleIssue({ sp }) {
     });
   }
   const addAll = (o) => {
-    if (!o?.group?.length) return add(o);
-    const ok = o.group.filter((g) => g.status === 'in_production' && g.handles_gold);
-    if (!ok.length) return add(o);
-    ok.forEach(add);
-    if (ok.length < o.group.length) toast(`أُضيف ${ok.length} من ${o.group.length} بنود (الباقي ليس في مرحلة تسليم ذهب)`, 'info');
+    if (!o?.lead_id) return add(o);
+    const lead = o.group.find((g) => g.id === o.lead_id) || o;
+    add({ ...lead, order_no: o.cart_ref, title: `الطلب كامل · ${o.group.filter((g) => !['cancelled', 'rejected'].includes(g.status)).length} أصناف`,
+      quantity: o.group_qty, order_balance: o.group_balance, stones: { ...(lead.stones || {}), used: o.group_stones } });
   };
   const scan = async (code) => { try { addAll(await lookupOrder({ code })); } catch (e) { toast(e.message, 'bad'); } };
   const upd = (i, k, v) => setItems((x) => x.map((it, j) => (j === i ? { ...it, [k]: v } : it)));

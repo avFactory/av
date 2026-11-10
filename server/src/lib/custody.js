@@ -5,7 +5,8 @@ import * as ledger from './ledger.js';
 import { audit } from './audit.js';
 import { notifyPerm, notifyUsers } from './notify.js';
 import { saveSignature } from './uploads.js';
-import { lockOrder, advance, embeddedStonesGrams, logStage } from './production.js';
+import { lockOrder, advance, goldStonesGrams, logStage } from './production.js';
+import { groupInfo } from './orderGroups.js';
 import { has } from './auth.js';
 
 async function sub(db, a, b) {
@@ -40,8 +41,15 @@ export async function issue(db, req, body) {
     if (dup.rows[0]) return { batch_id: dup.rows[0].issue_batch_id, duplicate: true };
   }
   const worker = await getWorker(db, workerId);
+  // الطلب متعدد المنتجات يُسلَّم كقطعة واحدة: كل بنوده تتحول للبند القائد
+  const groups = new Map();
+  for (const it of items) {
+    const g = await groupInfo(db, int(it.order_id, 'الطلب'));
+    if (!g) throw notFound('الطلب غير موجود');
+    if (g.isGroup) { it.order_id = g.lead; groups.set(g.lead, g); }
+  }
   const orderIds = items.map((i) => int(i.order_id, 'الطلب'));
-  if (new Set(orderIds).size !== orderIds.length) throw bad('لا يمكن تكرار الطلب نفسه في الجلسة');
+  if (new Set(orderIds).size !== orderIds.length) throw bad('لا يمكن تكرار الطلب نفسه في الجلسة (الطلب متعدد المنتجات يُسلَّم بسطر واحد)');
 
   const sig = await saveSignature(db, body.signature, req.user.id);
   const batch = (await db.query(
@@ -63,12 +71,26 @@ export async function issue(db, req, body) {
     if (order.design_approval_required && order.design_status !== 'approved')
       throw conflict(`الطلب ${order.order_no}: لا يمكن بدء التصنيع قبل اعتماد العميل للتصميم`);
 
+    const grp = groups.get(order.id);
+    if (grp) {
+      // ذهب بقية بنود الطلب (إن وُجد) يُجمع على البند القائد قبل التسليم
+      for (const sid of grp.ids.filter((x) => x !== order.id)) {
+        const sib = (await db.query('select id, order_no, material_id from orders where id=$1', [sid])).rows[0];
+        const busy = (await db.query("select 1 from custodies where order_id=$1 and status in ('open','under_review') limit 1", [sid])).rowCount;
+        if (busy) throw conflict(`البند ${sib.order_no} عليه عهدة مفتوحة - استلمها أولاً`);
+        const bal = await ledger.balance(db, 'order', sid, sib.material_id);
+        if (Number(bal) > 0 && sib.material_id === order.material_id) {
+          await ledger.post(db, { kind: 'group_merge', material_id: order.material_id, weight: bal, from: ['order', sid], to: ['order', order.id], order_id: order.id, reason: `دمج ذهب البند ${sib.order_no} في الطلب`, user_id: req.user.id });
+        }
+      }
+    }
     // الوزن: إما صافي ذهب مباشرة أو وزن الميزان ناقص الأحجار المركبة
-    const stones = it.stones_weight != null && it.stones_weight !== '' ? W(it.stones_weight, 'وزن الأحجار', { allowZero: true }) : (await embeddedStonesGrams(db, order.id)).used;
+    const stones = it.stones_weight != null && it.stones_weight !== '' ? W(it.stones_weight, 'وزن الأحجار', { allowZero: true }) : (await goldStonesGrams(db, order.id)).used;
     const gross = W(it.weight, `وزن الطلب ${order.order_no}`);
     const net = await sub(db, gross, stones);
     if (Number(net) <= 0) throw bad(`صافي الذهب للطلب ${order.order_no} غير صالح`);
-    const pieces = it.pieces != null && it.pieces !== '' ? int(it.pieces, 'عدد القطع', { min: 0 }) : order.quantity;
+    const allQty = grp ? Number((await db.query('select coalesce(sum(quantity),0) n from orders where id = any($1::int[])', [grp.ids])).rows[0].n) : order.quantity;
+    const pieces = it.pieces != null && it.pieces !== '' ? int(it.pieces, 'عدد القطع', { min: 0 }) : allQty;
     // نسبة العجز: حسب مهنة العامل إن حُددت (تشبيك/تفنيش/أسماء/تركيب…)، وإلا نسبة المرحلة
     const rate = (await specialtyRate(db, workerId)) ?? (await currentRate(db, stage.id));
 
@@ -92,7 +114,7 @@ export async function issue(db, req, body) {
     await ledger.post(db, { kind: 'issue', material_id: order.material_id, weight: net, from: ['order', order.id], to: ['worker', workerId], order_id: order.id, custody_id: c.id, worker_id: workerId, stage_id: stage.id, batch_id: batch.id, user_id: req.user.id });
     await db.query("update orders set assigned_worker_id=$2, stage_state='waiting', updated_at=now() where id=$1", [order.id, workerId]);
     // تسليم جديد في مرحلة الجودة والوزن النهائي يُلغي أي وزن نهائي سابق (سيتغير الوزن) - يُسجَّل من جديد بعد الاستلام
-    if (stage.kind === 'final_weight') await db.query('update orders set final_weight=null, final_gold_weight=null where id=$1 and final_weight is not null', [order.id]);
+    if (stage.kind === 'final_weight') await db.query('update orders set final_weight=null, final_gold_weight=null where id = any($1::int[]) and final_weight is not null', [grp ? grp.ids : [order.id]]);
     await logStage(db, order.id, stage.id, 'assigned', req.user.id, `تسليم ${net} جم - ${c.custody_no}`, false, workerId);
     if (sig) await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'ack',$2,'توقيع العامل عند التسليم')", [c.id, req.user.id]);
     created.push({ ...c, order_no: order.order_no });
@@ -114,7 +136,7 @@ async function piecesLeft(db, c) {
 export async function preview(db, custodyId, returnedGross, scrap, stonesW, added = '0') {
   const c = (await db.query('select * from custodies where id=$1', [custodyId])).rows[0];
   if (!c) throw notFound('العهدة غير موجودة');
-  const stones = stonesW != null && stonesW !== '' ? W(stonesW, 'وزن الأحجار', { allowZero: true }) : c.order_id ? (await embeddedStonesGrams(db, c.order_id, c.worker_id)).total : '0';
+  const stones = stonesW != null && stonesW !== '' ? W(stonesW, 'وزن الأحجار', { allowZero: true }) : c.order_id ? (await goldStonesGrams(db, c.order_id, c.worker_id)).total : '0';
   const gross = W(returnedGross, 'الوزن المرتجع', { allowZero: true });
   const returned = await sub(db, gross, stones);
   if (Number(returned) < 0) throw bad('الوزن المرتجع أقل من وزن الأحجار');
@@ -241,7 +263,17 @@ async function tryAdvance(db, req, orderId) {
   if (open.rows[0].n || !stage?.handles_gold) return null;
   if (stage.requires_approval && !has(req, 'orders.advance')) return null;
   try {
-    return await advance(db, o, req.user.id);
+    const r = await advance(db, o, req.user.id);
+    // الطلب متعدد المنتجات: بقية البنود في نفس المرحلة تنتقل معه
+    const g = await groupInfo(db, o.id);
+    if (g?.isGroup && g.lead === o.id) {
+      for (const sid of g.ids.filter((x) => x !== o.id)) {
+        const so = await lockOrder(db, sid);
+        if (so.status !== 'in_production' || so.current_stage_id !== stage.id) continue;
+        try { await advance(db, so, req.user.id); } catch (e) { if (e.status !== 409) throw e; }
+      }
+    }
+    return r;
   } catch (e) {
     if (e.status === 409) return { blocked: e.message };
     throw e;

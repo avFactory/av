@@ -36,11 +36,13 @@ r.get('/tasks', async (req, res) => {
   const custodies = await many(`
     select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
            c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text, c.issue_batch_id,
-           coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, m.name as material_name, c.kind, c.purpose,
+           coalesce(case when gc.n > 1 then o.cart_ref end, o.order_no, 'عهدة عامة') as order_no,
+           coalesce(case when gc.n > 1 then 'الطلب كامل · ' || gc.n || ' أصناف' end, o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, m.name as material_name, c.kind, c.purpose,
            coalesce(
              (select f.path from order_files f where f.order_id=o.id and f.mime like 'image/%' order by (f.kind='design') desc, (f.kind='reference') desc, (f.kind='sketch') desc, f.id desc limit 1),
              (select pm.path from product_media pm where pm.product_id=o.product_id and pm.kind='image' order by pm.sort, pm.id limit 1)) as thumb
     from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
+    left join lateral (select count(*)::int n from orders x where o.cart_ref is not null and x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) gc on true
     where c.worker_id=$1 and c.status in ('open','under_review') order by c.issued_at`, [req.user.id]);
   // مهام بدون ذهب (مثل التصميم) مسندة للعامل
   const tasks = await many(`

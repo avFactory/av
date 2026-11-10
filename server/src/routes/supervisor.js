@@ -4,7 +4,8 @@ import { pool, tx, many, one } from '../db.js';
 import { requirePerm, has } from '../lib/auth.js';
 import { bad, notFound, forbidden, conflict, int, str, weight as W } from '../lib/http.js';
 import * as custody from '../lib/custody.js';
-import { embeddedStonesGrams } from '../lib/production.js';
+import { embeddedStonesGrams, goldStonesGrams } from '../lib/production.js';
+import { groupInfo } from '../lib/orderGroups.js';
 import * as ledger from '../lib/ledger.js';
 import { sendXlsx } from '../lib/xlsx.js';
 import { normalizeScan } from '../lib/shortName.js';
@@ -34,12 +35,15 @@ r.get('/summary', SUP, async (_req, res) => {
 /** الطلبات بانتظار التسليم (المرحلة الحالية تتضمن ذهباً ولا توجد عهدة مفتوحة) */
 r.get('/awaiting-issue', SUP, async (_req, res) => {
   res.json(await many(`
-    select o.id, o.order_no, o.title, o.quantity, o.due_date, o.assigned_worker_id, s.name as stage_name, m.name as material_name,
-           u.full_name as assigned_worker_name, ${orderThumb()} as thumb,
-           coalesce((select balance from gold_balances b where b.loc_type='order' and b.loc_ref=o.id and b.material_id=o.material_id),0)::text as order_balance
+    select o.id, coalesce(case when g.n > 1 then o.cart_ref end, o.order_no) as order_no, case when g.n > 1 then 'الطلب كامل · ' || g.n || ' أصناف' else o.title end as title,
+           coalesce(g.qty, o.quantity) as quantity, o.due_date, o.assigned_worker_id, s.name as stage_name, m.name as material_name,
+           u.full_name as assigned_worker_name, ${orderThumb()} as thumb, g.n as items_count,
+           coalesce((select sum(balance) from gold_balances b where b.loc_type='order' and b.loc_ref = any(coalesce(g.ids, array[o.id])) and b.material_id=o.material_id),0)::text as order_balance
     from orders o join stages s on s.id=o.current_stage_id join materials m on m.id=o.material_id
     left join users u on u.id=o.assigned_worker_id
-    where o.status='in_production' and s.handles_gold
+    left join lateral (select count(*)::int n, sum(x.quantity)::int qty, array_agg(x.id) ids, min(x.id) lead from orders x
+      where o.cart_ref is not null and x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) g on true
+    where o.status='in_production' and s.handles_gold and (coalesce(g.n, 0) < 2 or o.id = g.lead)
       and not exists (select 1 from custodies c where c.order_id=o.id and c.status in ('open','under_review'))
     order by o.due_date nulls last, o.id`));
 });
@@ -137,6 +141,14 @@ r.get('/lookup', requirePerm('scan.use', 'custody.issue', 'custody.receive', 'or
     x.open_custodies = await many("select c.id, c.custody_no, c.worker_id, u.full_name, c.weight_issued::text from custodies c join users u on u.id=c.worker_id where c.order_id=$1 and c.status='open'", [x.id]);
   }
   const o = { ...group[0], group: group.length > 1 ? group : [] };
+  const gi = await groupInfo(pool, o.id);
+  if (gi?.isGroup) {
+    const live = group.filter((x) => gi.ids.includes(x.id));
+    o.lead_id = gi.lead;
+    o.group_balance = live.reduce((a, x) => a + Number(x.order_balance || 0), 0).toFixed(4);
+    o.group_stones = (await goldStonesGrams(pool, gi.lead)).used;
+    o.group_qty = live.reduce((a, x) => a + Number(x.quantity || 0), 0);
+  }
   res.json(o);
 });
 
@@ -205,11 +217,13 @@ r.get('/workers/:id/open', requirePerm('custody.receive', 'custody.view_all'), a
   const rows = await many(`
     select c.id, c.custody_no, c.order_id, c.material_id, c.finding_id, (c.weight_issued - c.weight_used)::numeric(16,4)::text as weight_issued, c.gross_weight::text, c.stones_weight::text, c.pieces, c.loss_rate_snapshot::text,
            c.issued_at, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text,
-           coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name,
+           coalesce(case when gc.n > 1 then o.cart_ref end, o.order_no, 'عهدة عامة') as order_no,
+           coalesce(case when gc.n > 1 then 'الطلب كامل · ' || gc.n || ' أصناف' end, o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name,
            ${orderThumb()} as thumb
     from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id join materials m on m.id=c.material_id
+    left join lateral (select count(*)::int n from orders x where o.cart_ref is not null and x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) gc on true
     where c.worker_id=$1 and c.status='open' order by c.issued_at`, [id]);
-  for (const x of rows) x.stones_now = (await embeddedStonesGrams(pool, x.order_id, id)).total;
+  for (const x of rows) x.stones_now = (await goldStonesGrams(pool, x.order_id, id)).total;
   res.json(rows);
 });
 

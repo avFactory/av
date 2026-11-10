@@ -4,6 +4,7 @@ import { notifyCustomer, notifyPerm, notifyUsers } from './notify.js';
 import * as ledger from './ledger.js';
 import { audit } from './audit.js';
 import { applyDueDate } from './leadTime.js';
+import { groupInfo } from './orderGroups.js';
 
 export async function lockOrder(db, id) {
   const r = await db.query('select * from orders where id=$1 for update', [id]);
@@ -41,17 +42,27 @@ export async function hasDiamonds(db, orderId) {
 }
 
 export async function embeddedStonesGrams(db, orderId, workerId = null) {
+  return stonesGramsFor(db, [orderId], workerId);
+}
+
+/** أحجار الطلب كاملاً (عند التسليم والاستلام للعامل: الطلب متعدد المنتجات قطعة واحدة على البند القائد) */
+export async function goldStonesGrams(db, orderId, workerId = null) {
+  const g = await groupInfo(db, orderId);
+  return stonesGramsFor(db, g && g.isGroup && g.lead === orderId ? g.ids : [orderId], workerId);
+}
+
+async function stonesGramsFor(db, ids, workerId) {
   const r = await db.query(
     `select coalesce(sum(carats) filter (where kind='used'), 0) * 0.2 as used_g,
             coalesce(sum(case when worker_id = $2 then
                  case kind when 'issue' then carats when 'return' then -carats when 'used' then -carats when 'lost' then -carats else 0 end
                else 0 end), 0) * 0.2 as out_g
      from stone_movements m
-     where order_id = $1 and kind <> 'reversal' and not exists (select 1 from stone_movements r where r.reverses_id = m.id)`,
-    [orderId, workerId]
+     where order_id = any($1::int[]) and kind <> 'reversal' and not exists (select 1 from stone_movements r where r.reverses_id = m.id)`,
+    [ids, workerId]
   );
   // أحجار وزركون ولؤلؤ مؤكدة الوزن في الطلب (بدون مخزون): تُعامل كأحجار مركبة
-  const c = (await db.query(`select coalesce(set_pearl_weight,0) + coalesce(set_stone_weight,0) + coalesce(set_zircon_weight,0) as g from orders where id=$1`, [orderId])).rows[0];
+  const c = (await db.query(`select sum(coalesce(set_pearl_weight,0) + coalesce(set_stone_weight,0) + coalesce(set_zircon_weight,0)) as g from orders where id = any($1::int[])`, [ids])).rows[0];
   const confirmed = Number(c?.g || 0);
   const used = Number(r.rows[0].used_g) + confirmed, out = Number(r.rows[0].out_g);
   return { total: (used + Math.max(0, out)).toFixed(4), used: used.toFixed(4), confirmed: confirmed.toFixed(4) };
@@ -127,7 +138,9 @@ export async function advance(db, order, userId, opts = {}) {
   const cur = stages[idx];
   if (!cur) throw bad('مرحلة الطلب الحالية غير معروفة');
 
-  const open = await db.query("select count(*)::int n from custodies where order_id=$1 and status in ('open','under_review')", [order.id]);
+  const grp = await groupInfo(db, order.id);
+  const goldIds = grp?.isGroup ? [...new Set([order.id, grp.lead])] : [order.id];
+  const open = await db.query("select count(*)::int n from custodies where order_id = any($1::int[]) and status in ('open','under_review')", [goldIds]);
   if (open.rows[0].n > 0) throw conflict('توجد عهدة مفتوحة أو تسوية تحت المراجعة على هذا الطلب - يجب استلامها وإقفالها أولاً');
 
   if (cur.kind === 'design_approval' && order.design_approval_required && order.design_status !== 'approved')
@@ -135,7 +148,7 @@ export async function advance(db, order, userId, opts = {}) {
   if (cur.kind === 'design' && order.design_approval_required && !['sent', 'approved'].includes(order.design_status) && !opts.force)
     throw conflict('يجب رفع التصميم وإرساله للعميل قبل إنهاء مرحلة التصميم');
   if (cur.handles_gold && cur.requires_weight && !opts.force) {
-    const c = await db.query("select count(*)::int n from custodies where order_id=$1 and stage_id=$2 and status='closed'", [order.id, cur.id]);
+    const c = await db.query("select count(*)::int n from custodies where order_id = any($1::int[]) and stage_id=$2 and status='closed'", [goldIds, cur.id]);
     if (!c.rows[0].n) throw conflict(`مرحلة "${cur.name}" تتطلب تسليم واستلام ذهب موزون قبل الانتقال`);
   }
   if (cur.kind === 'final_weight' && !order.final_weight) throw conflict('يجب تسجيل الوزن النهائي أولاً');
@@ -183,6 +196,44 @@ export async function setFinalWeight(db, req, order, grossWeight, note) {
   await logStage(db, order.id, order.current_stage_id, 'note', req.user.id, `الوزن النهائي ${grossWeight} جم (صافي ذهب ${goldNet})${note ? ' - ' + note : ''}`);
   await audit(db, req, 'final_weight', 'order', order.id, { grossWeight, goldNet, balance: bal, diff, note });
   return { goldNet, diff, balance: bal, stones: stones.used };
+}
+
+/**
+ * الوزن النهائي للطلب متعدد المنتجات: وزن كل منتج (للفاتورة)، والمطابقة مع رصيد ذهب الطلب كاملاً (على البند القائد)،
+ * والفرق يُسجَّل مرة واحدة على البند القائد.
+ */
+export async function setGroupFinalWeights(db, req, anyOrderId, weights, note) {
+  const g = await groupInfo(db, anyOrderId);
+  if (!g?.isGroup) throw bad('الطلب ليس متعدد المنتجات');
+  const orders = [];
+  for (const id of g.ids) orders.push(await lockOrder(db, id));
+  const lead = orders.find((o) => o.id === g.lead);
+  let netSum = 0, balSum = 0;
+  const rows = [];
+  for (const o of orders) {
+    const raw = weights[o.id] ?? weights[String(o.id)];
+    if (raw == null || raw === '') throw bad(`أدخل الوزن النهائي للبند ${o.order_no}`);
+    const gross = Number(raw);
+    if (!(gross > 0)) throw bad(`وزن غير صالح للبند ${o.order_no}`);
+    const stones = Number((await embeddedStonesGrams(db, o.id)).used);
+    const net = +(gross - stones).toFixed(4);
+    if (net <= 0) throw bad(`الوزن النهائي للبند ${o.order_no} أقل من وزن الأحجار المركبة`);
+    netSum += net;
+    balSum += Number(await ledger.balance(db, 'order', o.id, o.material_id));
+    rows.push({ o, gross: gross.toFixed(4), net: net.toFixed(4) });
+  }
+  const diff = +(netSum - balSum).toFixed(4);
+  if (diff !== 0) {
+    if (!note) throw bad(`صافي ذهب الطلب (${netSum.toFixed(4)}) يختلف عن رصيد الطلب (${balSum.toFixed(4)}) بفارق ${diff} جم - يجب تسجيل السبب`, { diff, balance: balSum, goldNet: netSum });
+    if (diff < 0) await ledger.post(db, { kind: 'final_excess', material_id: lead.material_id, weight: String(-diff), from: ['order', lead.id], to: ['scrap', null], order_id: lead.id, reason: note, user_id: req.user.id });
+    else await ledger.post(db, { kind: 'final_gain', material_id: lead.material_id, weight: String(diff), from: ['variance', null], to: ['order', lead.id], order_id: lead.id, reason: note, user_id: req.user.id });
+  }
+  for (const { o, gross, net } of rows) {
+    await db.query('update orders set final_weight=$2, final_gold_weight=$3, updated_at=now() where id=$1', [o.id, gross, net]);
+    await logStage(db, o.id, o.current_stage_id, 'note', req.user.id, `الوزن النهائي ${gross} جم (صافي ذهب ${net})${note ? ' - ' + note : ''}`);
+  }
+  await audit(db, req, 'final_weight_group', 'order', lead.id, { weights: rows.map((r) => ({ order: r.o.order_no, gross: r.gross, net: r.net })), balance: balSum, diff, note });
+  return { goldNet: netSum.toFixed(4), balance: balSum.toFixed(4), diff };
 }
 
 /** تسليم الطلب للعميل: خروج الذهب من المصنع وإقفال الطلب */

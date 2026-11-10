@@ -25,3 +25,18 @@ export async function orderCopyColumns(db) {
   copyCols = rows.map((r) => r.column_name).filter((c) => !skip.has(c));
   return copyCols;
 }
+
+/**
+ * الطلب متعدد المنتجات يُعامل كقطعة واحدة في الذهب: ذهب الطلب كله على "البند القائد" (أول بند غير ملغى)،
+ * والتسليم والاستلام للعامل بوزن واحد للطلب كاملاً.
+ */
+export async function groupInfo(db, orderId) {
+  const o = (await db.query('select id, cart_ref, status from orders where id=$1', [orderId])).rows[0];
+  if (!o) return null;
+  if (!o.cart_ref) return { lead: o.id, ids: [o.id], cart_ref: null, isGroup: false };
+  const rows = (await db.query(`select id, status from orders where cart_ref=$1 order by id`, [o.cart_ref])).rows;
+  const live = rows.filter((x) => !['cancelled', 'rejected'].includes(x.status));
+  const list = live.length ? live : rows;
+  if (list.length < 2) return { lead: o.id, ids: [o.id], cart_ref: o.cart_ref, isGroup: false };
+  return { lead: list[0].id, ids: list.map((x) => x.id), cart_ref: o.cart_ref, isGroup: true };
+}

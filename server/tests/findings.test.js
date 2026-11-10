@@ -179,3 +179,47 @@ test('مرحلة 3D: تحديد التصميم/الطباعة لكل قطعة و
   // خارج مرحلة 3D لا يستطيع النقل
   assert.equal((await d3('POST', `/w/orders/${a.id}/group-advance`)).status, 403);
 });
+
+test('الطلب متعدد المنتجات قطعة واحدة: صرف بوزن واحد، استلام واحد، والبنود تنتقل معاً، ووزن نهائي للطلب', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '100', note: 'رصيد' });
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('gw1',$1,'عامل الطلب','worker','GW1') returning id", [hashPassword('Gw#2026xx')])).rows[0].id;
+  const mk = async (t, q) => (await call('POST', '/orders', { title: t, product_type: t, karat: 21, quantity: q, material_id: mat })).data;
+  const a = await mk('خاتم', 2), b = await mk('عقد', 3);
+  await pool.query("update orders set cart_ref='ORD-2026-444444' where id = any($1::int[])", [[a.id, b.id]]);
+  const stage = async (id) => (await pool.query('select s.code, s.handles_gold from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [id])).rows[0];
+  for (let i = 0; i < 8 && !(await stage(a.id)).handles_gold; i++) await call('POST', `/orders/${a.id}/group-advance`, { force: true });
+  assert.ok((await stage(a.id)).handles_gold && (await stage(b.id)).handles_gold, 'وصل الطلب لمرحلة ذهب');
+  const st = (await pool.query('select current_stage_id from orders where id=$1', [a.id])).rows[0].current_stage_id;
+  await call('POST', `/admin/stages/${st}/rate`, { rate_percent: '0', note: 'x' });
+  // ذهب مسجل سابقاً على البند الثاني يُدمج تلقائياً في الطلب
+  assert.equal((await call('POST', `/orders/${b.id}/allocate`, { weight: '4' })).status, 200);
+  assert.equal(await bal('order', a.id, mat), 4, 'التسجيل على أي بند يذهب للبند القائد');
+  // قائمة بانتظار التسليم: الطلب مرة واحدة
+  const waiting = (await call('GET', '/sup/awaiting-issue')).data.filter((x) => x.order_no === 'ORD-2026-444444');
+  assert.equal(waiting.length, 1);
+  assert.equal(waiting[0].quantity, 5);
+  // المسح يعطي البند القائد ورصيد الطلب كاملاً
+  const lk = (await call('GET', '/sup/lookup?code=ORD-2026-444444')).data;
+  assert.deepEqual([lk.lead_id, Number(lk.group_balance), lk.group_qty], [a.id, 4, 5]);
+  // صرف بوزن واحد (عن طريق البند الثاني) ← عهدة واحدة على البند القائد
+  const iss = await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: b.id, weight: '10' }] });
+  assert.equal(iss.status, 200, JSON.stringify(iss.data));
+  assert.equal(iss.data.custodies.length, 1);
+  const cus = iss.data.custodies[0];
+  assert.deepEqual([cus.order_id, Number(cus.weight_issued), cus.pieces], [a.id, 10, 5]);
+  assert.equal(await bal('worker', w, mat), 10);
+  assert.equal((await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: a.id, weight: '1' }, { order_id: b.id, weight: '1' }] })).status, 400, 'لا تكرار للطلب');
+  // استلام بوزن واحد ← البندان ينتقلان معاً
+  const rc = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: cus.id, returned_weight: '10' }] });
+  assert.equal(rc.status, 200, JSON.stringify(rc.data));
+  assert.equal((await stage(a.id)).code, (await stage(b.id)).code, 'البنود في نفس المرحلة');
+  assert.notEqual((await pool.query('select current_stage_id from orders where id=$1', [b.id])).rows[0].current_stage_id, st, 'البند الثاني انتقل مع الطلب');
+  // الوزن النهائي للطلب: وزن كل منتج، ومطابقة المجموع مع ذهب الطلب
+  await pool.query("update orders set current_stage_id=(select id from stages where code='final_weight'), stage_seq=(select seq from route_stages rs join stages s on s.id=rs.stage_id where s.code='final_weight' and rs.route_id=orders.route_id) where id = any($1::int[])", [[a.id, b.id]]);
+  assert.equal((await call('POST', `/orders/${b.id}/final-weight`, { weights: { [a.id]: '4', [b.id]: '5' } })).status, 400, 'فرق بدون سبب');
+  const fw = await call('POST', `/orders/${b.id}/final-weight`, { weights: { [a.id]: '4', [b.id]: '6' } });
+  assert.equal(fw.status, 200, JSON.stringify(fw.data));
+  const fr = (await pool.query('select id, final_weight::float f from orders where id = any($1::int[]) order by id', [[a.id, b.id]])).rows.map((x) => x.f);
+  assert.deepEqual(fr, [4, 6]);
+});

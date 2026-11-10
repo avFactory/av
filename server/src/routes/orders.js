@@ -13,7 +13,7 @@ import { upload, registerFiles } from '../lib/uploads.js';
 import * as ledger from '../lib/ledger.js';
 import * as prod from '../lib/production.js';
 import { resolveLabor, laborAmount } from '../lib/labor.js';
-import { nextItemNo, orderCopyColumns } from '../lib/orderGroups.js';
+import { nextItemNo, orderCopyColumns, groupInfo } from '../lib/orderGroups.js';
 import { applyDueDate, capacity } from '../lib/leadTime.js';
 import { bullionVals } from './catalog.js';
 import { addInternalImages } from '../lib/internalImages.js';
@@ -177,13 +177,15 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
                           left join stages s on s.id=l.stage_id left join users u on u.id=l.user_id left join users w on w.id=l.worker_id
                           where l.order_id=$1 order by l.id desc`, [id]);
   const files = await many('select f.*, u.full_name as uploaded_by_name from order_files f left join users u on u.id=f.uploaded_by where order_id=$1 order by id', [id]);
+  const grp = await groupInfo(pool, id);
+  const goldIds = grp?.isGroup ? grp.ids : [id];
   const custodies = await many(`select c.id, c.worker_id, c.stage_id, c.custody_no, c.status, c.work_state, c.weight_issued::text, c.issued_at, c.closed_at, c.loss_rate_snapshot::text,
       u.full_name as worker_name, s.name as stage_name, st.settlement_no, st.returned_weight::text, st.scrap_weight::text, st.actual_loss::text,
       st.normal_loss::text, st.abnormal_loss::text, st.status as settlement_status, st.id as settlement_id
     from custodies c join users u on u.id=c.worker_id join stages s on s.id=c.stage_id
-    left join settlements st on st.custody_id=c.id and st.status <> 'reversed' where c.order_id=$1 order by c.id`, [id]);
+    left join settlements st on st.custody_id=c.id and st.status <> 'reversed' where c.order_id = any($1::int[]) order by c.id`, [goldIds]);
   const gold = await many(`select b.loc_type, b.material_id, m.name, b.balance::text from gold_balances b join materials m on m.id=b.material_id
-    where b.balance <> 0 and ((b.loc_type in ('order','delivered') and b.loc_ref=$1))`, [id]);
+    where b.balance <> 0 and ((b.loc_type in ('order','delivered') and b.loc_ref = any($1::int[])))`, [goldIds]);
   const goldFlow = await one(`select
       coalesce(sum(weight) filter (where kind in ('allocate','customer_gold_in','from_finished_stock')),0)::text as allocated,
       coalesce(sum(weight) filter (where kind='normal_loss'),0)::text as normal_loss,
@@ -192,8 +194,8 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
       coalesce(sum(weight) filter (where kind='scrap_return'),0)::text as scrap,
       coalesce(sum(weight) filter (where kind='loss_recovered'),0)::text as recovered,
       coalesce(sum(weight) filter (where kind='final_excess'),0)::text as final_excess,
-      (select coalesce(sum(a.weight),0) from custody_additions a where a.order_id=$1 and not a.reversed)::text as findings_added
-    from gold_ledger g where order_id=$1 and reverses_id is null and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)`, [id]);
+      (select coalesce(sum(a.weight),0) from custody_additions a where a.order_id = any($1::int[]) and not a.reversed)::text as findings_added
+    from gold_ledger g where order_id = any($1::int[]) and reverses_id is null and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)`, [goldIds]);
   const designs = await many('select d.*, u.full_name as sent_by_name from design_reviews d left join users u on u.id=d.sent_by where order_id=$1 order by id desc', [id]);
   const stones = await many(`select m.id, m.kind, m.carats::text, m.count, m.created_at, l.lot_no, l.stone_type, w.full_name as worker_name
     from stone_movements m join stone_lots l on l.id=m.lot_id left join users w on w.id=m.worker_id where m.order_id=$1 order by m.id`, [id]);
@@ -208,7 +210,7 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
         coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
           from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details
       from orders o left join routes r on r.id=o.route_id left join stages s on s.id=o.current_stage_id where o.cart_ref=$1 order by o.order_no`, [o.cart_ref]) : [];
-  res.json({ order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams: stonesG, suggestedLabor: labor, siblings });
+  res.json({ order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams: stonesG, suggestedLabor: labor, siblings, group: grp?.isGroup ? { lead: grp.lead, ids: grp.ids } : null });
 });
 
 r.put('/:id', requirePerm('orders.manage'), async (req, res) => {
@@ -388,7 +390,7 @@ r.post('/:id/cancel', requirePerm('orders.manage'), async (req, res) => {
 /** تسجيل ذهب على الطلب (من الخزنة أو ذهب مستلم من العميل) */
 r.post('/:id/allocate', requirePerm('custody.issue', 'inventory.manage', 'orders.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
-    const o = await prod.lockOrder(db, int(req.params.id));
+    const o = await prod.lockOrder(db, (await groupInfo(db, int(req.params.id)))?.lead ?? int(req.params.id));
     if (!['in_production', 'approved'].includes(o.status)) throw conflict('الطلب ليس قيد التصنيع');
     const w = W(req.body.weight, 'الوزن');
     const source = oneOf(req.body.source || 'vault', ['vault', 'customer'], 'المصدر');
@@ -408,7 +410,7 @@ r.post('/:id/allocate', requirePerm('custody.issue', 'inventory.manage', 'orders
 /** إرجاع فائض ذهب الطلب للخزنة */
 r.post('/:id/deallocate', requirePerm('custody.issue', 'inventory.manage', 'orders.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
-    const o = await prod.lockOrder(db, int(req.params.id));
+    const o = await prod.lockOrder(db, (await groupInfo(db, int(req.params.id)))?.lead ?? int(req.params.id));
     const w = W(req.body.weight, 'الوزن');
     await ledger.requireBalance(db, 'order', o.id, o.material_id, w, 'رصيد الطلب غير كافٍ');
     await ledger.post(db, { kind: 'dealloc', material_id: o.material_id, weight: w, from: ['order', o.id], to: ['vault', null], order_id: o.id, reason: str(req.body.note, 'ملاحظات'), user_id: req.user.id });
@@ -460,10 +462,13 @@ r.post('/:id/final-weight', requirePerm('orders.advance'), async (req, res) => {
     const o = await prod.lockOrder(db, int(req.params.id));
     const st = (await db.query('select id, name, kind, handles_gold from stages where id=$1', [o.current_stage_id])).rows[0];
     if (st?.kind !== 'final_weight') throw conflict('الطلب ليس في مرحلة الوزن النهائي');
+    const g = await groupInfo(db, o.id);
+    const gIds = g?.isGroup ? g.ids : [o.id];
     const cs = (await db.query(`select count(*) filter (where status in ('open','under_review'))::int open,
-        count(*) filter (where status='closed' and stage_id=$2)::int closed from custodies where order_id=$1`, [o.id, st.id])).rows[0];
+        count(*) filter (where status='closed' and stage_id=$2)::int closed from custodies where order_id = any($1::int[])`, [gIds, st.id])).rows[0];
     if (cs.open) throw conflict('استلم الذهب من العامل وأقفل العهدة أولاً ثم سجّل الوزن النهائي');
     if (st.handles_gold && !cs.closed) throw conflict(`سلّم الطلب لعامل "${st.name}" واستلمه منه أولاً، ثم سجّل الوزن النهائي`);
+    if (g?.isGroup) return prod.setGroupFinalWeights(db, req, o.id, req.body.weights || {}, str(req.body.note, 'السبب'));
     return prod.setFinalWeight(db, req, o, W(req.body.weight, 'الوزن النهائي'), str(req.body.note, 'السبب'));
   }));
 });
