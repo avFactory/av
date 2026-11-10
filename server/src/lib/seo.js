@@ -107,6 +107,7 @@ ${verify}<link rel="canonical" href="${site}/" />
 <meta name="theme-color" content="#111111" />
 <link rel="icon" type="image/png" href="/favicon.png?v=2" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />
+<link rel="manifest" href="/manifest.webmanifest" />
 <script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>
 <style>
 *{box-sizing:border-box}body{margin:0;position:relative;z-index:0;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;background:#0f0f0f;color:#eee;line-height:1.8}

@@ -908,3 +908,9 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .chip-sm { padding: 2px 10px; font-size: .78rem; }
 @media (max-width: 700px) { .oi-row { grid-template-columns: 52px minmax(0, 1fr); } .oi-row > img, .oi-ph { width: 52px; height: 52px; } .oi-side { grid-column: 1 / -1; justify-items: start; } }
 .d3-group { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 10px; display: grid; gap: 8px; }
+
+/* تثبيت التطبيق */
+.install-app { position: fixed; inset-inline: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 1080; max-width: 460px; margin-inline-start: auto; display: flex; align-items: center; gap: 10px; background: #111; color: #eee; border: 1px solid #333; border-radius: 14px; padding: 10px 12px; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+.install-app img { width: 42px; height: 42px; border-radius: 10px; flex: none; }
+.install-app b { color: #f3d77a; }
+.wk-body ~ .install-app, body:has(.wk-nav) .install-app { bottom: calc(76px + env(safe-area-inset-bottom)); }

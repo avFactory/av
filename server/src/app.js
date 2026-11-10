@@ -102,6 +102,8 @@ export function createApp() {
 
   // الواجهة الأمامية المبنية
   if (fs.existsSync(dist)) {
+    // عامل الخدمة والملف التعريفي للتطبيق: بدون تخزين طويل حتى تصل التحديثات فوراً
+    app.get(['/sw.js', '/manifest.webmanifest'], (req, res, next) => { res.setHeader('Cache-Control', 'no-cache'); next(); });
     app.use('/assets', express.static(path.join(dist, 'assets'), { immutable: true, maxAge: '365d' }));
     app.use(express.static(dist, { index: false, maxAge: '1d' }));
     app.get('/{*splat}', (req, res) => {

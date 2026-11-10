@@ -1,0 +1,20 @@
+{
+  "id": "/login",
+  "name": "مصنع AV للمجوهرات",
+  "short_name": "AV مصنع",
+  "description": "نظام مصنع AV للمجوهرات: الإنتاج والعهد والمتجر بالجملة",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/login?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "categories": ["business", "productivity", "shopping"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
