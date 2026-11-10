@@ -22,7 +22,7 @@ export default function Product() {
   const media = p.media[img];
   const add = () => {
     if (p.sizes.length && !sel.size) return toast('اختر المقاس', 'bad');
-    setCart([...cart, { product_id: p.id, name: p.name, sku: p.sku, karat, color, size: sel.size, quantity: Number(sel.quantity) || 1, notes: sel.notes, image: p.media[0]?.path, labor: p.labor }]);
+    setCart([...cart, { product_id: p.id, name: p.name, sku: p.sku, product_type: p.product_type, karat, color, size: sel.size, quantity: Number(sel.quantity) || 1, notes: sel.notes, image: p.media[0]?.path, labor: p.labor }]);
     toast('أضيف إلى السلة');
     nav('/store/cart');
   };
