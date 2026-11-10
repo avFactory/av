@@ -226,7 +226,9 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
 .product:hover { box-shadow: 0 10px 30px rgba(0,0,0,.08); transform: translateY(-2px); }
 .product .img { aspect-ratio: 1; background: linear-gradient(135deg, var(--gold-soft), var(--bg)); display: grid; place-items: center; color: var(--gold); font-size: 2.6rem; overflow: hidden; }
 .product .img img, .gallery img, .gallery video { width: 100%; height: 100%; object-fit: cover; }
-.product .info { padding: 12px 14px; display: grid; gap: 4px; }
+.product .info { padding: 12px 14px; display: grid; gap: 4px; align-content: start; flex: 1; }
+.product-foot { padding: 0 14px 12px; }
+.product-foot .btn { font-size: .82rem; padding: .3rem .5rem; border-radius: 10px; }
 .gallery { aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: var(--gold-soft); display: grid; place-items: center; color: var(--gold); font-size: 4rem; }
 .thumbs { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; cursor: pointer; border: 2px solid transparent; }
