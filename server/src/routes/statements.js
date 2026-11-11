@@ -190,7 +190,7 @@ store.post('/submissions', requirePerm('store.access'), approvedOnly, upload.sin
     const s = (await db.query(`insert into customer_submissions(submission_no, customer_id, branch_id, kind, amount, weight, karat, method, reference, paid_at, note, document_path, original_name, mime, created_by)
       values (next_doc_no('PDS'),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning *`,
       [req.user.customer_id, req.user.branch_id || null, kind, kind === 'money' ? money(b.amount, 'المبلغ') : null,
-       kind === 'gold' ? W(b.weight, 'الوزن') : null, kind === 'gold' ? oneOf(int(b.karat, 'العيار'), KARATS, 'العيار') : null,
+       kind === 'gold' ? W(b.weight, 'الوزن') : null, kind === 'gold' ? 24 : null, // سداد الذهب من العميل بعيار 24 فقط
        kind === 'money' ? oneOf(b.method || 'transfer', ['cash', 'transfer', 'card', 'cheque', 'other'], 'طريقة الدفع') : null,
        str(b.reference, 'المرجع', { max: 120 }), isoDate(b.paid_at) || new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10), str(b.note, 'ملاحظات', { max: 500 }), doc.path, doc.original_name, doc.mime, req.user.id])).rows[0];
     await notifyPerm(db, 'payments.manage', { kind: 'payment', title: `مستند سداد جديد من ${req.user.shop_name}`, body: kind === 'money' ? `${s.amount} ر.س` : `${s.weight} جم عيار ${s.karat}`, link: `/admin/customers/${req.user.customer_id}/statement` });

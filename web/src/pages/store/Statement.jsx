@@ -5,7 +5,7 @@ import { fmtDT } from '../../format.js';
 import { Badge, Btn, Card, Field, Input, Loader, Page, Select, Tabs, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
 
 const num = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
-const EMPTY = { kind: 'money', amount: '', method: 'transfer', weight: '', karat: '21', reference: '', paid_at: '', note: '', file: null };
+const EMPTY = { kind: 'money', amount: '', method: 'transfer', weight: '', karat: '24', reference: '', paid_at: '', note: '', file: null };
 
 /** كشف حساب العميل في المتجر + رفع مستندات السداد */
 export default function Statement() {
@@ -45,7 +45,7 @@ export default function Statement() {
               <Field label="المبلغ (ر.س) *"><Input dir="ltr" inputMode="decimal" value={f.amount} onChange={(x) => setF({ ...f, amount: num(x.target.value) })} /></Field>
             </> : <>
               <Field label="وزن الذهب (جم) *"><WeightInput value={f.weight} onChange={(v) => setF({ ...f, weight: v })} /></Field>
-              <Field label="العيار"><div className="chips">{['18', '21', '24'].map((k) => <button key={k} type="button" className={`chip ${f.karat === k ? 'on' : ''}`} onClick={() => setF({ ...f, karat: k })}>{k}</button>)}</div></Field>
+              <Field label="العيار"><div className="chips"><span className="chip on">24</span></div></Field>
             </>}
           </div>
           <Field label="المستند (صورة الحوالة أو سند التسليم) *"><input type="file" accept="image/*,.pdf" className="form-control" onChange={(x) => setF({ ...f, file: x.target.files[0] || null })} /></Field>

@@ -76,11 +76,12 @@ test('كشف الحساب: أجور وألماس مدين، المستلم دا�
   assert.equal((await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '500' }, false))).status, 400, 'المستند إلزامي');
   const s1 = await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '500', method: 'transfer', reference: 'TRX-1', paid_at: '2026-11-01' }));
   assert.equal(s1.status, 200, JSON.stringify(s1.data));
-  const s2 = (await cu('POST', '/store/submissions', null, form({ kind: 'gold', weight: '4', karat: '18', note: 'تسليم سبائك' }))).data;
+  const s2 = (await cu('POST', '/store/submissions', null, form({ kind: 'gold', weight: '4', karat: '18', note: 'تسليم سبائك' }) /* العيار يُفرض 24 */)).data;
   const s3 = (await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '50' }))).data;
   // قبل الاعتماد لا يتغير الرصيد
   assert.equal((await cu('GET', '/store/statement')).data.balance.money, 1045);
-  const vault18 = async () => Number((await pool.query("select coalesce(sum(balance),0) b from gold_balances where loc_type='vault' and material_id=$1", [m18])).rows[0].b);
+  const m24 = (await pool.query("select id from materials where metal='gold' and karat=24 and active order by id limit 1")).rows[0].id;
+  const vault18 = async () => Number((await pool.query("select coalesce(sum(balance),0) b from gold_balances where loc_type='vault' and material_id=$1", [m24])).rows[0].b);
   const v0 = await vault18();
   assert.equal((await admin('POST', `/finance/submissions/${s1.data.id}/approve`, {})).status, 200);
   assert.equal((await admin('POST', `/finance/submissions/${s2.id}/approve`, {})).status, 200);
@@ -90,8 +91,8 @@ test('كشف الحساب: أجور وألماس مدين، المستلم دا�
 
   st = (await cu('GET', '/store/statement')).data;
   assert.equal(st.balance.money, 545, '1045 − 500');
-  assert.equal(st.balance.by_karat['18'], -4);
-  assert.equal(st.balance.pure, 11.375 - 3, '4 جم عيار 18 = 3 صافي');
+  assert.equal(st.balance.by_karat['24'], -4, 'سداد الذهب بعيار 24 فقط');
+  assert.equal(st.balance.pure, 11.375 - 4, '4 جم عيار 24 = 4 صافي');
   assert.deepEqual(st.submissions.map((s) => s.status).sort(), ['approved', 'approved', 'rejected']);
 
   // كشف لفترة: رصيد سابق ثم حركات الفترة فقط
