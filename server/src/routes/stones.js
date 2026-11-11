@@ -29,10 +29,10 @@ r.get('/', requirePerm('stones.view'), async (_req, res) => {
 });
 
 // ------------------------------------------------------------------ رابط عرض المخزون الخارجي
-r.get('/share', requirePerm('stones.manage'), async (_req, res) => {
+r.get('/share', requirePerm('links.stones'), async (_req, res) => {
   res.json({ token: await getShareToken(pool, 'stones_share') });
 });
-r.post('/share/rotate', requirePerm('stones.manage'), async (req, res) => {
+r.post('/share/rotate', requirePerm('links.stones'), async (req, res) => {
   res.json(await tx(async (db) => {
     const token = await rotateShareToken(db, 'stones_share');
     await audit(db, req, 'stones.share_rotate', 'settings', 'stones_share', {});

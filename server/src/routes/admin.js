@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { Router } from 'express';
 import { monthlyLossSummary, workerLossRows, monthTotals, monthStart } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
-import { requirePerm, hashPassword } from '../lib/auth.js';
+import { requirePerm, hashPassword, has } from '../lib/auth.js';
 import { bad, conflict, forbidden, notFound, int, str, oneOf } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyCustomer, notifyUsers } from '../lib/notify.js';
@@ -776,20 +776,28 @@ r.put('/specialty-rates', requirePerm('loss_rates.manage'), async (req, res) => 
 });
 
 // ------------------------------------------------------------------ صفحة التسعيرة (رابط خارجي)
-r.get('/pricing', requirePerm('pricing.manage'), async (_req, res) => {
-  res.json(await getPricing(pool, { withToken: true }));
+r.get('/pricing', requirePerm('pricing.manage', 'links.pricing', 'links.pricing_short'), async (req, res) => {
+  // كل رابط يظهر فقط لمن يملك صلاحيته
+  const p = await getPricing(pool, { withToken: true });
+  if (!has(req, 'links.pricing')) delete p.token;
+  if (!has(req, 'links.pricing_short')) delete p.token_short;
+  res.json(p);
 });
 r.put('/pricing', requirePerm('pricing.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
     const before = await getPricing(db);
     await savePricing(db, req.body);
     await audit(db, req, 'pricing.update', 'settings', 'pricing_sheet', { before: { gold24: before.gold24, rows: before.rows }, after: { gold24: req.body.gold24, rows: req.body.rows } });
-    return getPricing(db, { withToken: true });
+    const p = await getPricing(db, { withToken: true });
+    if (!has(req, 'links.pricing')) delete p.token;
+    if (!has(req, 'links.pricing_short')) delete p.token_short;
+    return p;
   }));
 });
-r.post('/pricing/token', requirePerm('pricing.manage'), async (req, res) => {
+r.post('/pricing/token', requirePerm('links.pricing', 'links.pricing_short'), async (req, res) => {
   res.json(await tx(async (db) => {
     const which = req.body?.which === 'short' ? 'short' : 'full';
+    if (!has(req, which === 'short' ? 'links.pricing_short' : 'links.pricing')) throw forbidden('ليست لديك صلاحية هذا الرابط');
     const token = await rotateToken(db, which);
     await audit(db, req, 'pricing.rotate_link', 'settings', 'pricing_sheet', { which });
     return { token };

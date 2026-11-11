@@ -263,3 +263,19 @@ test('عزل العملاء: عميل لا يرى طلبات أو ملفات أ�
   assert.notEqual((await pool.query('select shop_name from customers where id=$1', [B.cid])).rows[0].shop_name, 'اختراق');
   assert.ok(r.status < 500);
 });
+
+test('صلاحيات الروابط الخارجية: كل رابط بصلاحيته', async () => {
+  const onlyShort = await user('link_short', 'link_short_role', ['links.pricing_short']);
+  const p = await onlyShort.c('GET', '/admin/pricing');
+  assert.equal(p.status, 200);
+  assert.ok(p.data.token_short && !p.data.token, 'يرى الرابط المختصر فقط');
+  assert.equal((await onlyShort.c('POST', '/admin/pricing/token', { which: 'full' })).status, 403);
+  assert.equal((await onlyShort.c('POST', '/admin/pricing/token', { which: 'short' })).status, 200);
+  assert.equal((await onlyShort.c('PUT', '/admin/pricing', { gold24: '1' })).status, 403, 'لا يعدل التسعيرة');
+  assert.equal((await onlyShort.c('GET', '/stones/share')).status, 403);
+  const st = await user('link_stones', 'link_stones_role', ['links.stones']);
+  assert.equal((await st.c('GET', '/stones/share')).status, 200);
+  assert.equal((await st.c('GET', '/admin/pricing')).status, 403);
+  const a = (await admin('GET', '/admin/pricing')).data;
+  assert.ok(a.token && a.token_short, 'المدير يرى الرابطين');
+});

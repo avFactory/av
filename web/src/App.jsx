@@ -135,7 +135,7 @@ export default function App() {
           <Route path="/sup/shortages" element={S(<Shortages />, ['orders.view', 'custody.issue', 'custody.receive'])} />
           <Route path="/admin/findings" element={S(<Findings />, ['inventory.view', 'custody.issue', 'findings.manage'])} />
           <Route path="/admin/products" element={S(<Products />, ['products.manage'])} />
-          <Route path="/admin/pricing" element={S(<Pricing />, ['pricing.manage'])} />
+          <Route path="/admin/pricing" element={S(<Pricing />, ['pricing.manage', 'links.pricing', 'links.pricing_short'])} />
           <Route path="/admin/loss-advances" element={S(<LossAdvances />, ['loss.advances', 'loss.approve'])} />
           <Route path="/admin/labor" element={S(<Labor />, ['labor.manage'])} />
           <Route path="/admin/invoices" element={S(<Invoices />, ['finance.view'])} />

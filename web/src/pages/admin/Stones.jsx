@@ -72,7 +72,7 @@ export default function Stones() {
   return (
     <Page title="مخزون الألماس المخبري والأحجار" subtitle="مصنّف حسب القصّة · الوزن بالقيراط · كل حركة مرتبطة بطلب وعامل ومرحلة"
       actions={<>
-        {can('stones.manage') && <ShareStock />}
+        {can('links.stones') && <ShareStock />}
         {can('stones.manage') && <Btn kind="ghost" onClick={() => setImp({ step: 1 })}>استيراد من Excel</Btn>}
         <a className="btn btn-outline-secondary" href="/api/stones/inventory.xlsx">تصدير Excel</a>
         {can('stones.manage') && <Btn kind="ghost" onClick={() => setShapesOpen(true)}>التصنيفات</Btn>}

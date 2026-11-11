@@ -12,6 +12,7 @@ export default function Pricing() {
   const [run, busy] = useAction();
   useEffect(() => { if (data) setS(data); }, [data]);
   if (!s) return <Loader />;
+  const manage = can('pricing.manage');
   const url = `${location.origin}/p/${s.token}`;
   const shortUrl = `${location.origin}/p/${s.token_short}`;
   const copyText = async (u) => { try { await navigator.clipboard.writeText(u); } catch { window.prompt('انسخ الرابط', u); } };
@@ -23,7 +24,7 @@ export default function Pricing() {
   };
   return (
     <Page title="التسعيرة" subtitle="نفس ورقة التسعيرة في Excel — الزائر برابط خارجي يُدخل الأوزان فقط"
-      actions={(
+      actions={manage && (
         <div className="pricing-admin-gold">
           <label><span>سعر الذهب الصافي عيار 24 (ر.س/جم)</span><Input dir="ltr" value={s.gold24} onChange={(e) => setS({ ...s, gold24: e.target.value })} /></label>
           <label><span>آخر تحديث</span><Input type="date" value={s.updated_at || ''} onChange={(e) => setS({ ...s, updated_at: e.target.value })} /></label>
@@ -31,7 +32,7 @@ export default function Pricing() {
         </div>
       )}>
       <div className="grid g2 mb align-items-start">
-        <details className="card shadow-sm link-drop">
+        {s.token && <details className="card shadow-sm link-drop">
           <summary>رابط التسعيرة الكاملة</summary>
           <div className="link-drop-body">
           <p className="small text-body-secondary">أي شخص لديه هذا الرابط يفتح التسعيرة بكل أعمدتها بدون تسجيل دخول، ولا يرى أي شيء آخر في النظام، ويستطيع إدخال الأوزان فقط (لا تُحفظ).</p>
@@ -40,11 +41,11 @@ export default function Pricing() {
             <Btn onClick={copy}>نسخ الرابط</Btn>
             <a className="btn btn-success" href={`https://wa.me/?text=${encodeURIComponent(`التسعيرة الكاملة لمنتجات AV:\n${url}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
             <a className="btn btn-outline-secondary" href={url} target="_blank" rel="noreferrer">فتح كما يراه الزائر</a>
-            {can('pricing.manage') && <Btn kind="danger" loading={busy} onClick={() => rotate('full')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
+            {can('links.pricing') && <Btn kind="danger" loading={busy} onClick={() => rotate('full')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
           </div>
           </div>
-        </details>
-        <details className="card shadow-sm link-drop">
+        </details>}
+        {s.token_short && <details className="card shadow-sm link-drop">
           <summary>رابط التسعيرة المختصرة</summary>
           <div className="link-drop-body">
           <p className="small text-body-secondary">أعمدة مختصرة فقط: المنتج، الأوزان، تكاليف المصنع (للتصاميم الذهب)، والسعر شامل الضريبة للقطاعي. التكاليف والفائدة لا تصل لجهاز الزائر إطلاقاً.</p>
@@ -53,15 +54,16 @@ export default function Pricing() {
             <Btn onClick={() => copyText(shortUrl)}>نسخ الرابط</Btn>
             <a className="btn btn-success" href={`https://wa.me/?text=${encodeURIComponent(`التسعيرة المختصرة لمنتجات AV:\n${shortUrl}`)}`} target="_blank" rel="noreferrer">إرسال واتساب</a>
             <a className="btn btn-outline-secondary" href={shortUrl} target="_blank" rel="noreferrer">فتح كما يراه الزائر</a>
-            {can('pricing.manage') && <Btn kind="danger" loading={busy} onClick={() => rotate('short')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
+            {can('links.pricing_short') && <Btn kind="danger" loading={busy} onClick={() => rotate('short')}>إيقاف الرابط وإنشاء رابط جديد</Btn>}
           </div>
           </div>
-        </details>
+        </details>}
       </div>
-      <Card title="الثوابت والأوزان الافتراضية" actions={<Btn size="sm" loading={busy} onClick={save}>حفظ</Btn>}>
+      {manage && <><Card title="الثوابت والأوزان الافتراضية" actions={<Btn size="sm" loading={busy} onClick={save}>حفظ</Btn>}>
         <p className="small text-body-secondary">الخانات القابلة للتعديل هنا (المصنعية، تكاليف المصنع، الفائدة، سعر القيراط، سعر اللؤلؤ) لا يستطيع الزائر تغييرها. الأوزان هنا هي القيم الافتراضية التي تظهر للزائر قبل أن يكتب.</p>
         <PricingSheet data={s} mode="admin" rows={s.rows} onRowsChange={(rows) => setS({ ...s, rows })} />
       </Card>
+      </>}
     </Page>
   );
 }
