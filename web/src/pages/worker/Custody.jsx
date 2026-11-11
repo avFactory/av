@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtW, fmtDT, fmtPct, WORK_STATE, calcLoss, CUSTODY_STATUS, COLORS, stoneItems } from '../../format.js';
 import OrderGroupItems from '../../components/OrderGroupItems.jsx';
+import { TransferModal } from '../../components/TransferTools.jsx';
 import { Btn, Card, Field, Input, Loader, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal } from '../../ui.jsx';
 
 /** شاشة العهدة للعامل: تأكيد الاستلام، بدء/إيقاف العمل، تسجيل الأوزان، رفع الصور، إنهاء المرحلة */
@@ -18,6 +19,8 @@ export default function WCustody() {
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [run, busy] = useAction();
+  const [trOpen, setTrOpen] = useState(false);
+  const { data: trs, reload: reloadTr } = useFetch('/w/transfers', { live: ['custodies', 'custody_transfers'] });
   if (!tasks) return <Loader />;
   if (!c) return <div className="wk-body"><div className="alert alert-info">العهدة غير موجودة أو تم استلامها. <Link to="/w" className="link">مهامي</Link></div></div>;
   const d = decl || { returned: c.worker_declared_returned ?? '', scrap: c.worker_declared_scrap ?? '', used: c.worker_declared_used ?? '' };
@@ -40,6 +43,25 @@ export default function WCustody() {
           c.kind !== 'general' && ['عدد القطع', c.pieces], ['المقاس', c.size], ['تاريخ التسليم', fmtDT(c.issued_at)], c.order_notes && ['ملاحظات الطلب', c.order_notes], od?.order?.color && ['اللون', COLORS[od.order.color] || od.order.color], ...(od?.order ? stoneItems(od.order) : [])]} />
       </Card>
       <OrderGroupItems items={od?.group} current={c.order_id} />
+      {c.status === 'open' && c.kind !== 'general' && c.worker_ack_at && (() => {
+        const pend = (trs?.outgoing || []).find((t) => t.custody_id === c.id);
+        return (
+          <Card title="↪ تحويل لعامل المرحلة التالية">
+            {pend ? (
+              <div className="hrow between wrap gap">
+                <span>بانتظار قبول <b>{pend.to_name}</b> — {fmtW(pend.weight)} جم</span>
+                <Btn kind="ghost" size="sm" loading={busy} onClick={() => run(async () => { await api.post(`/w/transfers/${pend.id}/cancel`); reloadTr(); }, 'أُلغي التحويل')}>إلغاء التحويل</Btn>
+              </div>
+            ) : (
+              <div className="d-grid gap-2">
+                <div className="small text-body-secondary">بعد إنهاء شغلك: زِن القطع وحوّلها مباشرة لعامل المرحلة التالية. يتأكد هو من الوزن ويقبل، والفرق يُحسب عجزاً عليك.</div>
+                <Btn onClick={() => setTrOpen(true)}>تحويل لعامل آخر</Btn>
+              </div>
+            )}
+          </Card>
+        );
+      })()}
+      {trOpen && <TransferModal custody={c} onClose={() => setTrOpen(false)} onDone={() => { reloadTr(); reload(); }} />}
       {od?.files?.length > 0 && (
         <Card title="التصاميم والصور">
           <div className="files">{od.files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt={f.original_name} /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>

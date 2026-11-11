@@ -4,6 +4,7 @@ import { api, fileUrl, qrUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
 import { ShortageModal, WithdrawModal, SHORTAGE_KINDS } from '../../components/ShortageTools.jsx';
+import { TransferModal } from '../../components/TransferTools.jsx';
 import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal } from '../../ui.jsx';
 
@@ -43,6 +44,8 @@ export default function OrderDetail() {
   const [f, setF] = useState({});
   const [short, setShort] = useState(null);
   const [withdraw, setWithdraw] = useState(null);
+  const [transfer, setTransfer] = useState(null);
+  const { data: pendTr, reload: reloadTr } = useFetch('/sup/transfers', { live: ['custody_transfers', 'custodies'] });
   const [run, busy] = useAction();
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
@@ -98,6 +101,7 @@ export default function OrderDetail() {
       )}
       {short && <ShortageModal item={short} custody={openCust.find((c) => c.status === 'open')} onClose={() => setShort(null)} onDone={() => reload()} />}
       {withdraw && <WithdrawModal custody={withdraw} onClose={() => setWithdraw(null)} onDone={() => reload()} />}
+      {transfer && <TransferModal custody={transfer} base="/sup" onClose={() => setTransfer(null)} onDone={() => { reloadTr(); reload(); }} />}
       {(() => { const grid = (
       <div className={`grid g3 ${siblings.length > 1 ? '' : 'mb'}`} style={{ gridTemplateColumns: '1fr 1fr auto' }}>
         <Card title="الطلب">
@@ -135,6 +139,7 @@ export default function OrderDetail() {
             {cur?.handles_gold && !openCust.length && can('custody.issue') && <LinkBtn kind="primary" to={`/sup/issue?order=${o.id}${o.assigned_worker_id ? `&worker=${o.assigned_worker_id}` : ''}`}>تسليم الذهب لعامل</LinkBtn>}
             {can('custody.receive') && openCust.filter((c) => c.status === 'open').map((c) => <LinkBtn key={c.id} kind="dark" to={`/sup/receive?worker=${c.worker_id}`}>استلام من {c.worker_name}</LinkBtn>)}
             {can('custody.receive') && openCust.filter((c) => c.status === 'open').map((c) => <Btn key={`w${c.id}`} kind="ghost" onClick={() => setWithdraw(c)}>سحب من {c.worker_name}</Btn>)}
+            {can('custody.issue') && can('custody.receive') && openCust.filter((c) => c.status === 'open' && !(pendTr || []).some((t) => t.custody_id === c.id)).map((c) => <Btn key={`t${c.id}`} kind="ghost" onClick={() => setTransfer(c)}>↪ تحويل من {c.worker_name} لعامل آخر</Btn>)}
             {inProd && o.stage_state !== 'shortage' && siblings.length < 2 && can('custody.receive', 'orders.advance') && <Btn kind="ghost" onClick={() => setShort(o)}>⚠ نقل للنواقص</Btn>}
             {(can('custody.issue') || can('orders.manage')) && inProd && <Btn kind="ghost" onClick={() => open('allocate', { source: 'vault' })}>تسجيل ذهب على الطلب</Btn>}
             {can('orders.advance') && inProd && <Btn kind="ghost" onClick={() => open('assign', { worker_id: o.assigned_worker_id || '' })}>إسناد لعامل</Btn>}
@@ -147,6 +152,10 @@ export default function OrderDetail() {
           {cur?.kind === 'final_weight' && inProd && (o.final_weight
             ? <div className="alert alert-success mt">الوزن النهائي: <b>{fmtW(o.final_weight)}</b> جم (صافي ذهب {fmtW(o.final_gold_weight)}) — يمكن النقل للمرحلة التالية</div>
             : <div className="alert alert-warning mt">{cur.handles_gold && !custodies.some((c) => c.stage_id === cur.id && c.status === 'closed') ? 'سلّم الطلب لعامل الجودة للتشييك، وبعد استلامه سجّل الوزن النهائي ثم انقله للفوترة.' : openCust.length ? 'بانتظار استلام الذهب من العامل، ثم تسجيل الوزن النهائي.' : 'سجّل الوزن النهائي قبل نقل الطلب للفوترة.'}</div>)}
+          {(pendTr || []).filter((t) => openCust.some((c) => c.id === t.custody_id)).map((t) => (
+            <div key={t.id} className="alert alert-warning mt d-flex flex-wrap align-items-center gap-2">↪ تحويل من <b>{t.from_name}</b> إلى <b>{t.to_name}</b> — {fmtW(t.weight)} جم، بانتظار تأكيد الوزن وقبول {t.to_name}
+              {can('custody.issue') && <Btn size="sm" kind="ghost" className="ms-auto" onClick={() => run(async () => { await api.post(`/sup/transfers/${t.id}/cancel`); reloadTr(); }, 'أُلغي التحويل')}>إلغاء</Btn>}</div>
+          ))}
           {o.stage_state === 'pending_approval' && <div className="alert alert-info mt">أنهى العامل المرحلة وهي بانتظار اعتماد المشرف</div>}
           {cur?.kind === 'design_approval' && o.design_status !== 'approved' && <div className="alert alert-warning mt">بانتظار اعتماد العميل للتصميم — لا يمكن بدء الصب قبل الاعتماد</div>}
         </Card>

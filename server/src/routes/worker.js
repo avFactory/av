@@ -11,6 +11,7 @@ import { audit } from '../lib/audit.js';
 import { orderThumb } from '../lib/orderThumb.js';
 import { is3D, addInternalImages } from '../lib/internalImages.js';
 import { advanceGroup, set3d, queue3d } from '../lib/orderGroup3d.js';
+import { createTransfer, acceptTransfer, rejectTransfer, cancelTransfer, transferCols } from '../lib/transfer.js';
 
 const r = Router();
 r.use(requirePerm('worker.self'));
@@ -111,6 +112,31 @@ r.post('/custody/:id/reject', async (req, res) => {
     await audit(db, req, 'custody.reject', 'custody', c.id, { reason });
     return { ok: true };
   }));
+});
+
+/** تحويل الطلب لعامل المرحلة التالية */
+r.get('/workers', async (req, res) => {
+  res.json(await many(`select u.id, u.full_name, u.employee_no, u.specialty, u.kind from users u where u.role_code='worker' and u.active and u.id <> $1 order by u.employee_no nulls last, u.full_name`, [req.user.id]));
+});
+r.get('/transfers', async (req, res) => {
+  const q = `select ${transferCols}, o.title, s.name as stage_name,
+      coalesce(case when (select count(*) from orders x where x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) > 1 then o.cart_ref end, o.order_no) as order_no,
+      ${orderThumb()} as thumb
+    from custody_transfers t join users fw on fw.id=t.from_worker join users tw on tw.id=t.to_worker join orders o on o.id=t.order_id
+    left join stages s on s.id=o.current_stage_id where t.status='pending' and `;
+  res.json({ incoming: await many(q + 't.to_worker=$1 order by t.id', [req.user.id]), outgoing: await many(q + 't.from_worker=$1 order by t.id', [req.user.id]) });
+});
+r.post('/custody/:id/transfer', async (req, res) => {
+  res.json(await tx((db) => createTransfer(db, req, req.params.id, req.body)));
+});
+r.post('/transfers/:id/accept', async (req, res) => {
+  res.json(await tx((db) => acceptTransfer(db, req, req.params.id, req.body)));
+});
+r.post('/transfers/:id/reject', async (req, res) => {
+  res.json(await tx((db) => rejectTransfer(db, req, req.params.id, req.body)));
+});
+r.post('/transfers/:id/cancel', async (req, res) => {
+  res.json(await tx((db) => cancelTransfer(db, req, req.params.id)));
 });
 
 const transitions = {

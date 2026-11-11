@@ -7,6 +7,7 @@ import * as custody from '../lib/custody.js';
 import { embeddedStonesGrams, goldStonesGrams } from '../lib/production.js';
 import { groupInfo } from '../lib/orderGroups.js';
 import { withdrawCustody, SHORTAGE_KINDS } from '../lib/shortage.js';
+import { createTransfer, cancelTransfer, transferCols } from '../lib/transfer.js';
 import * as ledger from '../lib/ledger.js';
 import { sendXlsx } from '../lib/xlsx.js';
 import { normalizeScan } from '../lib/shortName.js';
@@ -205,6 +206,19 @@ r.post('/issue-split', requirePerm('custody.issue'), async (req, res) => {
 /** سحب الطلب من العامل (غياب أو ضرورة): وزن مؤكد وسبب إلزامي، والطلب يبقى في مرحلته */
 r.post('/custody/:id/withdraw', requirePerm('custody.receive'), async (req, res) => {
   res.json(await tx((db) => withdrawCustody(db, req, req.params.id, req.body)));
+});
+
+/** تحويل الطلب من عامل لعامل المرحلة التالية (بانتظار قبول العامل الثاني) */
+r.post('/custody/:id/transfer', requirePerm('custody.issue'), async (req, res) => {
+  res.json(await tx((db) => createTransfer(db, req, req.params.id, req.body)));
+});
+r.post('/transfers/:id/cancel', requirePerm('custody.issue'), async (req, res) => {
+  res.json(await tx((db) => cancelTransfer(db, req, req.params.id)));
+});
+r.get('/transfers', requirePerm('custody.issue', 'custody.receive', 'orders.view'), async (req, res) => {
+  const oid = req.query.order_id ? int(req.query.order_id) : null;
+  res.json(await many(`select ${transferCols} from custody_transfers t join users fw on fw.id=t.from_worker join users tw on tw.id=t.to_worker
+    where t.status='pending' and ($1::int is null or t.order_id=$1) order by t.id`, [oid]));
 });
 
 /** قائمة النواقص */

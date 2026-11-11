@@ -4,16 +4,19 @@ import { fmtW, fmtDate, WORK_STATE } from '../../format.js';
 import { Badge, Loader, Empty, useFetch } from '../../ui.jsx';
 import { useAuth } from '../../auth.jsx';
 import Queue3d from './Queue3d.jsx';
+import { IncomingTransfers } from '../../components/TransferTools.jsx';
 
 export default function WHome() {
   const { data } = useFetch('/w/tasks', { live: ['custodies', 'orders'] });
   const { me } = useAuth();
+  const { data: trs, reload: reloadTr } = useFetch('/w/transfers', { live: ['custodies', 'custody_transfers'] });
   if (!data) return <Loader />;
   const { custodies, tasks } = data;
   const total = custodies.filter((c) => c.status === 'open').reduce((s, c) => s + Number(c.weight_issued), 0);
   return (
     <div className="wk-body">
       <div className="card card-body hrow between"><span className="muted">الذهب في عهدتي</span><b dir="ltr" style={{ fontSize: '1.4rem' }}>{fmtW(total)} جم</b></div>
+      <IncomingTransfers items={trs?.incoming} onChange={() => { reloadTr(); }} />
       {me?.is_3d && <Queue3d />}
       {!custodies.length && !tasks.length && !me?.is_3d && <Empty>لا توجد مهام مسندة إليك حالياً</Empty>}
       {custodies.map((c) => (
