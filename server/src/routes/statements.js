@@ -135,7 +135,7 @@ staff.post('/submissions/:id/approve', requirePerm('payments.manage'), async (re
       const amount = req.body.amount ? money(req.body.amount, 'المبلغ') : s.amount;
       const p = (await db.query(`insert into payments(payment_no, customer_id, kind, amount, method, reference, note, received_by, received_at, branch_id)
         values (next_doc_no('PAY'),$1,'payment',$2,$3,$4,$5,$6,coalesce($7::timestamptz, now()),$8) returning id`,
-        [s.customer_id, amount, s.method || 'transfer', s.reference, `مستند سداد ${s.submission_no}${note ? ` — ${note}` : ''}`, req.user.id, s.paid_at, s.branch_id])).rows[0];
+        [s.customer_id, amount, s.method || 'transfer', s.reference, `مستند سداد ${s.submission_no}${note ? ` — ${note}` : ''}`, req.user.id, s.created_at || s.paid_at, s.branch_id])).rows[0];
       paymentId = p.id;
     } else {
       const w = req.body.weight ? W(req.body.weight, 'الوزن') : s.weight;
@@ -192,7 +192,7 @@ store.post('/submissions', requirePerm('store.access'), approvedOnly, upload.sin
       [req.user.customer_id, req.user.branch_id || null, kind, kind === 'money' ? money(b.amount, 'المبلغ') : null,
        kind === 'gold' ? W(b.weight, 'الوزن') : null, kind === 'gold' ? oneOf(int(b.karat, 'العيار'), KARATS, 'العيار') : null,
        kind === 'money' ? oneOf(b.method || 'transfer', ['cash', 'transfer', 'card', 'cheque', 'other'], 'طريقة الدفع') : null,
-       str(b.reference, 'المرجع', { max: 120 }), isoDate(b.paid_at), str(b.note, 'ملاحظات', { max: 500 }), doc.path, doc.original_name, doc.mime, req.user.id])).rows[0];
+       str(b.reference, 'المرجع', { max: 120 }), isoDate(b.paid_at) || new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10), str(b.note, 'ملاحظات', { max: 500 }), doc.path, doc.original_name, doc.mime, req.user.id])).rows[0];
     await notifyPerm(db, 'payments.manage', { kind: 'payment', title: `مستند سداد جديد من ${req.user.shop_name}`, body: kind === 'money' ? `${s.amount} ر.س` : `${s.weight} جم عيار ${s.karat}`, link: `/admin/customers/${req.user.customer_id}/statement` });
     await audit(db, req, 'submission.create', 'customer', req.user.customer_id, { submission: s.submission_no, kind });
     return s;
