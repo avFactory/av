@@ -50,12 +50,26 @@ export async function acceptTransfer(db, req, transferId, body) {
   const fromName = (await db.query('select full_name from users where id=$1', [t.from_worker])).rows[0].full_name;
   const no = await label(db, c.order_id);
 
+  // الوزن أكبر مما سُلّم للأول: الزيادة ذهب أضافه من عهدته العامة (أو عهد الخامات) فتُخصم منها تلقائياً
   const pv = await preview(db, c.id, confirmed, '0');
-  if (Number(pv.gain_weight) > 0) throw conflict(`الوزن (${Number(confirmed)} جم) أكبر مما سُلّم للعامل الأول - تأكد من الوزن أو تواصل مع المشرف`);
+  const additions = [];
+  let gain = Number(pv.gain_weight);
+  if (gain > 0) {
+    const srcs = (await db.query(`select id, (weight_issued - weight_used)::numeric(16,4) as avail from custodies
+      where worker_id=$1 and status='open' and material_id=$2 and id<>$3 and (kind='general' or finding_id is not null) and weight_issued > weight_used
+      order by (finding_id is null) desc, issued_at`, [t.from_worker, c.material_id, c.id])).rows;
+    for (const s of srcs) {
+      if (gain <= 0) break;
+      const take = Math.min(gain, Number(s.avail));
+      additions.push({ source_custody_id: s.id, weight: take.toFixed(4) });
+      gain = +(gain - take).toFixed(4);
+    }
+    if (gain > 0) throw conflict(`الوزن (${Number(confirmed)} جم) أكبر مما سُلّم لـ${fromName} بـ ${Number(pv.gain_weight)} جم، ولا تكفي عهدته العامة لتغطية الزيادة (ينقص ${gain} جم) - تواصل مع المشرف`);
+  }
   // 1) استلام من العامل الأول بالوزن المؤكد (العجز عليه حسب نسبته)
   const rc = await receive(db, req, {
     worker_id: t.from_worker, note: `تحويل إلى ${req.user.full_name}`,
-    items: [{ custody_id: c.id, returned_weight: confirmed, scrap_weight: '0', advance: false, notes: `تحويل مباشر إلى ${req.user.full_name} (التحويل #${t.id})` }],
+    items: [{ custody_id: c.id, returned_weight: confirmed, scrap_weight: '0', advance: false, additions, notes: `تحويل مباشر إلى ${req.user.full_name} (التحويل #${t.id})${additions.length ? ' + إضافة من العهدة العامة' : ''}` }],
   });
   const settlement = rc.results?.[0]?.settlement;
   if (settlement?.status === 'pending_review') throw conflict('الوزن أكبر من المسلَّم للعامل الأول - يجب مراجعة المشرف (لم يتم التحويل)');

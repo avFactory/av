@@ -62,7 +62,7 @@ export function IncomingTransfers({ items, onChange }) {
             <Field label="زِن القطع وأدخل الوزن على ميزانك (جم)">
               <WeightInput big value={w[t.id] || ''} onChange={(v) => setW({ ...w, [t.id]: v })} />
             </Field>
-            {diff !== null && Math.abs(diff) > 0.0001 && <div className={`small ${diff < 0 ? 'text-danger' : 'text-warning'}`}>{diff < 0 ? `أقل من المرسل بـ ${fmtW(-diff)} جم (يُحسب عجزاً على ${t.from_name})` : `أكبر من المرسل بـ ${fmtW(diff)} جم`}</div>}
+            {diff !== null && Math.abs(diff) > 0.0001 && <div className={`small ${diff < 0 ? 'text-danger' : 'text-warning'}`}>{diff < 0 ? `أقل من المرسل بـ ${fmtW(-diff)} جم (يُحسب عجزاً على ${t.from_name})` : `أكبر من المرسل بـ ${fmtW(diff)} جم (تُخصم الزيادة من العهدة العامة لـ${t.from_name})`}</div>}
             <div className="hrow gap"><Btn kind="ok" loading={busy} disabled={!(Number(w[t.id]) > 0)} onClick={() => accept(t)}>✓ تأكيد الوزن وقبول العهدة</Btn><Btn kind="ghost" onClick={() => reject(t)}>رفض</Btn></div>
           </div>
         );

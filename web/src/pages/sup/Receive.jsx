@@ -184,7 +184,7 @@ export default function Receive() {
                             <div className="finds-box">
                               <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
                                 <b className="small">🔗 خامات أضافها العامل على القطعة <span className="text-body-secondary fw-normal">(من عهدة الخامات لديه — يُخصم وزنها منها ويُضاف للطلب)</span></b>
-                                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => upd(c.id, 'adds', [...(l.adds || []), { source_custody_id: srcs.length === 1 ? String(srcs[0].id) : '', pieces: '1', weight: srcs.length === 1 && srcs[0].unit_weight ? String(+Number(srcs[0].unit_weight).toFixed(3)) : '' }])}>+ إضافة خامة</button>
+                                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => upd(c.id, 'adds', [...(l.adds || []), { source_custody_id: srcs.length === 1 ? String(srcs[0].id) : '', pieces: '1', weight: srcs.length === 1 && srcs[0].unit_weight ? String(+Number(srcs[0].unit_weight).toFixed(3)) : '' }])}>+ إضافة خامة أو ذهب من العهدة العامة</button>
                               </div>
                               {(l.adds || []).map((a, i) => (
                                 <div key={i} className="finds-row">

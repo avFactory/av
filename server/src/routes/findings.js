@@ -97,11 +97,13 @@ r.post('/issue', requirePerm('custody.issue'), async (req, res) => {
 
 /** عهد الخامات المفتوحة لدى عامل (لاختيار ما أضافه على الطلب عند الاستلام) */
 r.get('/worker/:id', requirePerm('custody.receive', 'custody.issue', 'custody.view_all'), async (req, res) => {
-  res.json(await many(`select c.id, c.custody_no, c.material_id, m.name as material_name, f.id as finding_id, f.name, f.category, f.unit_weight::text,
-      c.pieces, (c.weight_issued - c.weight_used)::numeric(16,4)::text as available,
+  // مصادر الإضافة على الطلب عند الاستلام: عهد الخامات + العهدة العامة (ذهب بدون طلب) لدى العامل
+  res.json(await many(`select c.id, c.custody_no, c.material_id, m.name as material_name, f.id as finding_id,
+      coalesce(f.name, 'عهدة عامة' || coalesce(' - ' || c.purpose, '')) as name, coalesce(f.category, 'عهدة عامة') as category, f.unit_weight::text,
+      c.pieces, (c.weight_issued - c.weight_used)::numeric(16,4)::text as available, (c.finding_id is null) as general,
       c.pieces - coalesce((select sum(a.pieces) from custody_additions a where a.source_custody_id=c.id and not a.reversed), 0) as pieces_left
-    from custodies c join findings f on f.id=c.finding_id join materials m on m.id=c.material_id
-    where c.worker_id=$1 and c.status='open' and c.weight_issued > c.weight_used order by c.issued_at`, [int(req.params.id)]));
+    from custodies c left join findings f on f.id=c.finding_id join materials m on m.id=c.material_id
+    where c.worker_id=$1 and c.status='open' and (c.finding_id is not null or c.kind='general') and c.weight_issued > c.weight_used order by (c.finding_id is null) desc, c.issued_at`, [int(req.params.id)]));
 });
 
 /** حركات خامة */

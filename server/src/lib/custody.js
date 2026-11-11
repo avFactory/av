@@ -188,7 +188,8 @@ export async function receive(db, req, body) {
       if (!c.order_id) throw bad('الخامات تُضاف على عهدة طلب تصنيع');
       const sid = int(a.source_custody_id, 'عهدة الخامات');
       const src = (await db.query('select c.*, f.name as finding_name from custodies c left join findings f on f.id=c.finding_id where c.id=$1 for update of c', [sid])).rows[0];
-      if (!src || src.worker_id !== workerId || src.status !== 'open' || !src.finding_id) throw bad('عهدة الخامات غير صالحة لهذا العامل');
+      if (!src || src.worker_id !== workerId || src.status !== 'open' || (!src.finding_id && src.kind !== 'general')) throw bad('عهدة الإضافة غير صالحة لهذا العامل');
+      if (!src.finding_id) src.finding_name = `العهدة العامة${src.purpose ? ` (${src.purpose})` : ''}`;
       if (src.material_id !== c.material_id) throw bad(`عيار "${src.finding_name}" يختلف عن عيار الطلب ${label}`);
       const w = Number(W(a.weight, `وزن ${src.finding_name}`));
       const avail = Number(src.weight_issued) - Number(src.weight_used) - (usedNow.get(sid) || 0);
@@ -219,7 +220,7 @@ export async function receive(db, req, body) {
       await db.query(`insert into custody_additions(custody_id, source_custody_id, finding_id, order_id, weight, pieces, settlement_id, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [c.id, a.src.id, a.src.finding_id, c.order_id, a.w, a.pieces, st.id, req.user.id]);
       const u = (await db.query('update custodies set weight_used = weight_used + $2 where id=$1 returning weight_issued, weight_used', [a.src.id, a.w])).rows[0];
-      await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, order_id, note, created_by) values ($1,'used',0,$2,$3,$4,$5,$6)`,
+      if (a.src.finding_id) await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, order_id, note, created_by) values ($1,'used',0,$2,$3,$4,$5,$6)`,
         [a.src.finding_id, a.w, a.src.id, c.order_id, `أُضيفت على ${label}${a.pieces ? ` (${a.pieces} قطعة)` : ''}`, req.user.id]);
       // استُهلكت عهدة الخامات بالكامل: تُغلق تلقائياً
       if (Number(u.weight_used) >= Number(u.weight_issued)) await db.query("update custodies set status='closed', closed_at=now(), work_state='finished', finished_at=coalesce(finished_at, now()) where id=$1", [a.src.id]);

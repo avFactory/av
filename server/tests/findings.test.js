@@ -356,8 +356,22 @@ test('تحويل الطلب من عامل لعامل المرحلة التالي
   assert.equal((await A.go('POST', `/w/transfers/${tr2.data.id}/reject`, {})).status, 400, 'السبب إلزامي');
   assert.equal((await A.go('POST', `/w/transfers/${tr2.data.id}/reject`, { reason: 'الوزن ناقص' })).status, 200);
   assert.equal(await bal('worker', B.id, mat), 9.5, 'بقيت لدى الثاني');
-  // وزن أكبر من المسلَّم لا يُقبل بدون مراجعة
+  // وزن أكبر من المسلَّم: بدون عهدة عامة لدى المرسل يتوقف التحويل برسالة واضحة
   const tr3 = await B.go('POST', `/w/custody/${ac.data.custody_id}/transfer`, { to_worker_id: A.id, weight: '9.5' });
-  assert.equal((await A.go('POST', `/w/transfers/${tr3.data.id}/accept`, { weight: '11' })).status, 409);
+  const over = await A.go('POST', `/w/transfers/${tr3.data.id}/accept`, { weight: '11' });
+  assert.equal(over.status, 409);
+  assert.match(over.data.error, /العهدة العامة|عهدته العامة/);
   assert.equal(await bal('worker', B.id, mat), 9.5);
+  // للمرسل عهدة عامة 3 جم: الزيادة 1.5 تُخصم منها ويستمر التحويل
+  const gen = await call('POST', '/inventory/gold/to-worker', { worker_id: B.id, material_id: mat, weight: '3', purpose: 'ذهب إضافات' });
+  assert.equal(gen.status, 200, JSON.stringify(gen.data));
+  const ok = await A.go('POST', `/w/transfers/${tr3.data.id}/accept`, { weight: '11' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.equal(Number(ok.data.settlement.actual_loss), 0, 'لا عجز: 9.5 + 1.5 من العهدة العامة = 11');
+  const g = (await pool.query("select (weight_issued - weight_used)::float left from custodies where worker_id=$1 and kind='general' and status='open'", [B.id])).rows[0];
+  assert.equal(g.left, 1.5, 'خُصمت الزيادة من العهدة العامة');
+  assert.equal(await bal('worker', B.id, mat), 1.5);
+  assert.equal(await bal('worker', A.id, mat), 11);
+  // المصادر المتاحة للإضافة تشمل العهدة العامة
+  assert.ok((await call('GET', `/findings/worker/${B.id}`)).data.some((x) => x.general));
 });
