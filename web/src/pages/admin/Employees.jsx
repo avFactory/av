@@ -8,6 +8,9 @@ export default function Employees() {
   const [all, setAll] = useState(false);
   const { data, reload } = useFetch(`/admin/employees${all ? '?all=1' : ''}`);
   const { data: roles } = useFetch(can('roles.manage', 'employees.manage') ? '/admin/roles' : null);
+  const { data: specs } = useFetch('/admin/specialties');
+  // نفس منطق الخادم: أطول مهنة معرّفة يحتويها تخصص العامل
+  const specRate = (sp) => { const v = String(sp || '').replace(/أ/g, 'ا'); if (!v) return null; return (specs || []).filter((x) => v.includes(x.specialty.replace(/أ/g, 'ا'))).sort((a, b) => b.specialty.length - a.specialty.length)[0]?.rate_percent ?? null; };
   const [f, setF] = useState(null);
   const [q, setQ] = useState('');
   const [perf, setPerf] = useState(null);
@@ -30,7 +33,7 @@ export default function Employees() {
       {can('employees.manage') && <Btn onClick={() => setF({ role_code: 'worker', stage_ids: [] })}>إضافة موظف</Btn>}
     </>}>
       <div className="card"><Table rows={rows} columns={[
-        ['الاسم', (u) => <b>{u.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{u.full_name}</b>], ['المستخدم', 'username'], ['الرقم', 'employee_no'], ['الدور', 'role_name'], ['القسم', 'department'], ['التخصص', 'specialty'],
+        ['الاسم', (u) => <b>{u.kind === 'machine' && <span className="machine-tag">⚙ مكينة</span>}{u.full_name}</b>], ['المستخدم', 'username'], ['الرقم', 'employee_no'], ['الدور', 'role_name'], ['القسم', 'department'], ['التخصص', 'specialty'], ['نسبة العجز', (u) => (u.role_code !== 'worker' ? '' : u.specialty_rate ? `${Number(u.specialty_rate)}%` : <span className="small text-warning" title="لا توجد نسبة لهذه المهنة في المراحل ونسب العجز">نسبة المرحلة</span>)],
         ['عهد مفتوحة', 'open_custodies'], ['الحالة', (u) => (u.active ? <Badge tone="ok">نشط</Badge> : <Badge>معطل</Badge>)],
         ['', (u) => <div className="hrow gap">
           <Btn size="sm" kind="ghost" onClick={() => run(async () => setPerf({ u, p: await api.get(`/admin/employees/${u.id}/performance`) }))}>الأداء</Btn>
@@ -46,7 +49,11 @@ export default function Employees() {
             <Field label="الدور"><Select value={f.role_code} onChange={set('role_code')} options={(roles?.roles || []).filter((r) => r.code !== 'customer').map((r) => [r.code, r.name])} /></Field>
             <Field label="الرقم الوظيفي"><Input value={f.employee_no || ''} onChange={set('employee_no')} /></Field>
             <Field label="القسم"><Select value={f.department_id || ''} onChange={set('department_id')} placeholder="—" options={(lookups?.departments || []).map((d) => [d.id, d.name])} /></Field>
-            <Field label="التخصص"><Input value={f.specialty || ''} onChange={set('specialty')} /></Field>
+            <Field label="التخصص / المهنة" hint={f.role_code === 'worker' ? (specRate(f.specialty) ? `نسبة العجز: ${Number(specRate(f.specialty))}%` : 'لا توجد نسبة لهذه المهنة — تُطبق نسبة المرحلة') : undefined}>
+              <Input value={f.specialty || ''} onChange={set('specialty')} list="specialties-list" />
+              <datalist id="specialties-list">{(specs || []).map((x) => <option key={x.specialty} value={x.specialty} />)}</datalist>
+            </Field>
+            {f.role_code === 'worker' && <Field label="النوع"><Select value={f.kind || 'person'} onChange={set('kind')} options={[['person', 'عامل'], ['machine', '⚙ مكينة']]} /></Field>}
             <Field label="الجوال"><Input value={f.phone || ''} onChange={set('phone')} dir="ltr" /></Field>
             {f.id && <Field label="الحالة"><Select value={f.active ? '1' : '0'} onChange={(e) => setF({ ...f, active: e.target.value === '1' })} options={[['1', 'نشط'], ['0', 'معطل']]} /></Field>}
           </div>

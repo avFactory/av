@@ -83,9 +83,16 @@ r.get('/employees', requirePerm('employees.manage', 'workers.view'), async (req,
   res.json(await many(`select u.id, u.username, u.full_name, u.role_code, u.kind, ro.name as role_name, u.employee_no, u.department_id, d.name as department,
       u.specialty, u.phone, u.active, u.extra_perms, u.denied_perms, u.created_at,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open')::int as open_custodies,
-      (select array_agg(stage_id) from stage_workers sw where sw.user_id=u.id) as stage_ids
+      (select array_agg(stage_id) from stage_workers sw where sw.user_id=u.id) as stage_ids,
+      (select r.rate_percent::text from specialty_loss_rates r where u.specialty is not null and (u.specialty = r.specialty or u.specialty like '%' || r.specialty || '%'
+         or replace(u.specialty, 'أ', 'ا') like '%' || replace(r.specialty, 'أ', 'ا') || '%') order by length(r.specialty) desc limit 1) as specialty_rate
     from users u join roles ro on ro.code=u.role_code left join departments d on d.id=u.department_id
     where u.role_code <> 'customer' ${req.query.all ? '' : 'and u.active'} order by u.role_code, u.full_name`));
+});
+
+/** المهن المعرّفة بنسب عجز (لاقتراحها عند إضافة العامل حتى تطابق النسبة) */
+r.get('/specialties', requirePerm('employees.manage', 'workers.view'), async (_req, res) => {
+  res.json(await many('select specialty, rate_percent::text from specialty_loss_rates order by specialty'));
 });
 
 r.post('/employees', requirePerm('employees.manage'), async (req, res) => {
@@ -95,17 +102,31 @@ r.post('/employees', requirePerm('employees.manage'), async (req, res) => {
     if (role === 'customer') throw bad('حسابات العملاء تنشأ من صفحة العملاء');
     await assertCanGrant(db, req, { role });
     if (String(b.password || '').length < 8) throw bad('كلمة المرور يجب ألا تقل عن 8 أحرف');
+    const username = cleanUsername(b.username);
+    if ((await db.query('select 1 from users where lower(username)=lower($1)', [username])).rowCount) throw bad('اسم المستخدم مستخدم مسبقاً');
+    const empNo = numText(str(b.employee_no, 'الرقم الوظيفي'));
+    if (empNo && (await db.query('select 1 from users where employee_no=$1', [empNo])).rowCount) throw bad('الرقم الوظيفي مستخدم لموظف آخر');
     const u = (await db.query(
-      `insert into users(username, password_hash, full_name, role_code, employee_no, department_id, specialty, phone)
-       values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
-      [str(b.username, 'اسم المستخدم', { required: true }), hashPassword(String(b.password)), str(b.full_name, 'الاسم', { required: true }), role,
-       str(b.employee_no, 'الرقم الوظيفي'), b.department_id ? int(b.department_id) : null, str(b.specialty, 'التخصص'), str(b.phone, 'الجوال')]
+      `insert into users(username, password_hash, full_name, role_code, employee_no, department_id, specialty, phone, kind)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+      [username, hashPassword(String(b.password)), str(b.full_name, 'الاسم', { required: true }), role,
+       empNo, b.department_id ? int(b.department_id) : null, str(b.specialty, 'التخصص'), numText(str(b.phone, 'الجوال')), b.kind === 'machine' ? 'machine' : 'person']
     ).catch((e) => { if (e.code === '23505') throw bad('اسم المستخدم أو الرقم الوظيفي مستخدم مسبقاً'); throw e; })).rows[0];
     if (Array.isArray(b.stage_ids)) for (const sid of b.stage_ids) await db.query('insert into stage_workers values ($1,$2) on conflict do nothing', [int(sid), u.id]);
     await audit(db, req, 'employee.create', 'user', u.id, { username: b.username, role });
     return u;
   }));
 });
+
+/** أرقام عربية/فارسية → إنجليزية (الرقم الوظيفي والجوال) */
+const numText = (v) => (v == null ? v : String(v).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).trim() || null);
+/** اسم المستخدم: بدون مسافات وحرفان على الأقل */
+function cleanUsername(v) {
+  const u = numText(str(v, 'اسم المستخدم', { required: true, max: 60 }));
+  if (/\s/.test(u)) throw bad('اسم المستخدم لا يقبل المسافات');
+  if (u.length < 2) throw bad('اسم المستخدم حرفان على الأقل');
+  return u;
+}
 
 // ------------------------------------------------------------------ استيراد الموظفين من Excel
 const empUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 },
@@ -132,6 +153,7 @@ async function checkEmployeeRows(db, rows) {
     if (!r.full_name) errors.push('الاسم مفقود');
     if (!u) errors.push('اسم المستخدم مفقود');
     else if (/\s/.test(u)) errors.push('اسم المستخدم لا يقبل المسافات');
+    else if (u.length < 2) errors.push('اسم المستخدم حرفان على الأقل');
     if (String(r.password || '').length < 8) errors.push('كلمة المرور أقل من 8 أحرف');
     let status = errors.length ? 'error' : 'new';
     if (!errors.length && existingU.has(u.toLowerCase())) status = 'exists';
@@ -157,8 +179,8 @@ r.post('/employees/import/parse', requirePerm('employees.manage'), empUpload.sin
   table[hIdx].forEach((h, i) => { const k = HEADERS.find(([key, re]) => !map[key] && re.test(h || '')); if (k) map[k[0]] = i; });
   // "اسم العامل" قد يطابق نمط "رقم"؟ لا - لكن تأكد أن الاسم ليس هو اسم المستخدم
   const rows = table.slice(hIdx + 1).map((c) => ({
-    employee_no: c[map.employee_no] || null, full_name: c[map.full_name] || '', username: c[map.username] || '',
-    password: c[map.password] || '', specialty: c[map.specialty] || null, phone: c[map.phone] || null,
+    employee_no: numText(c[map.employee_no]) || null, full_name: c[map.full_name] || '', username: c[map.username] || '',
+    password: c[map.password] || '', specialty: c[map.specialty] || null, phone: numText(c[map.phone]) || null,
   })).filter((r) => r.full_name || r.username).map((r) => ({ ...r, kind: isMachine(r) ? 'machine' : 'person' }));
   if (!rows.length) throw bad('لا توجد بيانات تحت صف العناوين');
   res.json({ columns: map, rows: await checkEmployeeRows(pool, rows) });
@@ -171,7 +193,7 @@ r.post('/employees/import/commit', requirePerm('employees.manage'), async (req, 
   await assertCanGrant(pool, req, { role });
   const mustChange = req.body.must_change_password !== false;
   const input = (Array.isArray(req.body.rows) ? req.body.rows : []).map((r) => ({
-    employee_no: str(r.employee_no, 'الرقم', { max: 40 }), full_name: str(r.full_name, 'الاسم', { max: 120 }) || '', username: str(r.username, 'اسم المستخدم', { max: 60 }) || '',
+    employee_no: numText(str(r.employee_no, 'الرقم', { max: 40 })), full_name: str(r.full_name, 'الاسم', { max: 120 }) || '', username: str(r.username, 'اسم المستخدم', { max: 60 }) || '',
     password: String(r.password || ''), specialty: str(r.specialty, 'المهمة', { max: 80 }), phone: str(r.phone, 'الجوال', { max: 30 }),
   })).map((r, i) => ({ ...r, kind: isMachine({ ...r, kind: req.body.rows[i]?.kind }) ? 'machine' : 'person' }));
   if (!input.length) throw bad('لا توجد بيانات');
@@ -228,12 +250,13 @@ r.put('/employees/:id', requirePerm('employees.manage'), async (req, res) => {
     }
     await db.query(
       `update users set full_name=$2, role_code=$3, employee_no=$4, department_id=$5, specialty=$6, phone=$7, active=$8,
-         extra_perms=$9, denied_perms=$10 where id=$1`,
-      [id, str(b.full_name ?? u.full_name, 'الاسم', { required: true }), role, b.employee_no !== undefined ? str(b.employee_no, 'الرقم') : u.employee_no,
+         extra_perms=$9, denied_perms=$10, kind=$11 where id=$1`,
+      [id, str(b.full_name ?? u.full_name, 'الاسم', { required: true }), role, b.employee_no !== undefined ? numText(str(b.employee_no, 'الرقم')) : u.employee_no,
        b.department_id !== undefined ? (b.department_id ? int(b.department_id) : null) : u.department_id,
        b.specialty !== undefined ? str(b.specialty, 'التخصص') : u.specialty, b.phone !== undefined ? str(b.phone, 'الجوال') : u.phone,
-       b.active !== undefined ? !!b.active : u.active, b.extra_perms ?? u.extra_perms, b.denied_perms ?? u.denied_perms]
-    );
+       b.active !== undefined ? !!b.active : u.active, b.extra_perms ?? u.extra_perms, b.denied_perms ?? u.denied_perms,
+       b.kind !== undefined ? (b.kind === 'machine' ? 'machine' : 'person') : u.kind]
+    ).catch((e) => { if (e.code === '23505') throw bad('الرقم الوظيفي مستخدم لموظف آخر'); throw e; });
     if (b.password) {
       if (String(b.password).length < 8) throw bad('كلمة المرور يجب ألا تقل عن 8 أحرف');
       await db.query('update users set password_hash=$2, must_change_password=$3 where id=$1', [id, hashPassword(String(b.password)), id !== req.user.id && b.must_change_password !== false]);

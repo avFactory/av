@@ -91,3 +91,23 @@ test('إلزام تغيير كلمة المرور عند أول دخول', async
   assert.equal((await w('GET', '/w/tasks')).status, 200, 'الجلسة الحالية تبقى صالحة بعد التغيير');
   assert.equal((await w('GET', '/auth/me')).data.must_change_password, false);
 });
+
+test('إضافة عامل: اسم مستخدم بدون مسافات وبدون تكرار حالة الأحرف، أرقام عربية، مكينة، ونسبة عجز المهنة', async () => {
+  const emp = { full_name: 'عامل جديد', password: 'Worker#2026', role_code: 'worker' };
+  assert.equal((await admin('POST', '/admin/employees', { ...emp, username: 'ali ahmed' })).status, 400, 'مسافة');
+  assert.equal((await admin('POST', '/admin/employees', { ...emp, username: 'a' })).status, 400, 'قصير');
+  const a = await admin('POST', '/admin/employees', { ...emp, username: 'Ali.W', employee_no: '١٢٣', phone: '٠٥٥١٢٣٤٥٦٧', specialty: 'تشبيك ذهب' });
+  assert.equal(a.status, 200, JSON.stringify(a.data));
+  assert.equal((await admin('POST', '/admin/employees', { ...emp, username: 'ali.w' })).status, 400, 'نفس الاسم بحالة أحرف مختلفة');
+  assert.equal((await admin('POST', '/admin/employees', { ...emp, username: 'other1', employee_no: '123' })).status, 400, 'رقم وظيفي مكرر');
+  const m = await admin('POST', '/admin/employees', { ...emp, username: 'laser1', full_name: 'ليزر', kind: 'machine' });
+  assert.equal(m.status, 200);
+  const list = (await admin('GET', '/admin/employees')).data;
+  const ua = list.find((x) => x.id === a.data.id);
+  assert.deepEqual([ua.employee_no, ua.phone, Number(ua.specialty_rate)], ['123', '0551234567', 0.1], 'أرقام إنجليزية ونسبة التشبيك');
+  assert.equal(list.find((x) => x.id === m.data.id).kind, 'machine');
+  assert.ok((await admin('GET', '/admin/specialties')).data.some((x) => x.specialty === 'تفنيش'));
+  // الدخول باسم المستخدم بأي حالة أحرف
+  const r = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'ALI.w', password: 'Worker#2026' }) });
+  assert.equal(r.status, 200);
+});
