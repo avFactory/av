@@ -40,16 +40,13 @@ export default function Statement() {
       {f && (
         <Card className="mb no-print" title="رفع مستند سداد" actions={<Btn size="sm" kind="ghost" onClick={() => setF(null)}>إلغاء</Btn>}>
           <Field label="نوع السداد"><div className="chips">{[['money', 'تحويل / دفع مبلغ'], ['gold', 'تسليم ذهب']].map(([k, l]) => <button key={k} type="button" className={`chip ${f.kind === k ? 'on' : ''}`} onClick={() => setF({ ...f, kind: k })}>{l}</button>)}</div></Field>
-          <div className="grid g3">
+          <div className="grid g2">
             {f.kind === 'money' ? <>
               <Field label="المبلغ (ر.س) *"><Input dir="ltr" inputMode="decimal" value={f.amount} onChange={(x) => setF({ ...f, amount: num(x.target.value) })} /></Field>
-              <Field label="طريقة الدفع"><Select value={f.method} onChange={(x) => setF({ ...f, method: x.target.value })} options={[['transfer', 'تحويل بنكي'], ['cash', 'نقدي'], ['card', 'بطاقة'], ['cheque', 'شيك'], ['other', 'أخرى']]} /></Field>
             </> : <>
               <Field label="وزن الذهب (جم) *"><WeightInput value={f.weight} onChange={(v) => setF({ ...f, weight: v })} /></Field>
               <Field label="العيار"><div className="chips">{['18', '21', '24'].map((k) => <button key={k} type="button" className={`chip ${f.karat === k ? 'on' : ''}`} onClick={() => setF({ ...f, karat: k })}>{k}</button>)}</div></Field>
             </>}
-            <Field label="تاريخ السداد"><Input type="date" value={f.paid_at} onChange={(x) => setF({ ...f, paid_at: x.target.value })} /></Field>
-            <Field label="رقم المرجع / الحوالة"><Input value={f.reference} onChange={(x) => setF({ ...f, reference: x.target.value })} /></Field>
           </div>
           <Field label="المستند (صورة الحوالة أو سند التسليم) *"><input type="file" accept="image/*,.pdf" className="form-control" onChange={(x) => setF({ ...f, file: x.target.files[0] || null })} /></Field>
           <Field label="ملاحظات"><Textarea value={f.note} onChange={(x) => setF({ ...f, note: x.target.value })} rows={2} /></Field>
