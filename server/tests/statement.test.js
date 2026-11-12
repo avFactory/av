@@ -153,3 +153,29 @@ test('كشف حساب منفصل لكل فرع: رصيد افتتاحي ومدف
   assert.equal((await main('GET', '/store/statement')).data.balance.money, 800);
   assert.equal((await main('GET', `/store/statement?branch=${bb}`)).data.balance.money, 300);
 });
+
+test('الفوترة على الطلب كاملاً: سطر واحد بمبلغ شامل الضريبة وذهب صافي 24، والكشف بالطلب', async () => {
+  const cid = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('محل الفوترة بالطلب','م','0500002222','approved') returning id")).rows[0].id;
+  const m21 = (await pool.query("select id from materials where karat=21 and active limit 1")).rows[0].id;
+  const mk = async (t, q) => (await admin('POST', '/orders', { title: t, product_type: t, karat: 21, quantity: q, material_id: m21, customer_id: cid })).data.id;
+  const a = await mk('خاتم', 3), b = await mk('عقد', 2);
+  await pool.query("update orders set cart_ref='ORD-2026-888888', final_weight=8, final_gold_weight=8 where id = any($1::int[])", [[a, b]]);
+  const inv = (await admin('GET', `/finance/invoiceable?customer_id=${cid}`)).data;
+  assert.equal(inv.length, 1, 'الطلب مرة واحدة مهما كان عدد أصنافه');
+  assert.deepEqual([inv[0].key, inv[0].count, inv[0].pieces, inv[0].gold24], ['ORD-2026-888888', 2, 5, 14], 'الذهب المقترح: 16 جم عيار 21 = 14 صافي');
+  const r = await admin('POST', '/finance/invoices', { customer_id: cid, orders: [{ order_id: b, amount: '4000', gold24: '5' }] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(Number(r.data.total), 4000, 'الإجمالي شامل الضريبة كما أُدخل');
+  const lines = (await pool.query('select gold24::float g, covers, order_id from invoice_lines where invoice_id=$1', [r.data.id])).rows;
+  assert.equal(lines.length, 1);
+  assert.deepEqual([lines[0].g, lines[0].order_id, lines[0].covers.sort()], [5, a, [a, b].sort()]);
+  assert.equal((await admin('POST', '/finance/invoices', { customer_id: cid, orders: [{ order_id: a, amount: '10', gold24: '1' }] })).status, 409, 'مفوتر مسبقاً');
+  assert.equal((await admin('GET', `/finance/invoiceable?customer_id=${cid}`)).data.length, 0);
+  // الكشف: سطر الطلب بالمبلغ والذهب الصافي
+  const st = (await admin('GET', `/finance/customers/${cid}/statement`)).data;
+  const row = st.rows.find((x) => x.ref === r.data.invoice_no);
+  assert.deepEqual([row.money_debit, row.gold_debit, row.karat, row.pure_debit], [4000, 5, 24, 5]);
+  assert.match(row.description, /ORD-2026-888888/);
+  assert.equal(st.balance.money, 4000);
+  assert.equal(st.balance.pure, 5);
+});

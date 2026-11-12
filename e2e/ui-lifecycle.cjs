@@ -40,6 +40,7 @@ async function login(page, u, p) { await page.goto(BASE + '/login'); await page.
   await a.click('.modal button:has-text("حفظ")'); await a.waitForTimeout(600);
   await a.click('button:has-text("نقل للمرحلة التالية")'); await a.waitForTimeout(800);
   await a.click('text=إصدار فاتورة الأجور'); await a.waitForSelector('.modal');
+  await a.waitForSelector('.inv-order.on'); await a.fill('.inv-order.on input[placeholder="مثال: 4000"]', '1150');
   await a.click('.modal button:has-text("معاينة")'); await a.waitForSelector('.modal table');
   await a.screenshot({ path: SHOTS + 'invoice_new.png', fullPage: true });
   await a.click('.modal button:has-text("إصدار الفاتورة")'); await a.waitForSelector('text=فاتورة ضريبية');

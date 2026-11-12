@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { Router } from 'express';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm } from '../lib/auth.js';
-import { bad, conflict, notFound, int, str, oneOf, money } from '../lib/http.js';
+import { bad, conflict, notFound, int, str, oneOf, money, weight as W } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyCustomer } from '../lib/notify.js';
 import { sendXlsx } from '../lib/xlsx.js';
@@ -13,6 +13,7 @@ import QRCode from 'qrcode';
 import fs from 'node:fs';
 import path from 'node:path';
 import { orderThumb } from '../lib/orderThumb.js';
+import { groupInfo } from '../lib/orderGroups.js';
 import { UPLOAD_DIR } from '../lib/uploads.js';
 import { thumbnail } from '../lib/thumbs.js';
 
@@ -34,13 +35,14 @@ async function companySettings(db) {
 }
 
 async function invoicedOrders(db, orderIds) {
-  return (await db.query(`select distinct l.order_id from invoice_lines l join invoices i on i.id=l.invoice_id
-    where l.order_id = any($1::int[]) and l.kind='labor' and i.invoice_type='invoice' and i.status='issued'
+  return (await db.query(`select distinct x.id as order_id from invoice_lines l join invoices i on i.id=l.invoice_id
+      cross join lateral unnest(array_append(l.covers, l.order_id)) x(id)
+    where x.id = any($1::int[]) and l.kind='labor' and i.invoice_type='invoice' and i.status='issued'
       and not exists (select 1 from invoices c where c.credit_for_id=i.id)`, [orderIds])).rows.map((x) => x.order_id);
 }
 
 /** بناء بنود الفاتورة: أجور التصنيع (مفصولة) + أجور المراحل + بنود إضافية مستقلة (أحجار/خدمات) */
-export async function buildLines(db, customerId, orderIds, extra) {
+export async function buildLines(db, customerId, orderIds, extra, { allowEmpty = false } = {}) {
   const lines = [];
   const orders = orderIds.length ? (await db.query('select * from orders where id = any($1::int[]) order by id', [orderIds])).rows : [];
   if (orders.length !== orderIds.length) throw bad('طلب غير موجود');
@@ -78,10 +80,68 @@ export async function buildLines(db, customerId, orderIds, extra) {
       unit_price: money(e.unit_price, 'سعر الوحدة', { allowZero: true }),
     });
   }
-  if (!lines.length) throw bad('لا توجد بنود للفاتورة');
+  if (!lines.length && !allowEmpty) throw bad('لا توجد بنود للفاتورة');
   for (const l of lines) l.amount = (await db.query('select round($1::numeric * $2::numeric, 2)::text v', [l.qty, l.unit_price ?? 0])).rows[0].v;
   return lines;
 }
+
+/**
+ * الفوترة على الطلب كاملاً: سطر واحد لكل طلب (مهما كان عدد أصنافه) بمبلغ شامل الضريبة وذهب صافي عيار 24.
+ * entries: [{ order_id (أي صنف من الطلب), amount (شامل الضريبة), gold24 (جم صافي 24) }]
+ */
+export async function buildOrderLines(db, customerId, entries) {
+  const { vatRate } = await companySettings(db);
+  const rate = Number(vatRate) / 100;
+  const lines = [];
+  const seen = new Set();
+  for (const e of entries) {
+    const g = await groupInfo(db, int(e.order_id, 'الطلب'));
+    if (!g) throw notFound('الطلب غير موجود');
+    if (seen.has(g.lead)) throw bad('الطلب مكرر في الفاتورة');
+    seen.add(g.lead);
+    const items = (await db.query('select o.*, m.karat from orders o join materials m on m.id=o.material_id where o.id = any($1::int[]) order by o.id', [g.ids])).rows;
+    const ref = g.isGroup ? g.cart_ref : items[0].order_no;
+    for (const o of items) {
+      if (o.customer_id !== customerId) throw bad(`الطلب ${o.order_no} لا يخص هذا العميل`);
+      if (['cancelled', 'rejected', 'pending_review', 'quoted'].includes(o.status)) throw conflict(`الطلب ${o.order_no} غير قابل للفوترة`);
+    }
+    if ((await invoicedOrders(db, g.ids)).length) throw conflict(`الطلب ${ref} مفوتر مسبقاً`);
+    const total = Number(money(e.amount, `مبلغ الطلب ${ref} شامل الضريبة`));
+    const gold24 = e.gold24 == null || e.gold24 === '' ? '0' : W(e.gold24, `ذهب الطلب ${ref}`, { allowZero: true });
+    // المبلغ قبل الضريبة بحيث يكون الإجمالي شامل الضريبة مطابقاً لما أُدخل
+    let sub = Math.round((total / (1 + rate)) * 100) / 100;
+    for (const d of [0, 0.01, -0.01]) { const s = Math.round((sub + d) * 100) / 100; if (Math.round((s + Math.round(s * rate * 100) / 100) * 100) / 100 === total) { sub = s; break; } }
+    const pieces = items.reduce((a, o) => a + Number(o.quantity || 0), 0);
+    const kinds = [...new Set(items.map((o) => o.product_type || o.title))].slice(0, 4).join('، ');
+    lines.push({ order_id: g.lead, covers: g.ids, kind: 'labor', description: `الطلب ${ref} — ${items.length > 1 ? `${items.length} أصناف · ` : ''}${pieces} قطعة (${kinds})`,
+      qty: '1', unit: 'طلب', unit_price: sub.toFixed(2), amount: sub.toFixed(2), gold24 });
+  }
+  if (!lines.length) throw bad('اختر طلباً واحداً على الأقل');
+  return lines;
+}
+
+/** الطلبات القابلة للفوترة لعميل: مجمعة على الطلب الرئيسي، مع اقتراح الذهب الصافي عيار 24 من الوزن الفعلي */
+r.get('/invoiceable', requirePerm('invoices.manage'), async (req, res) => {
+  const cid = int(req.query.customer_id, 'العميل');
+  const rows = (await pool.query(`select o.id, o.order_no, o.cart_ref, o.title, o.product_type, o.quantity, o.status, o.branch_id, m.karat,
+      coalesce(o.final_gold_weight, o.final_weight, o.approx_weight)::float as w, o.final_weight is not null as final, o.labor_estimate::float as est
+    from orders o join materials m on m.id=o.material_id
+    where o.customer_id=$1 and o.status in ('in_production','ready','delivered') order by o.id`, [cid])).rows;
+  const done = new Set(await invoicedOrders(pool, rows.map((x) => x.id)));
+  const groups = new Map();
+  for (const x of rows) {
+    if (done.has(x.id)) continue;
+    const k = x.cart_ref || x.order_no;
+    if (!groups.has(k)) groups.set(k, { key: k, lead_id: x.id, items: [], branch_id: x.branch_id });
+    groups.get(k).items.push(x);
+  }
+  res.json([...groups.values()].map((g) => ({
+    key: g.key, order_id: g.lead_id, ids: g.items.map((x) => x.id), branch_id: g.branch_id, count: g.items.length, pieces: g.items.reduce((a, x) => a + Number(x.quantity || 0), 0),
+    title: [...new Set(g.items.map((x) => x.product_type || x.title))].slice(0, 4).join('، '), status: g.items[0].status,
+    all_final: g.items.every((x) => x.final),
+    gold24: +g.items.reduce((a, x) => a + (Number(x.w || 0) * Number(x.karat || 24)) / 24, 0).toFixed(3),
+  })));
+});
 
 /** فرع للعميل (يُتحقق أنه يخصه)؛ فارغ = الحساب الرئيسي */
 export async function branchOf(db, customerId, v) {
@@ -113,24 +173,30 @@ async function issueInvoice(db, req, { customerId, lines, notes, type = 'invoice
       previous_hash, invoice_hash, qr_tlv, notes, created_by, branch_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning *`,
     [no, icv, type, creditFor, customerId, issueDate, sums.sub, vatRate, sums.vat, sums.total, previousHash, hash, qr, notes, req.user.id, branchId])).rows[0];
   for (const l of lines) {
-    await db.query('insert into invoice_lines(invoice_id, order_id, kind, description, qty, unit, unit_price, amount) values ($1,$2,$3,$4,$5,$6,$7,$8)',
-      [inv.id, l.order_id, l.kind, l.description, l.qty, l.unit, l.unit_price ?? 0, l.amount]);
+    await db.query('insert into invoice_lines(invoice_id, order_id, kind, description, qty, unit, unit_price, amount, gold24, covers) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+      [inv.id, l.order_id, l.kind, l.description, l.qty, l.unit, l.unit_price ?? 0, l.amount, l.gold24 ?? null, l.covers || []]);
   }
   return inv;
 }
 
 r.post('/invoices/preview', requirePerm('invoices.manage'), async (req, res) => {
   const customerId = int(req.body.customer_id, 'العميل');
-  const lines = await buildLines(pool, customerId, (req.body.order_ids || []).map((x) => int(x)), req.body.extra_lines);
-  res.json({ lines });
+  const lines = Array.isArray(req.body.orders)
+    ? [...await buildOrderLines(pool, customerId, req.body.orders), ...await buildLines(pool, customerId, [], req.body.extra_lines, { allowEmpty: true })]
+    : await buildLines(pool, customerId, (req.body.order_ids || []).map((x) => int(x)), req.body.extra_lines);
+  res.json({ lines, vat_rate: (await companySettings(pool)).vatRate });
 });
 
 r.post('/invoices', requirePerm('invoices.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
     const customerId = int(req.body.customer_id, 'العميل');
-    const orderIds = (req.body.order_ids || []).map((x) => int(x));
+    const perOrder = Array.isArray(req.body.orders);
+    let orderIds = (req.body.order_ids || []).map((x) => int(x));
+    if (perOrder) orderIds = [...new Set((await Promise.all(req.body.orders.map(async (e) => (await groupInfo(db, int(e.order_id, 'الطلب')))?.ids || []))).flat())];
     for (const id of [...orderIds].sort((a, b) => a - b)) await db.query('select 1 from orders where id=$1 for update', [id]);
-    const lines = await buildLines(db, customerId, orderIds, req.body.extra_lines);
+    const lines = perOrder
+      ? [...await buildOrderLines(db, customerId, req.body.orders), ...await buildLines(db, customerId, [], req.body.extra_lines, { allowEmpty: true })]
+      : await buildLines(db, customerId, orderIds, req.body.extra_lines);
     const inv = await issueInvoice(db, req, { customerId, lines, notes: str(req.body.notes, 'ملاحظات'), branchId: await branchOf(db, customerId, req.body.branch_id) });
     for (const oid of orderIds) await db.query("insert into order_stage_log(order_id, event, user_id, note, customer_visible) values ($1,'status',$2,$3,true)", [oid, req.user.id, `صدرت الفاتورة ${inv.invoice_no}`]);
     await notifyCustomer(db, customerId, { kind: 'invoice', title: `صدرت فاتورة ${inv.invoice_no}`, body: `${inv.total} ر.س`, link: `/store/invoices/${inv.id}` });
@@ -147,7 +213,7 @@ r.post('/invoices/:id/credit', requirePerm('invoices.manage'), async (req, res) 
     if (!inv) throw notFound();
     if (inv.invoice_type !== 'invoice') throw conflict('لا يمكن إصدار إشعار دائن لإشعار دائن');
     if ((await db.query('select 1 from invoices where credit_for_id=$1', [inv.id])).rowCount) throw conflict('صدر إشعار دائن لهذه الفاتورة مسبقاً');
-    const lines = (await db.query('select order_id, kind, description, qty::text, unit, unit_price::text, amount::text from invoice_lines where invoice_id=$1', [inv.id])).rows;
+    const lines = (await db.query('select order_id, kind, description, qty::text, unit, unit_price::text, amount::text, gold24::text, covers from invoice_lines where invoice_id=$1', [inv.id])).rows;
     const cn = await issueInvoice(db, req, { customerId: inv.customer_id, lines: lines.map((l) => ({ ...l, description: `عكس: ${l.description}` })), notes: `إشعار دائن للفاتورة ${inv.invoice_no}: ${reason}`, type: 'credit_note', creditFor: inv.id, branchId: inv.branch_id });
     await audit(db, req, 'invoice.credit', 'invoice', inv.id, { reason, credit_note: cn.invoice_no });
     return cn;
@@ -167,7 +233,9 @@ export async function invoiceDetail(db, id) {
       (select invoice_no from invoices x where x.id=i.credit_for_id) as credit_for_no, (select invoice_no from invoices x where x.credit_for_id=i.id) as credited_by
     from invoices i join customers c on c.id=i.customer_id left join users u on u.id=i.created_by where i.id=$1`, [id])).rows[0];
   if (!inv) return null;
-  const lines = (await db.query(`select l.*, l.qty::text, l.unit_price::text, l.amount::text, o.order_no, o.title as order_title, o.size, o.notes as order_notes, o.quantity as order_qty,
+  const lines = (await db.query(`select l.*, l.qty::text, l.unit_price::text, l.amount::text, l.gold24::text as gold24,
+      case when cardinality(l.covers) > 0 then coalesce(o.cart_ref, o.order_no) end as order_ref,
+      case when cardinality(l.covers) > 0 then (select sum(x.quantity) from orders x where x.id = any(l.covers)) end as covers_qty, o.order_no, o.title as order_title, o.size, o.notes as order_notes, o.quantity as order_qty,
       coalesce(o.final_weight, o.approx_weight)::text as weight, o.final_weight is not null as weight_final, m.karat, coalesce(o.color, m.color) as color, ${orderThumb()} as thumb
     from invoice_lines l left join orders o on o.id=l.order_id left join materials m on m.id=o.material_id where invoice_id=$1 order by l.id`, [id])).rows;
   const payments = (await db.query('select payment_no, kind, amount::text, method, received_at from payments where invoice_id=$1 order by id', [id])).rows;

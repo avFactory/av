@@ -14,11 +14,18 @@ export default function Invoices() {
   const [orders, setOrders] = useState([]);
   const [preview, setPreview] = useState(null);
   const [run, busy] = useAction();
-  useEffect(() => { if (sp.get('new')) setF({ customer_id: sp.get('customer') || '', order_ids: sp.get('order') ? [Number(sp.get('order'))] : [], extra_lines: [] }); }, [sp]);
+  useEffect(() => { if (sp.get('new')) setF({ customer_id: sp.get('customer') || '', orders: [], pick: sp.get('order') ? Number(sp.get('order')) : null, extra_lines: [] }); }, [sp]);
+  // الطلبات القابلة للفوترة مجمعة على الطلب الرئيسي (مهما كان عدد الأصناف) مع اقتراح الذهب الصافي عيار 24
   useEffect(() => {
     if (!f?.customer_id) { setOrders([]); return; }
-    api.get(`/orders${qs({ customer_id: f.customer_id })}`).then((r) => setOrders(r.filter((o) => ['in_production', 'ready', 'delivered'].includes(o.status))));
-  }, [f?.customer_id]);
+    api.get(`/finance/invoiceable${qs({ customer_id: f.customer_id })}`).then((r) => {
+      setOrders(r);
+      if (f.pick) {
+        const g = r.find((x) => (x.ids || []).includes(f.pick));
+        if (g) setF((cur) => ({ ...cur, pick: null, orders: [{ order_id: g.order_id, amount: '', gold24: String(g.gold24 || '') }] }));
+      }
+    }).catch(() => setOrders([]));
+  }, [f?.customer_id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setPreview(null); }, [f]);
   const addLine = () => setF({ ...f, extra_lines: [...f.extra_lines, { kind: 'stones', description: '', qty: '1', unit: 'وحدة', unit_price: '' }] });
   const updLine = (i, k, v) => setF({ ...f, extra_lines: f.extra_lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)) });
@@ -27,7 +34,7 @@ export default function Invoices() {
   return (
     <Page title="الفواتير" subtitle="فواتير أجور التصنيع فقط مع ضريبة القيمة المضافة" actions={<>
       <a className="btn btn-outline-secondary" href="/api/finance/reports/revenue.xlsx">تصدير Excel</a>
-      {can('invoices.manage') && <Btn onClick={() => setF({ customer_id: '', order_ids: [], extra_lines: [] })}>فاتورة جديدة</Btn>}
+      {can('invoices.manage') && <Btn onClick={() => setF({ customer_id: '', orders: [], extra_lines: [] })}>فاتورة جديدة</Btn>}
     </>}>
       {!data ? <Loader /> : <div className="card"><Table rows={data} onRow={(i) => nav(`/admin/invoices/${i.id}`)} columns={[
         ['الرقم', (i) => <b>{i.invoice_no}</b>], ['النوع', (i) => (i.invoice_type === 'invoice' ? 'فاتورة' : <Badge tone="warn">إشعار دائن</Badge>)], ['العميل', 'shop_name'], ['التاريخ', (i) => fmtDate(i.issue_date)],
@@ -36,9 +43,32 @@ export default function Invoices() {
       ]} /></div>}
       <Modal open={!!f} onClose={() => setF(null)} title="فاتورة أجور تصنيع" wide>
         {f && <>
-          <Field label="العميل"><Select value={f.customer_id} onChange={(e) => setF({ ...f, customer_id: e.target.value, order_ids: [] })} placeholder="—" options={(lookups?.customers || []).map((c) => [c.id, c.shop_name])} /></Field>
-          <Field label="الطلبات (أجور التصنيع تحسب تلقائياً)">
-            <div className="chips">{orders.map((o) => { const on = f.order_ids.includes(o.id); return <button type="button" key={o.id} className={`chip ${on ? 'on' : ''}`} onClick={() => setF({ ...f, order_ids: on ? f.order_ids.filter((x) => x !== o.id) : [...f.order_ids, o.id] })}>{o.order_no} · {o.title}</button>; })}{!orders.length && <span className="muted small">لا توجد طلبات</span>}</div>
+          <Field label="العميل"><Select value={f.customer_id} onChange={(e) => setF({ ...f, customer_id: e.target.value, orders: [] })} placeholder="—" options={(lookups?.customers || []).map((c) => [c.id, c.shop_name])} /></Field>
+          <Field label="الطلبات — لكل طلب: المبلغ شامل الضريبة، والذهب صافي عيار 24">
+            <div className="inv-orders">
+              {orders.map((o) => {
+                const sel = f.orders.find((x) => x.order_id === o.order_id);
+                const toggle = () => setF({ ...f, orders: sel ? f.orders.filter((x) => x.order_id !== o.order_id) : [...f.orders, { order_id: o.order_id, amount: '', gold24: String(o.gold24 || '') }] });
+                const upd = (k, v) => setF({ ...f, orders: f.orders.map((x) => (x.order_id === o.order_id ? { ...x, [k]: v } : x)) });
+                const num = (v) => String(v).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
+                return (
+                  <div key={o.key} className={`inv-order${sel ? ' on' : ''}`}>
+                    <label className="inv-order-h">
+                      <input type="checkbox" checked={!!sel} onChange={toggle} />
+                      <span><b dir="ltr">{o.key}</b> <span className="small text-body-secondary">— {o.count > 1 ? `${o.count} أصناف · ` : ''}{o.pieces} قطعة · {o.title}</span>
+                        {!o.all_final && <span className="small text-warning"> · الوزن النهائي لم يُسجل (الذهب المقترح تقريبي)</span>}</span>
+                    </label>
+                    {sel && (
+                      <div className="inv-order-f">
+                        <Field label="المبلغ شامل الضريبة (ر.س) *"><Input dir="ltr" inputMode="decimal" value={sel.amount} onChange={(e) => upd('amount', num(e.target.value))} placeholder="مثال: 4000" autoFocus /></Field>
+                        <Field label="الذهب صافي عيار 24 (جم)" hint={`المقترح من الوزن الفعلي: ${o.gold24} جم`}><Input dir="ltr" inputMode="decimal" value={sel.gold24} onChange={(e) => upd('gold24', num(e.target.value))} /></Field>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {!orders.length && <span className="muted small">{f.customer_id ? 'لا توجد طلبات غير مفوترة لهذا العميل' : 'اختر العميل'}</span>}
+            </div>
           </Field>
           <Field label="بنود مستقلة إضافية (ألماس مخبري / أحجار / خدمات) - منفصلة عن أجور التصنيع">
             {f.extra_lines.map((l, i) => (
@@ -56,12 +86,12 @@ export default function Invoices() {
           <Field label="ملاحظات"><Input value={f.notes || ''} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
           {preview && (
             <div>
-              <Table rows={preview.lines} columns={[['البند', 'description'], ['الكمية', 'qty'], ['الوحدة', 'unit'], ['السعر', (l) => fmtMoney(l.unit_price)], ['المبلغ', (l) => fmtMoney(l.amount)]]} />
+              <Table rows={preview.lines} columns={[['البند', 'description'], ['الكمية', 'qty'], ['قبل الضريبة', (l) => fmtMoney(l.amount)], ['شامل الضريبة', (l) => fmtMoney(Number(l.amount) * (1 + vat / 100))], ['ذهب صافي 24', (l) => (l.gold24 != null ? `${Number(l.gold24)} جم` : '—')]]} />
               <div className="hrow gap end mt"><span>المجموع {fmtMoney(sub)}</span><span>الضريبة {vat}% ≈ {fmtMoney(sub * vat / 100)}</span><b>الإجمالي ≈ {fmtMoney(sub * (1 + vat / 100))}</b></div>
             </div>
           )}
           <div className="hrow gap end">
-            <Btn kind="ghost" loading={busy} onClick={() => run(async () => setPreview(await api.post('/finance/invoices/preview', f)))}>معاينة</Btn>
+            <Btn kind="ghost" loading={busy} disabled={!f.orders.length && !f.extra_lines.length} onClick={() => run(async () => setPreview(await api.post('/finance/invoices/preview', f)))}>معاينة</Btn>
             <Btn loading={busy} disabled={!preview} onClick={() => run(async () => { const inv = await api.post('/finance/invoices', f); setF(null); reload(); nav(`/admin/invoices/${inv.id}`); }, 'صدرت الفاتورة')}>إصدار الفاتورة</Btn>
           </div>
         </>}

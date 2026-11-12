@@ -15,6 +15,14 @@ export async function statementRows(db, customerId, scope = 'all') {
       coalesce(sum(l.amount) filter (where l.kind not in ('labor','stage_labor','stones')), 0)::text as other,
       (select x.invoice_no from invoices x where x.id=i.credit_for_id) as credit_for
     from invoices i left join invoice_lines l on l.invoice_id=i.id where i.customer_id=$1 and i.status='issued' and ${B('i.branch_id')} group by i.id`);
+  // أسطر الفوترة على الطلب (مبلغ + ذهب صافي 24)
+  const orderLines = await q(`select l.id, l.invoice_id, l.amount::text, l.gold24::text, l.order_id, l.covers, l.description, i.invoice_no, i.invoice_type, i.issue_date as at, i.vat_rate::text,
+      o.order_no, coalesce(o.cart_ref, o.order_no) as ref
+    from invoice_lines l join invoices i on i.id=l.invoice_id left join orders o on o.id=l.order_id
+    where i.customer_id=$1 and i.status='issued' and ${B('i.branch_id')} and l.gold24 is not null`);
+  const goldByInvoice = new Set();
+  for (const l of orderLines) for (const id of [l.order_id, ...(l.covers || [])]) goldByInvoice.add(id);
+  const perOrderInv = new Set(orderLines.map((l) => l.invoice_id));
   const payments = await q(`select id, payment_no, kind, amount::text, method, reference, received_at as at from payments where customer_id=$1 and ${B('branch_id')}`);
   // الذهب: تسليم الطلبات (مباع للعميل) والذهب المستلم منه على الطلبات — بدون الحركات المعكوسة
   const gold = await q(`select g.id, g.kind, g.weight::text, g.created_at as at, m.karat, o.id as order_id, o.order_no
@@ -27,7 +35,27 @@ export async function statementRows(db, customerId, scope = 'all') {
   const PAY = { cash: 'نقداً', transfer: 'تحويل', card: 'بطاقة', cheque: 'شيك', other: 'أخرى' };
   const ENT = { opening: 'رصيد افتتاحي', gold_payment: 'سداد ذهب', money_adjust: 'تسوية مبالغ', gold_adjust: 'تسوية ذهب' };
   const rows = [];
+  for (const l of orderLines) {
+    const credit = l.invoice_type === 'credit_note';
+    const total = r2(Number(l.amount) + Math.round(Number(l.amount) * Number(l.vat_rate)) / 100);
+    rows.push({ at: l.at, type: credit ? 'credit_note' : 'invoice', ref: l.invoice_no, link: { kind: 'invoice', id: l.invoice_id }, karat: 24,
+      description: `${credit ? 'إشعار دائن — ' : ''}الطلب ${l.ref || l.order_no || ''} — مبلغ شامل الضريبة وذهب صافي عيار 24`,
+      labor: credit ? -r2(l.amount) : r2(l.amount),
+      money_debit: credit ? 0 : total, money_credit: credit ? total : 0,
+      gold_debit: credit ? 0 : r4(l.gold24), gold_credit: credit ? r4(l.gold24) : 0 });
+  }
   for (const i of invoices) {
+    if (perOrderInv.has(i.id)) {
+      // فاتورة بالطلب: أسطر الطلبات أعلاه، وتبقى هنا البنود الإضافية فقط (ألماس/خدمات) إن وجدت
+      const extra = r2(Number(i.stones) + Number(i.other));
+      if (!extra) continue;
+      const credit = i.invoice_type === 'credit_note';
+      const vat = Math.round(extra * 15) / 100;
+      rows.push({ at: i.at, type: credit ? 'credit_note' : 'invoice', ref: i.invoice_no, link: { kind: 'invoice', id: i.id },
+        description: `${credit ? 'إشعار دائن — ' : ''}بنود إضافية في الفاتورة (ألماس مخبري/خدمات)`, stones: credit ? -r2(i.stones) : r2(i.stones),
+        money_debit: credit ? 0 : r2(extra + vat), money_credit: credit ? r2(extra + vat) : 0 });
+      continue;
+    }
     const credit = i.invoice_type === 'credit_note';
     const parts = [Number(i.labor) && `أجور ${r2(i.labor)}`, Number(i.stones) && `ألماس مخبري ${r2(i.stones)}`, Number(i.other) && `أخرى ${r2(i.other)}`, Number(i.vat_amount) && `ضريبة ${r2(i.vat_amount)}`].filter(Boolean);
     rows.push({ at: i.at, type: credit ? 'credit_note' : 'invoice', ref: i.invoice_no, link: { kind: 'invoice', id: i.id },
@@ -43,6 +71,7 @@ export async function statementRows(db, customerId, scope = 'all') {
   }
   for (const g of gold) {
     const sold = g.kind === 'delivery';
+    if (sold && goldByInvoice.has(g.order_id)) continue; // الذهب محسوب في فاتورة الطلب (صافي 24)
     rows.push({ at: g.at, type: sold ? 'gold_sale' : 'gold_in', ref: g.order_no, link: { kind: 'order', id: g.order_id }, karat: g.karat,
       description: sold ? `ذهب الطلب ${g.order_no} (مسلَّم)` : `ذهب مستلم من العميل على الطلب ${g.order_no}`,
       gold_debit: sold ? r4(g.weight) : 0, gold_credit: sold ? 0 : r4(g.weight) });

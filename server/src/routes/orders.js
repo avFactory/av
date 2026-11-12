@@ -200,7 +200,7 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
   const designs = await many('select d.*, u.full_name as sent_by_name from design_reviews d left join users u on u.id=d.sent_by where order_id=$1 order by id desc', [id]);
   const stones = await many(`select m.id, m.kind, m.carats::text, m.count, m.created_at, l.lot_no, l.stone_type, w.full_name as worker_name
     from stone_movements m join stone_lots l on l.id=m.lot_id left join users w on w.id=m.worker_id where m.order_id=$1 order by m.id`, [id]);
-  const invoices = await many(`select distinct i.id, i.invoice_no, i.total::text, i.status, i.invoice_type from invoice_lines l join invoices i on i.id=l.invoice_id where l.order_id=$1`, [id]);
+  const invoices = await many(`select distinct i.id, i.invoice_no, i.total::text, i.status, i.invoice_type from invoice_lines l join invoices i on i.id=l.invoice_id where l.order_id=$1 or $1 = any(l.covers)`, [id]);
   const stonesG = await prod.embeddedStonesGrams(pool, id);
   const labor = await resolveLabor(pool, { customer_id: o.customer_id, product_id: o.product_id, product_type: o.product_type });
   // بنود نفس الطلب (من السلة أو بعد التقسيم)

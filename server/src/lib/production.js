@@ -156,7 +156,7 @@ export async function advance(db, order, userId, opts = {}) {
   if (cur.kind === 'invoicing' && order.customer_id) {
     const inv = await db.query(
       `select 1 from invoice_lines l join invoices i on i.id=l.invoice_id
-       where l.order_id=$1 and i.status='issued' and i.invoice_type='invoice' limit 1`, [order.id]);
+       where (l.order_id=$1 or $1 = any(l.covers)) and i.status='issued' and i.invoice_type='invoice' limit 1`, [order.id]);
     if (!inv.rowCount && !opts.force) throw conflict('يجب إصدار فاتورة أجور التصنيع قبل المتابعة');
   }
   if (cur.kind === 'delivery_ready') throw conflict('استخدم إجراء "تسليم الطلب للعميل" لإتمام التسليم');

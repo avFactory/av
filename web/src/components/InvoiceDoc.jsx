@@ -24,10 +24,12 @@ export default function InvoiceDoc({ data }) {
   const rate = Number(i.vat_rate);
   const paid = payments.reduce((s, p) => s + (p.kind === 'refund' ? -1 : 1) * Number(p.amount), 0);
   const methods = [...new Set(payments.map((p) => PAY[p.method] || p.method))];
-  const orders = [...new Set(lines.map((l) => l.order_no).filter(Boolean))];
-  const weight = lines.reduce((s, l) => s + Number(l.weight || 0), 0);
+  const orders = [...new Set(lines.map((l) => l.order_ref || l.order_no).filter(Boolean))];
+  // الفوترة على الطلب: الذهب صافي عيار 24 كما في الفاتورة
+  const perOrder = lines.some((l) => l.gold24 != null);
+  const weight = perOrder ? lines.reduce((s, l) => s + Number(l.gold24 || 0), 0) : lines.reduce((s, l) => s + Number(l.weight || 0), 0);
   // عدد القطع من كمية كل طلب (مرة واحدة لكل طلب) — كمية البند قد تكون جرامات
-  const pieces = [...new Map(lines.filter((l) => l.order_no).map((l) => [l.order_no, Number(l.order_qty || 0)])).values()].reduce((a, b) => a + b, 0);
+  const pieces = [...new Map(lines.filter((l) => l.order_no).map((l) => [l.order_ref || l.order_no, Number(l.covers_qty ?? l.order_qty ?? 0)])).values()].reduce((a, b) => a + b, 0);
   return (
     <div className="inv-doc">
       <div className="inv-top">
@@ -85,7 +87,7 @@ export default function InvoiceDoc({ data }) {
           <div className="inv-h u">تفاصيل الطلب:</div>
           {orders.length > 0 && <div className="inv-kv"><span>رقم الطلب:</span><span dir="ltr">{orders.join('، ')}</span></div>}
           {pieces > 0 && <div className="inv-kv"><span>عدد القطع:</span><span>{pieces}</span></div>}
-          {weight > 0 && <div className="inv-kv"><span>إجمالي الوزن:</span><span><span dir="ltr">{w3(weight)}</span> جم</span></div>}
+          {weight > 0 && <div className="inv-kv"><span>{perOrder ? 'الذهب صافي عيار 24:' : 'إجمالي الوزن:'}</span><span><span dir="ltr">{w3(weight)}</span> جم</span></div>}
           <div className="inv-kv"><span>البيان:</span><span>أجور تصنيع (لا تشمل قيمة الذهب)</span></div>
         </div>
       </div>
@@ -102,18 +104,19 @@ export default function InvoiceDoc({ data }) {
                     {l.thumb_data ? <img src={l.thumb_data} alt="" /> : <span className="inv-noimg">◇</span>}
                     <div>
                       <div className="inv-pname">{l.description || l.order_title}</div>
-                      {l.weight && <div className="inv-gold">الوزن: <span dir="ltr">{w3(l.weight)}</span> جم</div>}
-                      <div className="inv-muted">{KIND[l.kind] || l.kind}{l.order_no ? <> · <span dir="ltr">{l.order_no}</span></> : ''}</div>
+                      {l.gold24 != null ? <div className="inv-gold">الذهب صافي عيار 24: <span dir="ltr">{w3(l.gold24)}</span> جم</div>
+                        : l.weight && <div className="inv-gold">الوزن: <span dir="ltr">{w3(l.weight)}</span> جم</div>}
+                      <div className="inv-muted">{KIND[l.kind] || l.kind}{(l.order_ref || l.order_no) ? <> · <span dir="ltr">{l.order_ref || l.order_no}</span></> : ''}</div>
                     </div>
                   </div>
-                  {(l.karat || l.size) && (
+                  {l.gold24 == null && (l.karat || l.size) && (
                     <div className="inv-opts">
                       <div className="inv-h u">خيارات المنتج</div>
                       {l.karat && <div className="inv-kv"><span>اللون</span><span>ذهب عيار {l.karat} {COLORS[l.color] || ''}</span></div>}
                       {l.size && <div className="inv-kv"><span>المقاس</span><span>{l.size}</span></div>}
                     </div>
                   )}
-                  {l.order_notes && <div className="inv-opts"><div className="inv-h u">ملاحظة المنتج</div><div className="inv-muted">{l.order_notes}</div></div>}
+                  {l.gold24 == null && l.order_notes && <div className="inv-opts"><div className="inv-h u">ملاحظة المنتج</div><div className="inv-muted">{l.order_notes}</div></div>}
                 </td>
                 <td className="inv-n">{Number(l.qty)}{l.unit && l.unit !== 'قطعة' ? <div className="inv-muted">{l.unit}</div> : null}</td>
                 <td className="inv-n">
