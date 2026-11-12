@@ -835,3 +835,8 @@ test('تخصيص المنتج: الافتراضي للجميع، أو لعملا
   assert.equal((await call('PUT', `/catalog/products/${priv.id}`, null, f)).status, 200);
   assert.ok((await sees(other)).includes(priv.id));
 });
+
+test('نوع القطعة طقم: رقم المنتج TKM000001', async () => {
+  assert.ok((await call('GET', '/catalog/product-types')).data.some((t) => t.name === 'طقم' && t.prefix === 'TKM'));
+  assert.equal((await call('GET', `/catalog/next-sku?type=${encodeURIComponent('طقم')}`)).data.sku, 'TKM000001');
+});
