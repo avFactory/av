@@ -4,6 +4,7 @@ import { Card, Loader, Stat, Table, useFetch } from '../../ui.jsx';
 
 export default function Dashboard() {
   const { data: s } = useFetch('/admin/stats', { live: ['orders', 'gold_ledger', 'settlements'] });
+  const { data: cg } = useFetch('/admin/customer-gold', { live: ['gold_ledger'] });
   if (!s) return <Loader />;
   const maxStage = Math.max(1, ...s.byStage.map((x) => x.n));
   const mats = {};
@@ -26,7 +27,7 @@ export default function Dashboard() {
         <Stat label="في الخامات" value={fmtW(s.gold_in_findings)} unit="جم" to="/admin/findings" sub="سلاسل، أقفال، كور سحب…" />
         <Stat label="في المخزون (الخزنة)" value={fmtW(s.gold_in_vault)} unit="جم" to="/admin/inventory" sub={`تحت التشغيل ${fmtW(s.gold_in_orders)} · بقايا ${fmtW(s.gold_scrap)}`} />
         <Stat label="منتجات جاهزة" value={fmtW(s.gold_finished)} unit="جم" />
-        <Stat label="العجز الطبيعي" value={fmtW(s.normal_loss)} unit="جم" tone="ok" to="/admin/reports" />
+        <Stat label="الذهب لدى الجملة" value={cg ? fmtW(cg.total) : '…'} unit="جم" tone="gold" to="/admin/customer-gold" sub={cg ? `صافي عيار 24 · ${cg.count} عميل` : ''} />
         <Stat label="العجز غير الطبيعي" value={fmtW(s.abnormal_loss)} unit="جم" tone="bad" to="/admin/reports" sub={Number(s.pending_loss) ? `${fmtW(s.pending_loss)} جم تحت المراجعة` : ''} />
       </div>
       <h3 className="mb">المالية (أجور التصنيع فقط)</h3>

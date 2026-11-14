@@ -13,6 +13,7 @@ import { sendXlsx } from '../lib/xlsx.js';
 import { listBranches, createBranch, updateBranch, phoneKey } from '../lib/branches.js';
 import { autoShortName, cleanShortName } from '../lib/shortName.js';
 import { getPricing, savePricing, rotateToken } from '../lib/pricingSheet.js';
+import { statementRows } from '../lib/statement.js';
 
 const r = Router();
 
@@ -76,6 +77,25 @@ r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
       sum(weight) filter (where kind='normal_loss')::text normal, sum(weight) filter (where kind in ('abnormal_pending','abnormal_loss'))::text abnormal
     from gold_ledger where created_at > now() - interval '30 days' and kind in ('normal_loss','abnormal_pending','abnormal_loss') group by 1 order by 1`);
   res.json({ ...s, byStage, byMaterial, lossTrend });
+});
+
+/** الذهب لدى عملاء الجملة: رصيد الذهب الصافي (عيار 24) والمبالغ لكل عميل من كشف حسابه */
+r.get('/customer-gold', requirePerm('dashboard.view', 'finance.view', 'customers.view'), async (_req, res) => {
+  // العملاء الذين لهم حركات (فواتير، تسليم ذهب، قيود، مدفوعات)
+  const cs = await many(`select c.id, c.shop_name, c.phone, t.name as tier_name from customers c left join customer_tiers t on t.id=c.tier_id
+    where exists (select 1 from orders o where o.customer_id=c.id and o.status in ('delivered','ready','in_production'))
+       or exists (select 1 from customer_entries e where e.customer_id=c.id)
+       or exists (select 1 from invoices i where i.customer_id=c.id) order by c.shop_name`);
+  const rows = [];
+  for (const c of cs) {
+    let pure = 0, money = 0;
+    for (const r of await statementRows(pool, c.id, 'all')) { pure += r.pure_debit - r.pure_credit; money += r.money_debit - r.money_credit; }
+    pure = Math.round(pure * 10000) / 10000; money = Math.round(money * 100) / 100;
+    if (Math.abs(pure) > 0.00005 || Math.abs(money) > 0.005) rows.push({ ...c, pure, money });
+  }
+  rows.sort((a, b) => b.pure - a.pure);
+  const total = Math.round(rows.filter((r) => r.pure > 0).reduce((a, r) => a + r.pure, 0) * 10000) / 10000;
+  res.json({ total, count: rows.filter((r) => r.pure > 0).length, rows });
 });
 
 // ------------------------------------------------------------------ الموظفون

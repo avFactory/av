@@ -179,3 +179,12 @@ test('الفوترة على الطلب كاملاً: سطر واحد بمبلغ 
   assert.equal(st.balance.money, 4000);
   assert.equal(st.balance.pure, 5);
 });
+
+test('الذهب لدى الجملة: مجموع رصيد الذهب الصافي للعملاء من كشوفهم', async () => {
+  const r = await admin('GET', '/admin/customer-gold');
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const c = r.data.rows.find((x) => x.shop_name === 'محل الفوترة بالطلب');
+  assert.ok(c, 'العميل في القائمة');
+  assert.equal(c.pure, 5, 'رصيده 5 جم صافي من فاتورة الطلب');
+  assert.equal(r.data.total, Math.round(r.data.rows.filter((x) => x.pure > 0).reduce((a, x) => a + x.pure, 0) * 10000) / 10000);
+});

@@ -40,6 +40,7 @@ const Findings = L(() => import('./pages/admin/Findings.jsx'));
 const Schedule = L(() => import('./pages/sup/Schedule.jsx'));
 const Shortages = L(() => import('./pages/sup/Shortages.jsx'));
 const CustomerStatement = L(() => import('./pages/admin/CustomerStatement.jsx'));
+const CustomerGold = L(() => import('./pages/admin/CustomerGold.jsx'));
 const Submissions = L(() => import('./pages/admin/Submissions.jsx'));
 const StoreStatement = L(() => import('./pages/store/Statement.jsx'));
 const Products = L(() => import('./pages/admin/Products.jsx'));
@@ -130,6 +131,7 @@ export default function App() {
           <Route path="/admin/inventory" element={S(<Inventory />, ['inventory.view'])} />
           <Route path="/admin/stones" element={S(<Stones />, ['stones.view'])} />
           <Route path="/admin/customers/:id/statement" element={S(<CustomerStatement />, ['finance.view', 'customers.view'])} />
+          <Route path="/admin/customer-gold" element={S(<CustomerGold />, ['dashboard.view', 'finance.view', 'customers.view'])} />
           <Route path="/admin/submissions" element={S(<Submissions />, ['finance.view'])} />
           <Route path="/sup/schedule" element={S(<Schedule />, ['schedule.view'])} />
           <Route path="/sup/shortages" element={S(<Shortages />, ['orders.view', 'custody.issue', 'custody.receive'])} />
