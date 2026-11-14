@@ -62,6 +62,8 @@ const n = (x) => Number(x);
 before(async () => {
   await pool.query('drop schema public cascade; create schema public;');
   await migrate({ log: false });
+  // اختبارات قديمة بكميات صغيرة: أقل كمية للطلب 1 (التلقائي 5 و2 له اختبار مستقل)
+  await pool.query(`insert into settings(key, value) values ('min_order', '{"gold":1,"diamond":1}') on conflict (key) do update set value=excluded.value`);
   server = createApp().listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
   await admin.login('admin', 'Admin#2026pass');

@@ -835,8 +835,8 @@ r.put('/lead-times', requirePerm('settings.manage'), async (req, res) => {
 
 r.put('/settings', requirePerm('settings.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
-    const allowed = ['company', 'vat_rate', 'weight_decimals', 'abnormal_threshold', 'currency', 'notify_channels', 'diamond_worker_nos', 'capacity'];
-    for (const [k, v] of Object.entries(req.body)) {
+    const allowed = ['company', 'vat_rate', 'weight_decimals', 'abnormal_threshold', 'currency', 'notify_channels', 'diamond_worker_nos', 'capacity', 'min_order'];
+    for (let [k, v] of Object.entries(req.body)) { // eslint-disable-line prefer-const
       if (!allowed.includes(k)) continue;
       if (k === 'weight_decimals' && ![3, 4].includes(Number(v))) throw bad('دقة الوزن 3 أو 4 خانات');
       if (k === 'vat_rate' && !(Number(v) >= 0 && Number(v) < 100)) throw bad('نسبة الضريبة غير صالحة');
@@ -845,6 +845,11 @@ r.put('/settings', requirePerm('settings.manage'), async (req, res) => {
         if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad('حدود الطاقة غير صالحة');
         for (const key of Object.keys(v)) if (!['orders', 'grams', 'pieces'].includes(key)) throw bad('حدود الطاقة غير صالحة');
         for (const x of Object.values(v)) if (!(x === '' || x == null || (Number(x) > 0 && Number(x) < 1e7))) throw bad('حد الطاقة يجب أن يكون رقماً موجباً أو فارغاً');
+      }
+      if (k === 'min_order') {
+        if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad('أقل كمية للطلب غير صالحة');
+        for (const key of ['gold', 'diamond']) if (!(Number.isInteger(Number(v[key])) && Number(v[key]) >= 1 && Number(v[key]) <= 10000)) throw bad('أقل كمية للطلب يجب أن تكون رقماً صحيحاً من 1 فأكثر');
+        v = { gold: Number(v.gold), diamond: Number(v.diamond) };
       }
       if (k === 'diamond_worker_nos' && (!Array.isArray(v) || v.length > 200 || v.some((x) => typeof x !== 'string' || x.length > 30))) throw bad('أرقام عمال الألماس المخبري غير صالحة');
       const before = (await db.query('select value from settings where key=$1', [k])).rows[0]?.value;

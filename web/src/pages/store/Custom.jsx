@@ -3,15 +3,18 @@ import { putFiles } from '../../fileStore.js';
 import { useNavigate } from 'react-router-dom';
 import { COLORS } from '../../format.js';
 import { useCart, OrderGate } from '../../components/StoreLayout.jsx';
+import { useAuth } from '../../auth.jsx';
 import BullionPick from '../../components/BullionPick.jsx';
 import { Btn, Card, Field, FilePicker, Input, Page, Textarea, WeightInput, useAction, useFetch, useToast } from '../../ui.jsx';
 
 /** اطلب تصميمك: المواصفات مع صورة أو PDF للتصميم */
 export default function Custom() {
   const { approved, cart, setCart } = useCart();
+  const { lookups } = useAuth();
+  const minCustom = lookups?.settings?.min_order?.diamond ?? 2;
   const toast = useToast();
   const nav = useNavigate();
-  const [f, setF] = useState({ product_type: '', title: '', karat: '21', color: 'yellow', approx_weight: '', size: '', quantity: '1', due_date: '', notes: '' });
+  const [f, setF] = useState({ product_type: '', title: '', karat: '21', color: 'yellow', approx_weight: '', size: '', quantity: '', due_date: '', notes: '' });
   const [files, setFiles] = useState({ reference: [], sketch: [], model: [] });
   const [run, busy] = useAction();
   const set = (k) => (e) => setF({ ...f, [k]: e?.target ? e.target.value : e });
@@ -19,6 +22,7 @@ export default function Custom() {
   const submit = (e) => {
     e.preventDefault();
     if (!f.product_type.trim()) return toast('حدد نوع القطعة', 'bad');
+    if (f.quantity !== '' && Number(f.quantity) < minCustom) return toast(`أقل كمية للطلب الخاص ${minCustom} قطع`, 'bad');
     run(async () => {
       const key = `custom-${Date.now()}`;
       const all = [...files.reference.map((x) => ({ file: x, kind: 'reference' })), ...files.sketch.map((x) => ({ file: x, kind: 'sketch' })), ...files.model.map((x) => ({ file: x, kind: 'model' }))];
@@ -26,7 +30,7 @@ export default function Custom() {
       const fields = {};
       Object.entries(f).forEach(([k, v]) => { if (k !== 'diamonds' && k !== 'has_diamonds' && !k.startsWith('show_')) fields[k] = v ?? ''; });
       fields.diamonds = JSON.stringify(f.has_diamonds ? (f.diamonds || []).filter((d) => d.lot_id) : []);
-      setCart([...cart, { kind: 'custom', key, name: f.title || `تصميم خاص - ${f.product_type}`, karat: f.karat, color: f.color, size: f.size, quantity: Number(f.quantity) || 1, fields, file_count: all.length }]);
+      setCart([...cart, { kind: 'custom', key, name: f.title || `تصميم خاص - ${f.product_type}`, karat: f.karat, color: f.color, size: f.size, quantity: Number(f.quantity || minCustom), min: minCustom, fields, file_count: all.length }]);
       nav('/store/cart');
     }, 'تمت إضافة طلب التصميم للسلة');
   };
@@ -53,7 +57,7 @@ export default function Custom() {
             <Field label="اللون"><div className="chips">{Object.entries(COLORS).map(([k, v]) => <button type="button" key={k} className={`chip ${f.color === k ? 'on' : ''}`} onClick={() => setF({ ...f, color: k })}>{v}</button>)}</div></Field>
             <Field label="الوزن التقريبي (جم)"><WeightInput value={f.approx_weight} onChange={set('approx_weight')} /></Field>
             <Field label="المقاس"><Input value={f.size} onChange={set('size')} /></Field>
-            <Field label="الكمية"><Input inputMode="numeric" value={f.quantity} onChange={set('quantity')} /></Field>
+            <Field label="الكمية" hint={`أقل كمية للطلب الخاص: ${minCustom} قطع`}><Input inputMode="numeric" value={f.quantity === '' ? String(minCustom) : f.quantity} onChange={set('quantity')} /></Field>
             <Field label="موعد التسليم المطلوب"><Input type="date" value={f.due_date} onChange={set('due_date')} /></Field>
           </div>
           <div className="mt"><FilePicker label="ارفع صورة أو PDF للتصميم" accept="image/*,.pdf" value={files.reference} onChange={(v) => setFiles({ ...files, reference: v })} hint="يمكنك إضافة أكثر من ملف (حتى 20)" /></div>

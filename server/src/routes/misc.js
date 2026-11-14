@@ -10,6 +10,7 @@ import { UPLOAD_DIR } from '../lib/uploads.js';
 import { sseHandler } from '../lib/events.js';
 import { thumbnail } from '../lib/thumbs.js';
 import { is3D } from '../lib/internalImages.js';
+import { getMinOrder } from '../lib/minOrder.js';
 
 const r = Router();
 
@@ -25,7 +26,8 @@ r.get('/lookups', requireAuth, async (req, res) => {
   const staff = req.user.role_code !== 'customer';
   const materials = await many('select id, name, karat, color from materials where active order by id');
   const settings = Object.fromEntries((await many("select key, value from settings where key in ('company','weight_decimals','currency','vat_rate','diamond_worker_nos')")).map((x) => [x.key, x.value]));
-  if (!staff) return res.json({ materials, settings: { weight_decimals: settings.weight_decimals, currency: settings.currency, company: { name: settings.company?.name } } });
+  settings.min_order = await getMinOrder(pool);
+  if (!staff) return res.json({ materials, settings: { weight_decimals: settings.weight_decimals, currency: settings.currency, company: { name: settings.company?.name }, min_order: settings.min_order } });
   res.json({
     materials, settings,
     stages: await many('select s.id, s.name, s.kind, s.handles_gold, s.sort_order, s.active, r.rate_percent::text as loss_rate from stages s join stage_current_rates r on r.stage_id=s.id order by s.sort_order'),

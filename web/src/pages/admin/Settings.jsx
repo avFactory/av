@@ -38,6 +38,16 @@ export default function Settings() {
             </Field>
           </div>
         </Sec>
+        <Sec title="أقل كمية للطلب من المتجر" id="min_order">
+          <p className="small text-body-secondary mb-2">لا يستطيع العميل إضافة أو إرسال طلب بكمية أقل من هذا الحد لكل صنف.</p>
+          <div className="grid g2">
+            {[['gold', 'منتجات الذهب', 5], ['diamond', 'منتجات الألماس المخبري والطلبات الخاصة', 2]].map(([k, l, d]) => (
+              <Field key={k} label={l}><div className="input-group">
+                <Input dir="ltr" inputMode="numeric" value={s.min_order?.[k] ?? d} onChange={(e) => setS({ ...s, min_order: { gold: s.min_order?.gold ?? 5, diamond: s.min_order?.diamond ?? 2, [k]: e.target.value.replace(/\D/g, '') } })} />
+                <span className="input-group-text">قطع</span></div></Field>
+            ))}
+          </div>
+        </Sec>
         <Sec title="حدود الطاقة الإنتاجية اليومية" id="capacity">
           <p className="small text-body-secondary mb-2">تُطبق على الطلبات الجديدة: إذا امتلأ يوم التسليم المحسوب يُؤجَّل موعد الطلب ليوم العمل التالي (يوم لكل يوم مشغول، والجمعة عطلة). اترك الخانة فارغة = بدون حد.</p>
           <div className="grid g3">
@@ -53,7 +63,7 @@ export default function Settings() {
           <p className="small muted mb">تتطلب ضبط مفاتيح المزود على الخادم (متغيرات البيئة) - لا توضع المفاتيح في الواجهة.</p>
           <div className="hrow gap wrap">{[['whatsapp', 'WhatsApp Business'], ['sms', 'SMS'], ['email', 'البريد الإلكتروني']].map(([k, l]) => <label key={k} className="check"><input type="checkbox" checked={!!ch[k]} onChange={(e) => setS({ ...s, notify_channels: { ...ch, [k]: e.target.checked } })} />{l}</label>)}</div>
         </Sec>
-        <div className="hrow end"><Btn size="lg" loading={busy} onClick={() => run(async () => { await api.put('/admin/settings', { company: s.company, vat_rate: Number(s.vat_rate), weight_decimals: Number(s.weight_decimals), abnormal_threshold: Number(s.abnormal_threshold), notify_channels: s.notify_channels, capacity: s.capacity || {}, diamond_worker_nos: (Array.isArray(s.diamond_worker_nos) ? s.diamond_worker_nos : String(s.diamond_worker_nos || '').split(/[,،\s]+/)).map((x) => String(x).trim()).filter(Boolean) }); await refresh(); }, 'تم حفظ الإعدادات')}>حفظ الإعدادات</Btn></div>
+        <div className="hrow end"><Btn size="lg" loading={busy} onClick={() => run(async () => { await api.put('/admin/settings', { company: s.company, vat_rate: Number(s.vat_rate), weight_decimals: Number(s.weight_decimals), abnormal_threshold: Number(s.abnormal_threshold), notify_channels: s.notify_channels, capacity: s.capacity || {}, min_order: { gold: Number(s.min_order?.gold ?? 5) || 1, diamond: Number(s.min_order?.diamond ?? 2) || 1 }, diamond_worker_nos: (Array.isArray(s.diamond_worker_nos) ? s.diamond_worker_nos : String(s.diamond_worker_nos || '').split(/[,،\s]+/)).map((x) => String(x).trim()).filter(Boolean) }); await refresh(); }, 'تم حفظ الإعدادات')}>حفظ الإعدادات</Btn></div>
         <LeadTimes />
         <Sec title="الأقسام" id="depts">
           <div className="hrow gap">

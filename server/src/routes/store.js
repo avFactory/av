@@ -17,6 +17,7 @@ import { newGroupNo, nextItemNo } from '../lib/orderGroups.js';
 import { bullionVals } from './catalog.js';
 import { applyDueDate, leadDays, orderCategory } from '../lib/leadTime.js';
 import { visibleTo } from '../lib/audience.js';
+import { getMinOrder } from '../lib/minOrder.js';
 import { listBranches, createBranch, updateBranch, assertMainAccount } from '../lib/branches.js';
 
 const r = Router();
@@ -137,6 +138,7 @@ r.post('/orders', async (req, res) => {
     // طلب واحد برقم واحد، وكل صنف بند فيه (ORD-…-1، -2 …) يُصنَّع ويُتتبع مستقلاً
     const cartRef = await newGroupNo(db);
     const created = [];
+    const mins = await getMinOrder(db);
     for (const [idx, it] of items.entries()) {
       const p = (await db.query(`select * from products p where p.id=$1 and p.active and ${visibleTo(2)} for update`, [int(it.product_id), req.user.customer_id ?? null])).rows[0];
       if (!p || p.availability === 'unavailable') throw bad('منتج غير متوفر');
@@ -146,6 +148,9 @@ r.post('/orders', async (req, res) => {
       if (!p.colors.includes(color)) throw bad(`اللون غير متاح للمنتج ${p.name}`);
       if (p.sizes.length && it.size && !p.sizes.includes(String(it.size))) throw bad('المقاس غير متاح');
       const qty = int(it.quantity ?? 1, 'الكمية', { min: 1 });
+      // أقل كمية: منتجات الألماس المخبري لها حد، وبقية منتجات الذهب حد آخر
+      const minQ = (Array.isArray(p.diamonds) && p.diamonds.length) ? mins.diamond : mins.gold;
+      if (qty < minQ) throw bad(`أقل كمية لطلب «${p.name}» هي ${minQ} قطع`);
       const labor = await resolveLabor(db, { customer_id: req.user.customer_id, product_id: p.id, product_type: p.product_type });
       const w = p.final_weight || p.approx_weight;
       const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_id, product_type, title, material_id, approx_weight, size, quantity, notes,
@@ -185,6 +190,8 @@ r.post('/custom', upload.array('files', 20), async (req, res) => {
     }
     const orderNo = cartRef ? await nextItemNo(db, cartRef) : null;
     const karat = oneOf(int(b.karat, 'العيار'), [18, 21, 24], 'العيار');
+    const minCustom = (await getMinOrder(db)).diamond;
+    if (int(b.quantity ?? 1, 'الكمية', { min: 1 }) < minCustom) throw bad(`أقل كمية للطلب الخاص هي ${minCustom} قطع`);
     const o = (await db.query(`insert into orders(order_no, customer_id, source, cart_ref, product_type, title, material_id, approx_weight, size, quantity, due_date, notes, status, design_approval_required, created_by, branch_id, color, diamonds, pearl_weight, stone_weight, zircon_weight, bullion_type, bullion_weight)
       values (coalesce($18, next_doc_no('ORD')),$1,'store_custom',$17,$2,$3,$4,$5,$6,$7,$8,$9,'pending_review',true,$10,$11,$12,$13,$14,$15,$16,$19,$20) returning *`,
       [req.user.customer_id, str(b.product_type, 'نوع القطعة', { required: true }), str(b.title, 'اسم التصميم') || `تصميم خاص - ${b.product_type}`,

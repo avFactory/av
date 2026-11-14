@@ -4,9 +4,11 @@ import { COLORS, fmtMoney, METHODS } from '../../format.js';
 import { Btn, Empty, Page, useAction, LinkBtn } from '../../ui.jsx';
 import { delFiles, getFiles } from '../../fileStore.js';
 import { useCart, OrderGate } from '../../components/StoreLayout.jsx';
+import { useAuth } from '../../auth.jsx';
 
 export default function Cart() {
   const { cart, setCart, approved } = useCart();
+  const { lookups } = useAuth();
   const nav = useNavigate();
   const [run, busy] = useAction();
   // المنتجات الجاهزة تُرسل معاً، ثم طلبات التصميم الخاص (مع ملفاتها) تحت رقم السلة نفسه
@@ -34,7 +36,8 @@ export default function Cart() {
     nav('/store/orders', { state: { cart: ref } });
   }, 'تم إرسال الطلب للمصنع');
   const remove = (n) => { const it = cart[n]; if (it.kind === 'custom') delFiles(it.key); setCart(cart.filter((_, j) => j !== n)); };
-  const setQty = (n, q) => setCart(cart.map((x, j) => (j === n ? { ...x, quantity: Math.max(1, Math.min(999, Number(q) || 1)) } : x)));
+  const minOf = (x) => x.min || (x.kind === 'custom' ? (lookups?.settings?.min_order?.diamond ?? 2) : 1);
+  const setQty = (n, q) => setCart(cart.map((x, j) => (j === n ? { ...x, quantity: Math.max(minOf(x), Math.min(9999, Number(q) || minOf(x))) } : x)));
   const lineLabor = (i) => (i.labor?.estimate ? Number(i.labor.estimate) * (i.labor.method === 'fixed' ? 1 : Number(i.quantity) || 1) : 0);
   const pieces = cart.reduce((a, i) => a + (Number(i.quantity) || 0), 0);
   const laborTotal = cart.reduce((a, i) => a + lineLabor(i), 0);
@@ -59,7 +62,7 @@ export default function Cart() {
                 <div className="cart-qty" role="group" aria-label="الكمية">
                   <button type="button" onClick={() => setQty(n, (Number(i.quantity) || 1) + 1)} aria-label="زيادة">+</button>
                   <input inputMode="numeric" value={i.quantity} onChange={(e) => setQty(n, e.target.value.replace(/\D/g, ''))} aria-label="الكمية" />
-                  <button type="button" onClick={() => setQty(n, (Number(i.quantity) || 1) - 1)} disabled={Number(i.quantity) <= 1} aria-label="إنقاص">−</button>
+                  <button type="button" onClick={() => setQty(n, (Number(i.quantity) || 1) - 1)} disabled={Number(i.quantity) <= minOf(i)} aria-label="إنقاص">−</button>
                 </div>
                 <div className="cart-line">{lineLabor(i) > 0 ? <><span className="small text-body-secondary">تقديري</span><b>{fmtMoney(lineLabor(i))}</b></> : <span className="small text-body-secondary">{i.kind === 'custom' ? 'عرض أجور لاحقاً' : '—'}</span>}</div>
                 <button type="button" className="cart-del" onClick={() => remove(n)} title="حذف من السلة" aria-label="حذف">✕</button>

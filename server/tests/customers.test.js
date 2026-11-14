@@ -30,6 +30,8 @@ function regForm(fields, skip = []) {
 before(async () => {
   await pool.query('drop schema public cascade; create schema public;');
   await migrate({ log: false });
+  // اختبارات قديمة بكميات صغيرة: أقل كمية للطلب 1 (التلقائي 5 و2 له اختبار مستقل)
+  await pool.query(`insert into settings(key, value) values ('min_order', '{"gold":1,"diamond":1}') on conflict (key) do update set value=excluded.value`);
   server = createApp().listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
   await call('POST', '/auth/login', { username: 'admin', password: 'Admin#2026pass' });
@@ -839,4 +841,33 @@ test('تخصيص المنتج: الافتراضي للجميع، أو لعملا
 test('نوع القطعة طقم: رقم المنتج TKM000001', async () => {
   assert.ok((await call('GET', '/catalog/product-types')).data.some((t) => t.name === 'طقم' && t.prefix === 'TKM'));
   assert.equal((await call('GET', `/catalog/next-sku?type=${encodeURIComponent('طقم')}`)).data.sku, 'TKM000001');
+});
+
+test('أقل كمية للطلب: التلقائي 5 لمنتجات الذهب و2 للألماس والطلبات الخاصة، وتُعدّل من الإعدادات', async () => {
+  await pool.query("delete from settings where key='min_order'");
+  assert.deepEqual((await call('GET', '/lookups')).data.settings.min_order, { gold: 5, diamond: 2 });
+  const mk = async (name, extra = {}) => { const f = new FormData(); for (const [k, v] of Object.entries({ name, product_type: 'خاتم', karats: '21', colors: 'yellow', ...extra })) f.append(k, v); return (await call('POST', '/catalog/products', null, f)).data; };
+  const gold = await mk('خاتم ذهب الحد الأدنى');
+  const lot = (await pool.query("insert into stone_lots(lot_no, stone_type, shape_id, size_label) select 'MINQ-1','ألماس مخبري', id, '1.5' from stone_shapes limit 1 returning id")).rows[0]?.id;
+  const dia = lot ? await mk('خاتم ألماس الحد الأدنى', { diamonds: JSON.stringify([{ lot_id: lot, carats: '0.1', count: 1 }]) }) : null;
+  const { hashPassword } = await import('../src/lib/auth.js');
+  const cid = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('محل الحد الأدنى','م','0500009999','approved') returning id")).rows[0].id;
+  await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, must_change_password) values ('minshop',$1,'م','customer',$2,false)", [hashPassword('Min#2026shop'), cid]);
+  let ck = '';
+  const cu = async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  await cu('POST', '/auth/login', { username: 'minshop', password: 'Min#2026shop' });
+  const order = (id, q) => cu('POST', '/store/orders', { items: [{ product_id: id, karat: 21, quantity: q }] });
+  const g4 = await order(gold.id, 4);
+  assert.equal(g4.status, 400);
+  assert.match(g4.data.error, /5/);
+  assert.equal((await order(gold.id, 5)).status, 200);
+  if (dia) { assert.equal((await order(dia.id, 1)).status, 400); assert.equal((await order(dia.id, 2)).status, 200); }
+  const custom = async (q) => { const fd = new FormData(); for (const [k, v] of Object.entries({ product_type: 'خاتم', karat: '21', quantity: String(q) })) fd.append(k, v); const r = await fetch(base + '/api/store/custom', { method: 'POST', headers: { cookie: ck }, body: fd }); return r.status; };
+  assert.equal(await custom(1), 400, 'الطلب الخاص أقل من 2');
+  assert.equal(await custom(2), 200);
+  // تعديل من الإعدادات
+  assert.equal((await call('PUT', '/admin/settings', { min_order: { gold: 0, diamond: 2 } })).status, 400);
+  assert.equal((await call('PUT', '/admin/settings', { min_order: { gold: 3, diamond: 1 } })).status, 200);
+  assert.equal((await order(gold.id, 3)).status, 200);
+  await pool.query(`insert into settings(key, value) values ('min_order', '{"gold":1,"diamond":1}') on conflict (key) do update set value=excluded.value`);
 });

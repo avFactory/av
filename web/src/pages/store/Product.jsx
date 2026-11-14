@@ -4,6 +4,7 @@ import { fileUrl } from '../../api.js';
 import { fmtW, fmtMoney, METHODS, COLORS } from '../../format.js';
 import { Btn, Field, Input, Loader, Page, Textarea, useFetch, useToast, ErrorBox } from '../../ui.jsx';
 import { useCart } from '../../components/StoreLayout.jsx';
+import { useAuth } from '../../auth.jsx';
 import ImageZoom from '../../components/ImageZoom.jsx';
 import { SafeBlock } from '../../components/ErrorBoundary.jsx';
 
@@ -14,15 +15,21 @@ export default function Product() {
   const { cart, setCart, apiBase, approved, loginUrl } = useCart();
   const { data: p, error } = useFetch(`${apiBase}/products/${id}`, { deps: [apiBase] });
   const [img, setImg] = useState(0);
-  const [sel, setSel] = useState({ karat: null, color: null, size: '', quantity: '1', notes: '' });
+  const { lookups } = useAuth();
+  const [sel, setSel] = useState({ karat: null, color: null, size: '', quantity: '', notes: '' });
   if (error) return <div className="page"><ErrorBox error={error} /><div className="mt-3"><Btn kind="secondary" onClick={() => nav(-1)}>→ رجوع للمتجر</Btn></div></div>;
   if (!p) return <Loader />;
+  // أقل كمية: الألماس المخبري حد، والذهب حد آخر (من الإعدادات)
+  const mo = lookups?.settings?.min_order || { gold: 5, diamond: 2 };
+  const minQ = (p.diamond_details || []).length ? mo.diamond : mo.gold;
+  const qtyVal = sel.quantity === '' ? String(minQ) : sel.quantity;
   const karat = sel.karat ?? p.karats[0];
   const color = sel.color ?? p.colors[0];
   const media = p.media[img];
   const add = () => {
     if (p.sizes.length && !sel.size) return toast('اختر المقاس', 'bad');
-    setCart([...cart, { product_id: p.id, name: p.name, sku: p.sku, product_type: p.product_type, karat, color, size: sel.size, quantity: Number(sel.quantity) || 1, notes: sel.notes, image: p.media[0]?.path, labor: p.labor }]);
+    if ((Number(qtyVal) || 0) < minQ) return toast(`أقل كمية لهذا المنتج ${minQ} قطع`, 'bad');
+    setCart([...cart, { product_id: p.id, name: p.name, sku: p.sku, product_type: p.product_type, karat, color, size: sel.size, quantity: Number(qtyVal), min: minQ, notes: sel.notes, image: p.media[0]?.path, labor: p.labor }]);
     toast('أضيف إلى السلة');
     // الرجوع لنفس مكان العميل في المتجر (نفس الفلاتر وموضع التمرير)
     if ((window.history.state?.idx ?? 0) > 0) nav(-1); else nav('/store');
@@ -62,7 +69,7 @@ export default function Product() {
           <Field label="العيار"><div className="chips">{p.karats.map((k) => <button key={k} className={`chip ${karat === k ? 'on' : ''}`} onClick={() => setSel({ ...sel, karat: k })}>{k}</button>)}</div></Field>
           <Field label="اللون"><div className="chips">{p.colors.map((c) => <button key={c} className={`chip ${color === c ? 'on' : ''}`} onClick={() => setSel({ ...sel, color: c })}>{COLORS[c]}</button>)}</div></Field>
           {p.sizes.length > 0 && <Field label="المقاس"><div className="chips">{p.sizes.map((s) => <button key={s} className={`chip ${sel.size === s ? 'on' : ''}`} onClick={() => setSel({ ...sel, size: s })}>{s}</button>)}</div></Field>}
-          <Field label="الكمية"><Input inputMode="numeric" value={sel.quantity} onChange={(e) => setSel({ ...sel, quantity: e.target.value.replace(/\D/g, '') })} style={{ maxWidth: 120 }} /></Field>
+          <Field label="الكمية" hint={`أقل كمية للطلب: ${minQ} قطع`}><Input inputMode="numeric" value={qtyVal} onChange={(e) => setSel({ ...sel, quantity: e.target.value.replace(/\D/g, '') })} style={{ maxWidth: 120 }} /></Field>
           <Field label="ملاحظات"><Textarea value={sel.notes} onChange={(e) => setSel({ ...sel, notes: e.target.value })} /></Field>
           <Btn size="lg" onClick={add}>إضافة إلى السلة</Btn>
           <p className="small muted">الأسعار المعروضة أجور تصنيع فقط ولا تشمل قيمة الذهب.</p>
