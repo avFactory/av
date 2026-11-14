@@ -9,7 +9,7 @@ const PAGE = 48;
 let SNAP = null;
 import { useCart } from '../../components/StoreLayout.jsx';
 
-const CATS = [['', 'الكل', '✦'], ['gold', 'ذهب', '◯'], ['diamond', 'ألماس مخبري', '💎'], ['pearl', 'لؤلؤ', '⚪'], ['stone', 'أحجار', '◆'], ['bullion', 'سبائك', '🪙']];
+const CATS = [['', 'الكل', '✦'], ['gold', 'ذهب', '◯'], ['diamond', 'ألماس مخبري', '💎'], ['pearl', 'لؤلؤ', '⚪'], ['bullion', 'سبائك', '🪙']];
 const catBadges = (p) => [p.has_diamond && 'ألماس مخبري', p.has_pearl && 'لؤلؤ', p.has_stone && 'أحجار', p.has_bullion && (p.bullion_type === 'coin' ? 'جنيهات' : 'سبائك'), p.is_gold && 'ذهب'].filter(Boolean);
 
 export default function Catalog() {

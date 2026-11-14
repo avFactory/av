@@ -474,7 +474,7 @@ test('تصنيفات المتجر: ذهب (يشمل الزركون) / ألماس
     stone: await mk('تصنيف حجر', 'خاتم', { stone_weight: '1' }),
   };
   const list = async (q) => (await call('GET', `/public/products?q=${encodeURIComponent('تصنيف')}&${q}`)).data.products.map((p) => p.id).sort();
-  assert.deepEqual(await list('cat=gold'), [ids.gold, ids.zircon].sort(), 'الزركون مع الذهب');
+  assert.deepEqual(await list('cat=gold'), [ids.gold, ids.zircon, ids.stone].sort((a, b) => a - b), 'الذهب يشمل الزركون والأحجار');
   assert.deepEqual(await list('cat=diamond'), [ids.diamond]);
   assert.deepEqual(await list('cat=pearl'), [ids.pearl]);
   assert.deepEqual(await list('cat=stone'), [ids.stone]);

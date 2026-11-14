@@ -29,7 +29,7 @@ r.get('/products', needLogin, async (req, res) => {
       and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3 or p.product_type ilike $3)
       and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
         or ($4='stone' and coalesce(p.stone_weight,0) > 0) or ($4='bullion' and p.bullion_type is not null)
-        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and coalesce(p.stone_weight,0) = 0 and p.bullion_type is null))`;
+        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and p.bullion_type is null))`; // الذهب يشمل القطع المرصعة بالأحجار (لا يوجد تصنيف أحجار مستقل)
   const rows = await many(`select ${LIST_COLS} from products p where ${where} order by p.id desc limit ${limit + 1} offset ${offset}`, params);
   const hasMore = rows.length > limit;
   if (hasMore) rows.pop();
