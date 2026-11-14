@@ -47,6 +47,8 @@ export function createApp() {
   });
   // حد معدل الطلبات لكل عنوان: يحمي من الإغراق والتخمين (الروابط العامة أشد)
   app.use('/api/public', rateLimit(180));
+  // صفحات الدخول والتسجيل: حد إضافي لكل عنوان (فوق قفل المحاولات الفاشلة لكل مستخدم)
+  app.use('/api/auth', rateLimit(120));
   // عام مرتفع: أجهزة المصنع قد تخرج من عنوان واحد
   app.use('/api', rateLimit(6000));
   app.use(express.json({ limit: '2mb' }));

@@ -1,7 +1,30 @@
-# HTTPS تلقائي (Let's Encrypt). DOMAIN من ملف .env
+# HTTPS تلقائي (Let's Encrypt) + تحويل كل HTTP إلى HTTPS تلقائياً. DOMAIN من ملف .env
+{
+	# لا تُظهر معلومات الخادم، وأوقف لوحة الإدارة الداخلية لـ Caddy
+	admin off
+}
+
 {$DOMAIN} {
-	encode gzip
-	header -Server
+	encode zstd gzip
+
+	# ترويسات الحماية (التطبيق يضيف أيضاً سياسة المحتوى CSP)
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		# SAMEORIGIN وليس DENY: النظام يطبع الملصقات عبر إطار مخفي من نفس الموقع
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+		-X-Powered-By
+	}
+
+	# حد حجم الطلب (أكبر رفع مسموح في التطبيق 50MB)
+	request_body {
+		max_size 60MB
+	}
+
 	reverse_proxy app:3000 {
 		flush_interval -1
 	}

@@ -1,3 +1,13 @@
+# تشغيل النظام: قاعدة البيانات + التطبيق + بوابة HTTPS
+# الحماية:
+#  - قاعدة البيانات على شبكة داخلية معزولة (backend: internal) بلا أي منفذ منشور وبلا اتصال بالإنترنت
+#  - المنفذان الوحيدان المنشوران للعالم: 80 و443 (Caddy)
+#  - كل الحاويات: no-new-privileges، والتطبيق بمستخدم غير root ونظام ملفات للقراءة فقط وبدون أي صلاحيات Linux
+#  - سجلات محدودة الحجم حتى لا تمتلئ مساحة القرص
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "5" }
+
 services:
   db:
     image: postgres:16-alpine
@@ -6,11 +16,20 @@ services:
       POSTGRES_USER: goldadmin
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
     volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U goldadmin -d goldfactory"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
     restart: unless-stopped
 
   app:
     build: .
-    depends_on: [db]
+    depends_on:
+      db: { condition: service_healthy }
     environment:
       DATABASE_URL: postgres://goldadmin:${DB_PASSWORD}@db:5432/goldfactory
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
@@ -18,21 +37,46 @@ services:
       WHATSAPP_PHONE_ID: ${WHATSAPP_PHONE_ID:-}
       SMS_WEBHOOK_URL: ${SMS_WEBHOOK_URL:-}
       EMAIL_WEBHOOK_URL: ${EMAIL_WEBHOOK_URL:-}
+      GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
     volumes: [uploads:/data/uploads]
+    # backend: للوصول لقاعدة البيانات، frontend: لاستقبال Caddy والإشعارات الخارجية (واتساب/SMS)
+    networks: [backend, frontend]
+    user: node
+    read_only: true
+    tmpfs: ["/tmp:size=64m,noexec,nosuid"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *logging
     restart: unless-stopped
 
-  # بوابة HTTPS: شهادة مجانية تلقائية للدومين المحدد في DOMAIN
+  # بوابة HTTPS: شهادة مجانية تلقائية للدومين المحدد في DOMAIN، وتحويل HTTP إلى HTTPS تلقائياً
   caddy:
     image: caddy:2-alpine
     depends_on: [app]
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
     ports: ["80:80", "443:443"]
+    networks: [frontend]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
     restart: unless-stopped
+
+networks:
+  backend:
+    internal: true
+  frontend: {}
 
 volumes:
   pgdata:
