@@ -2,6 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
+import { uniquePng } from './_img.js';
 
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST || 'postgres://goldadmin:goldadmin@localhost:5432/goldfactory_test';
 process.env.ADMIN_PASSWORD = 'Admin#2026pass';
@@ -249,9 +250,10 @@ test('الاسم المختصر على الملصق، ورمز QR رقمي يُ�
 });
 
 test('رقم المنتج تلقائي حسب نوع القطعة', async () => {
+  let seq = 0;
   const mk = async (type, extra = {}) => {
     const f = new FormData();
-    for (const [k, v] of Object.entries({ name: `منتج ${type}`, product_type: type, karats: '21', colors: 'yellow', ...extra })) f.append(k, v);
+    for (const [k, v] of Object.entries({ name: `منتج ${type} ${++seq}`, product_type: type, karats: '21', colors: 'yellow', ...extra })) f.append(k, v);
     return call('POST', '/catalog/products', null, f);
   };
   assert.equal((await call('GET', '/catalog/next-sku?type=خاتم')).data.sku, 'RIN000001');
@@ -504,7 +506,7 @@ test('رابط مخزون الألماس الخارجي: عرض فقط بدون 
 
 test('العامل يرى صور الطلب وصورة المنتج', async () => {
   const fd = new FormData(); for (const [k, v] of Object.entries({ name: 'منتج بصورة للعامل', product_type: 'خاتم', karats: '21', colors: 'yellow' })) fd.append(k, v);
-  fd.append('files', new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')], { type: 'image/png' }), 'p.png');
+  fd.append('files', new Blob([await uniquePng()], { type: 'image/png' }), 'p.png');
   const p = (await call('POST', '/catalog/products', null, fd)).data;
   const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0];
   const o = (await call('POST', '/orders', { title: 'طلب بصورة', product_id: p.id, product_type: 'خاتم', karat: 21, color: 'yellow', quantity: 1, material_id: mat.id })).data;
@@ -580,7 +582,7 @@ test('العجز على حساب العامل: الوزن الفعلي من ال
 test('الصورة الرئيسية للمنتج: عند الإضافة أو التعديل', async () => {
   const f = new FormData();
   for (const [k, v] of Object.entries({ name: 'عقد صور', product_type: 'عقد', karats: '21', colors: 'yellow', main_new: '2' })) f.append(k, v);
-  for (const n of ['1.png', '2.png', '3.png']) f.append('files', new Blob([PNG1], { type: 'image/png' }), n);
+  for (const n of ['1.png', '2.png', '3.png']) f.append('files', new Blob([await uniquePng()], { type: 'image/png' }), n);
   const p = (await call('POST', '/catalog/products', null, f)).data;
   const media = async () => (await pool.query('select id from product_media where product_id=$1 order by sort, id', [p.id])).rows.map((r) => r.id);
   const m = await media();
@@ -870,4 +872,33 @@ test('أقل كمية للطلب: التلقائي 5 لمنتجات الذهب �
   assert.equal((await call('PUT', '/admin/settings', { min_order: { gold: 3, diamond: 1 } })).status, 200);
   assert.equal((await order(gold.id, 3)).status, 200);
   await pool.query(`insert into settings(key, value) values ('min_order', '{"gold":1,"diamond":1}') on conflict (key) do update set value=excluded.value`);
+});
+
+test('منع تكرار المنتجات بالاسم أو الصورة', async () => {
+  const sharp = (await import('sharp')).default;
+  // صورة فيها تفاصيل (ليست لوناً واحداً) لاختبار البصمة البصرية
+  const W = 200; const raw = Buffer.alloc(W * W * 3);
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) { const v = Math.round(128 + 90 * Math.sin(x / 23) * Math.cos(y / 31) + (Math.hypot(x - 120, y - 80) < 40 ? 30 : 0)); raw.fill(v, (y * W + x) * 3, (y * W + x) * 3 + 3); }
+  const img = await sharp(raw, { raw: { width: W, height: W, channels: 3 } }).png().toBuffer();
+  const resized = await sharp(img).resize(120, 120).jpeg({ quality: 80 }).toBuffer();
+  const mk = async (name, file, type = 'image/png') => {
+    const f = new FormData();
+    for (const [k, v] of Object.entries({ name, product_type: 'خاتم', karats: '21', colors: 'yellow' })) f.append(k, v);
+    if (file) f.append('files', new Blob([file], { type }), type === 'image/png' ? 'x.png' : 'x.jpg');
+    return call('POST', '/catalog/products', null, f);
+  };
+  const a = await mk('خاتم الوردة الذهبية', img);
+  assert.equal(a.status, 200, JSON.stringify(a.data));
+  const sameName = await mk('  خاتم  الورده الذهبيه ', null);
+  assert.equal(sameName.status, 409, 'نفس الاسم مع اختلاف التاء المربوطة والمسافات');
+  assert.match(sameName.data.error, /بنفس الاسم/);
+  const sameImg = await mk('خاتم آخر مختلف', img);
+  assert.equal(sameImg.status, 409, 'نفس ملف الصورة');
+  const similar = await mk('خاتم ثالث مختلف', resized, 'image/jpeg');
+  assert.equal(similar.status, 409, 'نفس الصورة بعد تغيير الحجم والصيغة');
+  assert.equal((await mk('خاتم بصورة جديدة', await uniquePng())).status, 200, 'منتج جديد فعلاً يُقبل');
+  // تعديل نفس المنتج باسمه لا يُعتبر تكراراً
+  const u = new FormData();
+  for (const [k, v] of Object.entries({ name: 'خاتم الوردة الذهبية', product_type: 'خاتم', karats: '21', colors: 'yellow' })) u.append(k, v);
+  assert.equal((await call('PUT', `/catalog/products/${a.data.id}`, null, u)).status, 200);
 });

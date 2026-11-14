@@ -26,6 +26,8 @@ async function checkDelays() {
 async function main() {
   await migrate();
   await startListener();
+  // بصمات صور المنتجات القديمة (لمنع التكرار) في الخلفية
+  import('./lib/productDup.js').then(({ backfillMediaHashes }) => backfillMediaHashes(pool)).catch(() => {});
   const app = createApp();
   app.listen(PORT, () => console.log(`Gold factory server on :${PORT}`));
   setInterval(() => checkDelays().catch((e) => console.error('delay check', e.message)), 10 * 60 * 1000);
