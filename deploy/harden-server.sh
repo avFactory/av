@@ -73,6 +73,8 @@ maxretry = 5
 bantime.increment = true
 bantime.maxtime = 1w
 backend = systemd
+# لا تحظر السيرفر نفسه ولا الطرفية في لوحة الاستضافة (Hostinger تدخل من 169.254.0.1)
+ignoreip = 127.0.0.1/8 ::1 169.254.0.0/16
 
 [sshd]
 enabled = true

@@ -39,8 +39,9 @@ journalctl -u ssh -u sshd --since "7 days ago" --no-pager 2>/dev/null | grep -Ei
 echo "— آخر دخول ناجح:"; last -n 5 -a 2>/dev/null | head -6
 
 B "شهادة HTTPS"
-DOMAIN=$(grep -E '^DOMAIN=' .env | cut -d= -f2)
-echo | openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" 2>/dev/null | openssl x509 -noout -issuer -enddate 2>/dev/null || warn "تعذر قراءة الشهادة"
+DOMAIN=$(grep -E '^DOMAIN=' .env | cut -d= -f2- | tr -d '"' | cut -d, -f1 | awk '{print $1}')
+echo "الدومين: $DOMAIN"
+echo | timeout 10 openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" 2>/dev/null | openssl x509 -noout -issuer -enddate 2>/dev/null || warn "تعذر قراءة الشهادة"
 curl -sI "http://$DOMAIN" | grep -iE '^(HTTP|location)' | head -2
 
 B "النسخ الاحتياطي"
