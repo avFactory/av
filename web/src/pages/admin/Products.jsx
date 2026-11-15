@@ -31,12 +31,7 @@ export default function Products() {
     if (!isRestricted(f)) { fd.set('allowed_customer_ids', ''); fd.set('allowed_tier_ids', ''); }
     for (const x of f.files || []) fd.append('files', x);
     if (f.main?.new != null) fd.append('main_new', String(f.main.new)); else if (f.main?.media) fd.append('main_media', String(f.main.media));
-    const send = () => (f.id ? api.put(`/catalog/products/${f.id}`, fd) : api.post('/catalog/products', fd));
-    try { await send(); } catch (e) {
-      // صورة مشابهة (وليست نفس الملف): يؤكد الموظف أنه منتج مختلف ثم يُحفظ
-      if (!e.details?.similar_image || !window.confirm(`${e.message.split(' — ')[0]}.\n\nهل هو منتج مختلف فعلاً؟ اضغط «موافق» للحفظ رغم التشابه.`)) throw e;
-      fd.set('allow_similar', '1'); await send();
-    }
+    if (f.id) await api.put(`/catalog/products/${f.id}`, fd); else await api.post('/catalog/products', fd);
     setF(null); reload();
   }, 'تم حفظ المنتج');
   const remove = (p) => {

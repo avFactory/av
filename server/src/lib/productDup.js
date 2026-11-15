@@ -61,30 +61,14 @@ export async function backfillMediaHashes(db) {
  * يرفض حفظ منتج اسمه أو إحدى صوره مكررة مع منتج آخر (غير محذوف).
  * files: ملفات multer المرفوعة الآن. يعيد بصمات الملفات لحفظها مع الصور.
  */
-export async function assertNoDuplicate(db, { name, files = [], excludeId = null, allowSimilar = false }) {
+export async function assertNoDuplicate(db, { name, excludeId = null }) {
   const n = normName(name);
   if (n) {
     const others = (await db.query('select id, sku, name from products where deleted_at is null and ($1::int is null or id <> $1)', [excludeId])).rows;
     const same = others.find((p) => normName(p.name) === n);
     if (same) throw conflict(`يوجد منتج بنفس الاسم: ${same.name} (${same.sku}) — غيّر الاسم أو عدّل المنتج الموجود`);
   }
+  // الصور لا تُقارن (المقارنة بالاسم فقط بطلب الإدارة)
   const hashes = [];
-  for (const f of files) hashes.push(await imageHashes(f.path));
-  // تكرار داخل نفس الرفع
-  for (let i = 0; i < hashes.length; i++) for (let j = i + 1; j < hashes.length; j++) {
-    if (hashes[i].sha === hashes[j].sha) throw conflict('رفعت نفس الصورة أكثر من مرة');
-    if (!allowSimilar && hamming(hashes[i].dhash, hashes[j].dhash) <= SIMILAR) throw similar('صورتان من المرفوعة متشابهتان جداً');
-  }
-  if (hashes.length) {
-    await backfillMediaHashes(db);
-    const media = (await db.query(`select m.sha256, m.dhash, p.sku, p.name from product_media m join products p on p.id=m.product_id
-      where p.deleted_at is null and ($1::int is null or p.id <> $1) and m.sha256 is not null and m.sha256 <> 'missing'`, [excludeId])).rows;
-    for (const h of hashes) {
-      const same = media.find((m) => m.sha256 === h.sha);
-      if (same) throw conflict(`هذه الصورة مستخدمة في منتج آخر: ${same.name} (${same.sku}) — تأكد أنك لا تضيف منتجاً مكرراً`);
-      const near = allowSimilar ? null : media.find((m) => hamming(h.dhash, m.dhash) <= SIMILAR);
-      if (near) throw similar(`الصورة تشبه صورة المنتج ${near.name} (${near.sku})`);
-    }
-  }
   return hashes;
 }
