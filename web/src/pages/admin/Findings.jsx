@@ -15,6 +15,7 @@ export default function Findings() {
   const [f, setF] = useState(null); // إضافة/تعديل خامة
   const [stock, setStock] = useState(null); // إضافة رصيد
   const [moves, setMoves] = useState(null);
+  const { data: sups } = useFetch(stock ? '/inventory/suppliers' : null, { deps: [!!stock] });
   const [run, busy] = useAction();
   if (!data) return <Loader />;
   const list = data.findings;
@@ -43,7 +44,7 @@ export default function Findings() {
         ['لدى العمال', (x) => (Number(x.at_workers) ? <span className="n">{fmtW(x.at_workers)}</span> : '—')],
         ['', (x) => <span className="d-flex gap-2 justify-content-end flex-wrap">
           {!x.active && <Badge>موقوفة</Badge>}
-          {manage && x.active && <Btn size="sm" kind="ghost" onClick={() => setStock({ f: x, pieces: '', weight: '', source: 'external', note: '' })}>+ رصيد</Btn>}
+          {manage && x.active && <Btn size="sm" kind="ghost" onClick={() => setStock({ f: x, pieces: '', weight: '', source: 'supplier', supplier_id: '', note: '' })}>+ رصيد</Btn>}
           <Btn size="sm" kind="ghost" onClick={() => run(async () => setMoves({ f: x, rows: await api.get(`/findings/${x.id}/moves`) }))}>الحركات</Btn>
           {manage && <Btn size="sm" kind="ghost" onClick={() => setF({ ...x, unit_weight: x.unit_weight ? String(+x.unit_weight) : '' })}>تعديل</Btn>}
         </span>],
@@ -70,9 +71,14 @@ export default function Findings() {
             <Field label="عدد القطع"><Input inputMode="numeric" value={stock.pieces} onChange={(e) => { const p = num(e.target.value); setStock({ ...stock, pieces: p, weight: stock.f.unit_weight && p ? String(+(Number(stock.f.unit_weight) * Number(p)).toFixed(3)) : stock.weight }); }} /></Field>
             <Field label="الوزن الإجمالي (جم) *"><WeightInput big value={stock.weight} onChange={(v) => setStock({ ...stock, weight: v })} /></Field>
           </div>
-          <Field label="المصدر"><div className="chips">{[['external', 'شراء / استلام من خارج المصنع'], ['vault', 'تصنيع من ذهب الخزنة (يُخصم من الخزنة)']].map(([k, l]) => <button key={k} type="button" className={`chip ${stock.source === k ? 'on' : ''}`} onClick={() => setStock({ ...stock, source: k })}>{l}</button>)}</div></Field>
+          <Field label="المصدر"><div className="chips">{[['supplier', 'من مورد (يُخصم من رصيده المقدم)'], ['external', 'شراء من خارج المصنع'], ['vault', 'تصنيع من ذهب الخزنة (يُخصم من الخزنة)']].map(([k, l]) => <button key={k} type="button" className={`chip ${stock.source === k ? 'on' : ''}`} onClick={() => setStock({ ...stock, source: k })}>{l}</button>)}</div></Field>
+          {stock.source === 'supplier' && <Field label="المورد *"><div className="mode-tiles">{(sups?.suppliers || []).filter((x) => x.active).map((x) => (
+            <button key={x.id} type="button" className={`mode-tile${String(stock.supplier_id) === String(x.id) ? ' on' : ''}`} onClick={() => setStock({ ...stock, supplier_id: x.id })}>
+              <span className="mt-tx"><b>{x.name}</b><small>{x.supplies ? `${x.supplies} · ` : ''}الرصيد المقدم <b dir="ltr">{fmtW(x.balance)}</b> جم صافي</small></span>
+            </button>))}</div>
+            <Link className="small" to="/admin/suppliers">إدارة الموردين / إضافة مورد ←</Link></Field>}
           <Field label="البيان"><Input value={stock.note} onChange={(e) => setStock({ ...stock, note: e.target.value })} placeholder="رقم الفاتورة / المورد" /></Field>
-          <div className="hrow end mt"><Btn loading={busy} disabled={!(Number(stock.weight) > 0)} onClick={addStock}>إضافة</Btn></div>
+          <div className="hrow end mt"><Btn loading={busy} disabled={!(Number(stock.weight) > 0) || (stock.source === 'supplier' && !stock.supplier_id)} onClick={addStock}>إضافة</Btn></div>
         </>}
       </Modal>
 

@@ -36,6 +36,7 @@ const NAV = [
     ['/admin/stones', 'الألماس المخبري والأحجار', ['stones.view']],
     ['/admin/findings', 'خامات المصنع', ['inventory.view', 'custody.issue', 'findings.manage']],
     ['/admin/gold-dealers', 'جمل الصافي', ['inventory.manage', 'finance.view']],
+    ['/admin/suppliers', 'الموردون', ['inventory.view', 'findings.manage', 'finance.view']],
     ['/admin/products', 'منتجات المتجر', ['products.manage']],
     ['/admin/pricing', 'التسعيرة', ['pricing.manage', 'links.pricing', 'links.pricing_short']],
   ]],

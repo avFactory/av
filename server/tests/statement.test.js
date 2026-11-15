@@ -232,3 +232,31 @@ test('جمل الصافي: سداد العميل عن طريق ديوان الذ
   assert.equal((await admin('POST', '/inventory/gold/in', { source: 'purchase', material_id: m24, weight: '1' })).status, 400);
   assert.equal((await admin('POST', '/inventory/gold/in', { source: 'purchase', material_id: m24, weight: '1', note: 'شراء سبيكة' })).status, 200);
 });
+
+test('الموردون: صرف ذهب صافي مقدماً للمورد، واستلام خامات منه يُخصم من رصيده', async () => {
+  const sups = async () => (await admin('GET', '/inventory/suppliers')).data;
+  const s0 = await sups();
+  const lin = s0.suppliers.find((s) => s.name === 'مصنع لين');
+  assert.ok(lin && s0.suppliers.some((s) => s.name === 'كنوز الشرق'), 'المورّدان الافتراضيان موجودان');
+  const m24 = (await pool.query("select id from materials where metal='gold' and karat=24 and active order by id limit 1")).rows[0].id;
+  const m18 = (await pool.query("select id from materials where metal='gold' and karat=18 and active order by id limit 1")).rows[0].id;
+  await ledger.post(pool, { kind: 'stock_in', material_id: m24, weight: '100', from: ['external', null], to: ['vault', null], reason: 'اختبار', user_id: 1 });
+  const vault = async () => Number((await pool.query("select coalesce(sum(balance),0) b from gold_balances where loc_type='vault' and material_id=$1", [m24])).rows[0].b);
+  const v0 = await vault();
+  assert.equal((await admin('POST', '/inventory/gold/out', { to: 'supplier', supplier_id: lin.id, material_id: m24, weight: '50' })).status, 200);
+  assert.equal(await vault(), v0 - 50, 'خرج من الخزنة');
+  const bal = async () => Number((await sups()).suppliers.find((s) => s.id === lin.id).balance);
+  assert.equal(await bal(), Number(lin.balance) + 50);
+  assert.equal((await admin('POST', '/inventory/gold/out', { material_id: m24, weight: '1' })).status, 400, 'الصرف لخارج المصنع يتطلب بياناً');
+  // خامة سلاسل عيار 18 تُستلم من المورد: 40 جم × 18/24 = 30 صافي
+  const f = (await admin('POST', '/findings', { name: 'سلسال لين 45', category: 'سلسلة', material_id: m18 })).data;
+  assert.equal((await admin('POST', `/findings/${f.id}/in`, { source: 'supplier', supplier_id: lin.id, weight: '40', pieces: '20' })).status, 200);
+  assert.equal(await bal(), Number(lin.balance) + 20, '50 − 30');
+  assert.equal((await admin('POST', `/findings/${f.id}/in`, { source: 'supplier', weight: '1' })).status, 400, 'المورد مطلوب');
+  // إضافة مورد جديد
+  const n = await admin('POST', '/inventory/suppliers', { name: 'مورد ثالث', supplies: 'أقفال' });
+  assert.equal(n.status, 200);
+  assert.equal((await admin('POST', '/inventory/suppliers', { name: 'مورد ثالث' })).status, 409);
+  assert.equal((await admin('POST', `/inventory/suppliers/${n.data.id}/opening`, { weight: '5', note: 'قبل النظام' })).status, 200);
+  assert.equal(Number((await sups()).suppliers.find((s) => s.id === n.data.id).balance), 5);
+});

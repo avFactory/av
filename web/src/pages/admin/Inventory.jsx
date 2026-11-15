@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtDT, LOCS } from '../../format.js';
-import { Btn, Card, Field, Input, Loader, Modal, Page, Select, Table, Tabs, WeightInput, useAction, useFetch, Badge } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Loader, Modal, ModeTiles, Page, Select, Table, Tabs, WeightInput, useAction, useFetch, Badge } from '../../ui.jsx';
 
 import GoldIn from './GoldIn.jsx';
 
@@ -18,6 +18,7 @@ export default function Inventory() {
   const [m, setM] = useState(null);
   const [run, busy] = useAction();
   const mats = gold?.materials || [];
+  const { data: sups } = useFetch(m?.type === 'out' ? '/inventory/suppliers' : null, { deps: [m?.type] });
   const op = (url, body, msg) => run(async () => { await api.post(url, body); setM(null); reload(); }, msg);
   const table = {};
   for (const r of gold?.rows || []) (table[r.material_id] ||= { name: r.name })[r.loc_type] = r.balance;
@@ -27,7 +28,7 @@ export default function Inventory() {
       {can('custody.issue', 'inventory.manage') && <Btn kind="dark" onClick={() => setM({ type: 'worker', material_id: mats[3]?.id, loss_rate_percent: '0' })}>تحويل لعامل (عهدة عامة)</Btn>}
       {can('inventory.manage') && <>
       <Btn onClick={() => setM({ type: 'in', source: 'customer', material_id: mats[3]?.id })}>إضافة ذهب للخزنة</Btn>
-      <Btn kind="ghost" onClick={() => setM({ type: 'out', material_id: mats[3]?.id, from: 'vault' })}>صرف</Btn>
+      <Btn kind="ghost" onClick={() => setM({ type: 'out', to: 'supplier', from: 'vault', material_id: mats.find((x) => Number(x.karat) === 24)?.id || mats[3]?.id })}>صرف</Btn>
       <Btn kind="ghost" onClick={() => setM({ type: 'scrap', material_id: mats[3]?.id })}>بقايا ← الخزنة</Btn>
       {can('stocktake.approve') && <Btn kind="ghost" onClick={() => setM({ type: 'convert' })}>تحويل موثق بين العيارات</Btn>}
       </>}
@@ -57,14 +58,20 @@ export default function Inventory() {
           <Btn loading={busy} disabled={!m.worker_id || !m.weight || !m.purpose} onClick={() => op('/inventory/gold/to-worker', { ...m, idempotency_key: m.key || (m.key = String(Date.now()) + Math.random()) }, 'تم التحويل - بانتظار قبول العامل')}>تحويل</Btn>
         </>}
       </Modal>
-      <Modal open={!!m && m.type !== 'worker'} onClose={() => setM(null)} title={{ in: 'إضافة ذهب للخزنة', out: 'صرف ذهب لخارج المصنع', scrap: 'تحويل البقايا إلى الخزنة', convert: 'تحويل موثق بين مادتين' }[m?.type]}>
+      <Modal open={!!m && m.type !== 'worker'} onClose={() => setM(null)} title={{ in: 'إضافة ذهب للخزنة', out: 'صرف ذهب', scrap: 'تحويل البقايا إلى الخزنة', convert: 'تحويل موثق بين مادتين' }[m?.type]}>
         {m?.type === 'in' && <GoldIn m={m} setM={setM} mats={mats} busy={busy} onSubmit={(body) => op('/inventory/gold/in', body, 'تمت إضافة الذهب للخزنة')} />}
         {m && m.type !== 'convert' && m.type !== 'in' && <>
           <Field label="المادة"><Select value={m.material_id} onChange={(e) => setM({ ...m, material_id: e.target.value })} options={mats.map((x) => [x.id, x.name])} /></Field>
-          {m.type === 'out' && <Field label="من"><Select value={m.from} onChange={(e) => setM({ ...m, from: e.target.value })} options={[['vault', 'الخزنة'], ['scrap', 'البقايا (للتنقية)']]} /></Field>}
+          {m.type === 'out' && <ModeTiles value={m.to || 'external'} onChange={(to) => setM({ ...m, to, from: 'vault', supplier_id: '', material_id: to === 'supplier' ? (mats.find((x) => Number(x.karat) === 24)?.id || m.material_id) : m.material_id })} tiles={[['supplier', '🏭', 'لمورد خامات', 'ذهب صافي مقدماً مقابل خامات'], ['external', '↗', 'لخارج المصنع', 'تنقية بقايا أو غيره']]} />}
+          {m.type === 'out' && m.to === 'supplier' && <Field label="المورد *"><div className="mode-tiles">{(sups?.suppliers || []).filter((x) => x.active).map((x) => (
+            <button key={x.id} type="button" className={`mode-tile${String(m.supplier_id) === String(x.id) ? ' on' : ''}`} onClick={() => setM({ ...m, supplier_id: x.id })}>
+              <span className="mt-tx"><b>{x.name}</b><small>{x.supplies ? `${x.supplies} · ` : ''}الرصيد المقدم <b dir="ltr">{fmtW(x.balance)}</b> جم</small></span>
+            </button>))}</div>
+            <Link className="small" to="/admin/suppliers">إدارة الموردين ←</Link></Field>}
+          {m.type === 'out' && m.to !== 'supplier' && <Field label="من"><Select value={m.from} onChange={(e) => setM({ ...m, from: e.target.value })} options={[['vault', 'الخزنة'], ['scrap', 'البقايا (للتنقية)']]} /></Field>}
           <Field label="الوزن (جم)"><WeightInput big value={m.weight || ''} onChange={(v) => setM({ ...m, weight: v })} /></Field>
-          <Field label="البيان *"><Input value={m.note || ''} onChange={(e) => setM({ ...m, note: e.target.value })} placeholder="مثال: شراء سبائك من مورد / رصيد افتتاحي" /></Field>
-          <Btn loading={busy} onClick={() => op({ in: '/inventory/gold/in', out: '/inventory/gold/out', scrap: '/inventory/gold/scrap-to-vault' }[m.type], m, 'تم تسجيل الحركة')}>تسجيل</Btn>
+          <Field label={m.to === 'supplier' ? 'البيان' : 'البيان *'}><Input value={m.note || ''} onChange={(e) => setM({ ...m, note: e.target.value })} placeholder={m.type === 'out' ? 'مثال: تنقية بقايا' : 'مثال: شراء سبائك من مورد / رصيد افتتاحي'} /></Field>
+          <Btn loading={busy} disabled={m.type === 'out' && m.to === 'supplier' && !m.supplier_id} onClick={() => op({ in: '/inventory/gold/in', out: '/inventory/gold/out', scrap: '/inventory/gold/scrap-to-vault' }[m.type], m, 'تم تسجيل الحركة')}>تسجيل</Btn>
         </>}
         {m?.type === 'convert' && <>
           <div className="alert alert-info small">لا يتم جمع أوزان مواد مختلفة. التحويل يسجل حركتين مرتبطتين، والفرق يظهر في الفروقات.</div>

@@ -8,6 +8,7 @@ import * as ledger from '../lib/ledger.js';
 import { notifyPerm } from '../lib/notify.js';
 import { statementRows } from '../lib/statement.js';
 import { listDealers, dealerEntry } from '../lib/goldDealers.js';
+import { listSuppliers, supplierEntry } from '../lib/suppliers.js';
 
 const r = Router();
 
@@ -73,6 +74,45 @@ r.get('/gold/sources', requirePerm('inventory.manage'), async (_req, res) => {
   res.json({ customers, dealers: await listDealers(pool) });
 });
 
+// ------------------------------------------------------------------ موردو الخامات
+r.get('/suppliers', requirePerm('dashboard.view', 'inventory.view', 'findings.manage', 'finance.view'), async (_req, res) => {
+  const suppliers = await listSuppliers(pool, { all: true });
+  const entries = await many(`select e.*, e.weight::text, e.pure::text, s.name as supplier_name, f.name as finding_name, u.full_name as created_by_name
+    from gold_supplier_entries e join gold_suppliers s on s.id=e.supplier_id left join findings f on f.id=e.finding_id left join users u on u.id=e.created_by
+    order by e.id desc limit 300`);
+  const total = suppliers.filter((s) => s.active).reduce((a, s) => a + Number(s.balance), 0);
+  res.json({ total: Math.round(total * 10000) / 10000, suppliers, entries });
+});
+
+r.post('/suppliers', requirePerm('inventory.manage', 'findings.manage'), async (req, res) => {
+  const name = str(req.body.name, 'اسم المورد', { required: true, max: 120 });
+  if ((await pool.query('select 1 from gold_suppliers where name=$1', [name])).rowCount) throw conflict('المورد مسجل مسبقاً');
+  const s = await one('insert into gold_suppliers(name, supplies, phone, note) values ($1,$2,$3,$4) returning *',
+    [name, str(req.body.supplies, 'الخامات', { max: 120 }), str(req.body.phone, 'الجوال', { max: 30 }), str(req.body.note, 'ملاحظات', { max: 300 })]);
+  await audit(pool, req, 'supplier.create', 'gold_suppliers', s.id, { name });
+  res.json(s);
+});
+
+r.put('/suppliers/:id', requirePerm('inventory.manage', 'findings.manage'), async (req, res) => {
+  const id = int(req.params.id);
+  const name = str(req.body.name, 'اسم المورد', { required: true, max: 120 });
+  if ((await pool.query('select 1 from gold_suppliers where name=$1 and id<>$2', [name, id])).rowCount) throw conflict('المورد مسجل مسبقاً');
+  const s = await one('update gold_suppliers set name=$2, supplies=$3, phone=$4, active=$5 where id=$1 returning *',
+    [id, name, str(req.body.supplies, 'الخامات', { max: 120 }), str(req.body.phone, 'الجوال', { max: 30 }), req.body.active !== false]);
+  if (!s) throw notFound('المورد غير موجود');
+  await audit(pool, req, 'supplier.update', 'gold_suppliers', id, req.body);
+  res.json(s);
+});
+
+/** رصيد مقدم افتتاحي (ذهب صافي لدى المورد قبل النظام) */
+r.post('/suppliers/:id/opening', requirePerm('inventory.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const e = await supplierEntry(db, { supplierId: int(req.params.id), kind: 'opening', weight: W(req.body.weight, 'الوزن الصافي'), karat: 24, note: str(req.body.note, 'البيان', { required: true, max: 300 }), userId: req.user.id });
+    await audit(db, req, 'supplier.opening', 'gold_suppliers', e.supplier_id, { entry: e.entry_no, weight: e.weight });
+    return e;
+  }));
+});
+
 // ------------------------------------------------------------------ جمل الصافي
 r.get('/dealers', requirePerm('dashboard.view', 'inventory.manage', 'finance.view'), async (_req, res) => {
   const dealers = await listDealers(pool, { all: true });
@@ -105,10 +145,18 @@ r.post('/gold/out', requirePerm('inventory.manage'), async (req, res) => {
     const m = int(req.body.material_id, 'المادة');
     const w = W(req.body.weight, 'الوزن');
     const from = oneOf(req.body.from || 'vault', ['vault', 'scrap'], 'المصدر');
-    const note = str(req.body.note, 'البيان', { required: true });
+    // صرف ذهب لمورد خامات (مقدماً): يُسجل في رصيده المقدم
+    const supplierId = req.body.to === 'supplier' ? int(req.body.supplier_id, 'المورد') : null;
+    const sup = supplierId ? (await db.query('select id, name from gold_suppliers where id=$1', [supplierId])).rows[0] : null;
+    if (supplierId && !sup) throw notFound('المورد غير موجود');
+    const note = str(req.body.note, 'البيان', { required: !sup, max: 300 });
     await ledger.requireBalance(db, from, null, m, w, 'الرصيد غير كافٍ');
-    const mv = await ledger.post(db, { kind: 'stock_out', material_id: m, weight: w, from: [from, null], to: ['external', null], reason: note, user_id: req.user.id });
-    await audit(db, req, 'gold.out', 'gold_ledger', mv.id, { material: m, weight: w, from, note });
+    const mv = await ledger.post(db, { kind: 'stock_out', material_id: m, weight: w, from: [from, null], to: ['external', null], reason: sup ? `صرف ذهب للمورد ${sup.name}${note ? `: ${note}` : ''}` : note, user_id: req.user.id });
+    if (sup) {
+      const karat = (await db.query('select karat from materials where id=$1', [m])).rows[0]?.karat || 24;
+      await supplierEntry(db, { supplierId: sup.id, kind: 'gold_out', weight: w, karat, materialId: m, ledgerId: mv.id, note: note || 'صرف ذهب مقدماً', userId: req.user.id });
+    }
+    await audit(db, req, 'gold.out', 'gold_ledger', mv.id, { material: m, weight: w, from, note, supplier_id: supplierId });
     return mv;
   }));
 });

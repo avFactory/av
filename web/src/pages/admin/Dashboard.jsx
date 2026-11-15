@@ -6,6 +6,7 @@ export default function Dashboard() {
   const { data: s } = useFetch('/admin/stats', { live: ['orders', 'gold_ledger', 'settlements'] });
   const { data: cg } = useFetch('/admin/customer-gold', { live: ['gold_ledger'] });
   const { data: dl } = useFetch('/inventory/dealers', { live: ['gold_ledger'] });
+  const { data: sp } = useFetch('/inventory/suppliers', { live: ['gold_ledger'] });
   if (!s) return <Loader />;
   const maxStage = Math.max(1, ...s.byStage.map((x) => x.n));
   const mats = {};
@@ -29,7 +30,7 @@ export default function Dashboard() {
         <Stat label="في المخزون (الخزنة)" value={fmtW(s.gold_in_vault)} unit="جم" to="/admin/inventory" sub={`تحت التشغيل ${fmtW(s.gold_in_orders)} · بقايا ${fmtW(s.gold_scrap)}`} />
         <Stat label="الذهب لدى جمل الصافي" value={dl ? fmtW(dl.total) : '…'} unit="جم" to="/admin/gold-dealers" sub={dl ? dl.dealers.filter((d) => d.active).map((d) => `${d.name} ${fmtW(d.balance)}`).join(' · ') : ''} />
         <Stat label="الذهب لدى الجملة" value={cg ? fmtW(cg.total) : '…'} unit="جم" tone="gold" to="/admin/customer-gold" sub={cg ? `صافي عيار 24 · ${cg.count} عميل` : ''} />
-        <Stat label="العجز غير الطبيعي" value={fmtW(s.abnormal_loss)} unit="جم" tone="bad" to="/admin/reports" sub={Number(s.pending_loss) ? `${fmtW(s.pending_loss)} جم تحت المراجعة` : ''} />
+        <Stat label="رصيد مقدم للموردين" value={sp ? fmtW(sp.total) : '…'} unit="جم" to="/admin/suppliers" sub={sp ? sp.suppliers.filter((x) => x.active).map((x) => `${x.name} ${fmtW(x.balance)}`).join(' · ') : ''} />
       </div>
       <h3 className="mb">المالية (أجور التصنيع فقط)</h3>
       <div className="grid g4 mb">

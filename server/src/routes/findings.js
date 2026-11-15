@@ -7,6 +7,7 @@ import { audit } from '../lib/audit.js';
 import { notifyUsers } from '../lib/notify.js';
 import * as ledger from '../lib/ledger.js';
 import { getWorker } from '../lib/custody.js';
+import { supplierEntry } from '../lib/suppliers.js';
 
 const r = Router();
 export const FINDING_CATEGORIES = ['سلسلة', 'قفل', 'كور سحب', 'حلقة', 'وصلة', 'أخرى'];
@@ -50,10 +51,19 @@ r.post('/:id/in', requirePerm('findings.manage'), async (req, res) => {
     if (!f) throw notFound('الخامة غير موجودة');
     const weight = W(req.body.weight, 'الوزن');
     const pieces = int(req.body.pieces ?? 0, 'عدد القطع', { min: 0 });
-    const source = oneOf(req.body.source || 'external', ['external', 'vault'], 'المصدر');
-    const note = str(req.body.note, 'البيان', { max: 300 }) || (source === 'vault' ? 'تصنيع خامات من ذهب الخزنة' : 'شراء/استلام خامات');
+    const src = oneOf(req.body.source || 'external', ['external', 'vault', 'supplier'], 'المصدر');
+    const source = src === 'vault' ? 'vault' : 'external';
+    const sup = src === 'supplier' ? (await db.query('select id, name from gold_suppliers where id=$1', [int(req.body.supplier_id, 'المورد')])).rows[0] : null;
+    if (src === 'supplier' && !sup) throw notFound('المورد غير موجود');
+    let note = str(req.body.note, 'البيان', { max: 300 }) || (source === 'vault' ? 'تصنيع خامات من ذهب الخزنة' : 'شراء/استلام خامات');
+    if (sup) note = `من المورد ${sup.name}${req.body.note ? ` — ${note}` : ''}`;
     if (source === 'vault') await ledger.requireBalance(db, 'vault', null, f.material_id, weight, 'رصيد الخزنة من هذا العيار غير كافٍ');
     const mv = await ledger.post(db, { kind: 'findings_in', material_id: f.material_id, weight, from: [source, null], to: ['findings', f.id], reason: `${f.name}: ${note}`, user_id: req.user.id });
+    if (sup) {
+      // الخامات المستلمة من المورد تُخصم من رصيده المقدم بالصافي
+      const karat = (await db.query('select karat from materials where id=$1', [f.material_id])).rows[0]?.karat || 24;
+      await supplierEntry(db, { supplierId: sup.id, kind: 'findings_in', weight, karat, materialId: f.material_id, findingId: f.id, ledgerId: mv.id, note: `${f.name}${pieces ? ` — ${pieces} قطعة` : ''}${req.body.note ? ` — ${req.body.note}` : ''}`, userId: req.user.id });
+    }
     await db.query('insert into finding_moves(finding_id, kind, pieces, weight, note, created_by) values ($1,$2,$3,$4,$5,$6)', [f.id, 'in', pieces, weight, note, req.user.id]);
     await audit(db, req, 'finding.in', 'finding', f.id, { pieces, weight, source, note, movement: mv.movement_no });
     return { ok: true };
