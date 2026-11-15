@@ -896,6 +896,24 @@ test('منع تكرار المنتجات بالاسم أو الصورة', async 
   assert.equal(sameImg.status, 409, 'نفس ملف الصورة');
   const similar = await mk('خاتم ثالث مختلف', resized, 'image/jpeg');
   assert.equal(similar.status, 409, 'نفس الصورة بعد تغيير الحجم والصيغة');
+  assert.equal(similar.data.details?.similar_image, true, 'التشابه يمكن تأكيده');
+  assert.equal(sameImg.data.details?.similar_image, undefined, 'نفس الملف لا يُتجاوز');
+  // صور منتجات مختلفة على خلفية بيضاء لا تُعتبر مكررة
+  const onWhite = (svg) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="#fbfbfa"/>${svg}</svg>`)).jpeg().toBuffer();
+  const ringImg = await onWhite('<circle cx="300" cy="320" r="70" fill="none" stroke="#c9a24a" stroke-width="18"/><circle cx="300" cy="240" r="20" fill="#ddd"/>');
+  const earImg = await onWhite('<circle cx="240" cy="300" r="30" fill="#c9a24a"/><circle cx="360" cy="300" r="30" fill="#c9a24a"/>');
+  const chainImg = await onWhite('<path d="M150 220 Q300 480 450 220" fill="none" stroke="#c9a24a" stroke-width="8"/>');
+  assert.equal((await mk('خاتم أبيض 1', ringImg, 'image/jpeg')).status, 200);
+  const e2 = await mk('حلق أبيض 1', earImg, 'image/jpeg'); assert.equal(e2.status, 200, JSON.stringify(e2.data));
+  const c2 = await mk('سلسال أبيض 1', chainImg, 'image/jpeg'); assert.equal(c2.status, 200, JSON.stringify(c2.data));
+  // نفس صورة الخاتم بعد تصغيرها تُكتشف، ويمكن الحفظ رغم التشابه بتأكيد
+  const ringSmall = await sharp(ringImg).resize(400).jpeg({ quality: 60 }).toBuffer();
+  const rs = await mk('خاتم أبيض 2', ringSmall, 'image/jpeg');
+  assert.equal(rs.status, 409); assert.equal(rs.data.details?.similar_image, true);
+  const f2 = new FormData();
+  for (const [k, v] of Object.entries({ name: 'خاتم أبيض 2', product_type: 'خاتم', karats: '21', colors: 'yellow', allow_similar: '1' })) f2.append(k, v);
+  f2.append('files', new Blob([ringSmall], { type: 'image/jpeg' }), 'x.jpg');
+  assert.equal((await call('POST', '/catalog/products', null, f2)).status, 200, 'الحفظ رغم التشابه');
   assert.equal((await mk('خاتم بصورة جديدة', await uniquePng())).status, 200, 'منتج جديد فعلاً يُقبل');
   // تعديل نفس المنتج باسمه لا يُعتبر تكراراً
   const u = new FormData();

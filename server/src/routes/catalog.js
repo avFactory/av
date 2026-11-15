@@ -83,7 +83,7 @@ async function setMainMedia(db, productId, body, newIds) {
 r.post('/products', requirePerm('products.manage'), upload.array('files', 20), async (req, res) => {
   res.json(await tx(async (db) => {
     const vals = productVals(req.body);
-    const hashes = await assertNoDuplicate(db, { name: vals[1], files: req.files || [] });
+    const hashes = await assertNoDuplicate(db, { name: vals[1], files: req.files || [], allowSimilar: req.body.allow_similar === '1' });
     // رقم المنتج يُولَّد تلقائياً من نوع القطعة (RIN، SW، NK...) إذا لم يُدخل يدوياً
     if (!vals[0]) vals[0] = await nextSku(db, vals[2], { lock: true });
     const p = (await db.query(`insert into products(sku, name, product_type, description, karats, colors, approx_weight, final_weight, sizes, labor_method, labor_rate, availability, route_id, active,
@@ -91,7 +91,7 @@ r.post('/products', requirePerm('products.manage'), upload.array('files', 20), a
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) returning *`, vals).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; })).rows[0];
     const files = await registerFiles(db, req.files, req.user.id);
     const ids = [];
-    for (const [i, f] of files.entries()) ids.push((await db.query('insert into product_media(product_id, path, kind, sort, sha256, dhash) values ($1,$2,$3,$4,$5,$6) returning id', [p.id, f.path, f.mime?.startsWith('video') ? 'video' : 'image', i, hashes[i]?.sha || null, hashes[i]?.dhash || null])).rows[0].id);
+    for (const [i, f] of files.entries()) ids.push((await db.query('insert into product_media(product_id, path, kind, sort, sha256, dhash, hash_v) values ($1,$2,$3,$4,$5,$6,2) returning id', [p.id, f.path, f.mime?.startsWith('video') ? 'video' : 'image', i, hashes[i]?.sha || null, hashes[i]?.dhash || null])).rows[0].id);
     await setMainMedia(db, p.id, req.body, ids);
     await audit(db, req, 'product.create', 'product', p.id, { sku: p.sku });
     return p;
@@ -104,7 +104,7 @@ r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 20)
     const before = (await db.query('select * from products where id=$1', [id])).rows[0];
     if (!before) throw notFound();
     const vals = productVals(req.body);
-    const hashes = await assertNoDuplicate(db, { name: vals[1], files: req.files || [], excludeId: id });
+    const hashes = await assertNoDuplicate(db, { name: vals[1], files: req.files || [], excludeId: id, allowSimilar: req.body.allow_similar === '1' });
     if (!vals[0]) vals[0] = before.sku;
     await db.query(`update products set sku=$2, name=$3, product_type=$4, description=$5, karats=$6, colors=$7, approx_weight=$8, final_weight=$9, sizes=$10,
       labor_method=$11, labor_rate=$12, availability=$13, route_id=$14, active=$15,
@@ -112,7 +112,7 @@ r.put('/products/:id', requirePerm('products.manage'), upload.array('files', 20)
       allowed_customer_ids=$22, allowed_tier_ids=$23 where id=$1`, [id, ...vals]).catch((e) => { if (e.code === '23505') throw bad('رقم المنتج مستخدم'); throw e; });
     const files = await registerFiles(db, req.files, req.user.id);
     const ids = [];
-    for (const [i, f] of files.entries()) ids.push((await db.query('insert into product_media(product_id, path, kind, sort, sha256, dhash) values ($1,$2,$3,99,$4,$5) returning id', [id, f.path, f.mime?.startsWith('video') ? 'video' : 'image', hashes[i]?.sha || null, hashes[i]?.dhash || null])).rows[0].id);
+    for (const [i, f] of files.entries()) ids.push((await db.query('insert into product_media(product_id, path, kind, sort, sha256, dhash, hash_v) values ($1,$2,$3,99,$4,$5,2) returning id', [id, f.path, f.mime?.startsWith('video') ? 'video' : 'image', hashes[i]?.sha || null, hashes[i]?.dhash || null])).rows[0].id);
     for (const mid of arr(req.body.remove_media)) await db.query('delete from product_media where id=$1 and product_id=$2', [int(mid), id]);
     await setMainMedia(db, id, req.body, ids);
     await audit(db, req, 'product.update', 'product', id, { before, after: req.body });
