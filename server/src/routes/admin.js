@@ -50,18 +50,18 @@ r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
       (select count(*) from orders where due_date < current_date and status not in ('delivered','cancelled','rejected'))::int as late_orders,
       (select count(*) from orders where status in ('ready','delivered'))::int as completed_orders,
       (select count(*) from orders where status='ready')::int as ready_orders,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type in ('vault','order','worker','scrap','finished','loss_suspense','findings'))::text as gold_in_factory,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type='worker')::text as gold_with_workers,
-      (select coalesce(sum(b.balance),0) from gold_balances b join users u on u.id=b.loc_ref where b.loc_type='worker' and u.kind <> 'machine')::text as gold_with_people,
-      (select coalesce(sum(b.balance),0) from gold_balances b join users u on u.id=b.loc_ref where b.loc_type='worker' and u.kind = 'machine')::text as gold_in_machines,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type='findings')::text as gold_in_findings,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type='vault')::text as gold_in_vault,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type='order')::text as gold_in_orders,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type='scrap')::text as gold_scrap,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type='finished')::text as gold_finished,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type='loss_normal')::text as normal_loss,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type='loss_abnormal')::text as abnormal_loss,
-      (select coalesce(sum(balance),0) from gold_balances where loc_type='loss_suspense')::text as pending_loss,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type in ('vault','order','worker','scrap','finished','loss_suspense','findings'))::text as gold_in_factory,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type='worker')::text as gold_with_workers,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id join users u on u.id=b.loc_ref where b.loc_type='worker' and u.kind <> 'machine')::text as gold_with_people,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id join users u on u.id=b.loc_ref where b.loc_type='worker' and u.kind = 'machine')::text as gold_in_machines,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type='findings')::text as gold_in_findings,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type='vault')::text as gold_in_vault,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type='order')::text as gold_in_orders,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type='scrap')::text as gold_scrap,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type='finished')::text as gold_finished,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type='loss_normal')::text as normal_loss,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type='loss_abnormal')::text as abnormal_loss,
+      (select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4) from gold_balances b join materials m on m.id=b.material_id where b.loc_type='loss_suspense')::text as pending_loss,
       (select coalesce(sum(case when invoice_type='invoice' then subtotal else -subtotal end),0) from invoices where status='issued')::text as labor_revenue,
       (select coalesce(sum(case when invoice_type='invoice' then total else -total end),0) from invoices where status='issued')::text as invoiced_total,
       (select coalesce(sum(case when kind='refund' then -amount else amount end),0) from payments)::text as collected,
@@ -71,7 +71,7 @@ r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
   s.receivables = (Number(s.invoiced_total) - Number(s.collected)).toFixed(2);
   const byStage = await many(`select s.name, count(o.id)::int n from stages s left join orders o on o.current_stage_id=s.id and o.status='in_production'
                               where s.active group by s.id order by s.sort_order`);
-  const byMaterial = await many(`select m.name, b.loc_type, b.balance::text from gold_balances b join materials m on m.id=b.material_id
+  const byMaterial = await many(`select m.name, b.loc_type, (b.balance * m.karat / 24.0)::numeric(16,4)::text as balance from gold_balances b join materials m on m.id=b.material_id
                                  where b.balance <> 0 and b.loc_type in ('vault','order','worker','scrap','finished','loss_suspense','findings') order by m.id`);
   const lossTrend = await many(`select to_char(date_trunc('day', created_at),'YYYY-MM-DD') d,
       sum(weight) filter (where kind='normal_loss')::text normal, sum(weight) filter (where kind in ('abnormal_pending','abnormal_loss'))::text abnormal

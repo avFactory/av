@@ -270,6 +270,10 @@ test('ذهب المؤسسة: الجاهز للتسليم، مخزون الفرو
   const og = (await admin('GET', '/admin/org-gold')).data;
   assert.equal(og.branches.taiba.pure, 210, '240 × 21/24');
   assert.equal(og.parts.store, 100);
+  const st = (await admin('GET', '/admin/stats')).data;
+  assert.ok(Math.abs(Number(st.gold_in_factory) - og.parts.factory) < 0.001, 'لوحة الإحصائيات بالصافي عيار 24 مثل ذهب المؤسسة');
+  const gross = Number((await pool.query("select coalesce(sum(balance),0) b from gold_balances where loc_type in ('vault','order','worker','scrap','finished','loss_suspense','findings')")).rows[0].b);
+  if (gross) assert.ok(Number(st.gold_in_factory) < gross, 'الصافي أقل من الوزن الفعلي لوجود عيار 18/21');
   const sum = Object.values(og.parts).reduce((a, x) => a + x, 0);
   assert.ok(Math.abs(og.total - sum) < 0.001, 'الإجمالي = مجموع البنود');
   assert.ok(Math.abs(og.total - og0.total - (210 - og0.parts.taiba) - (100 - og0.parts.store)) < 0.001);

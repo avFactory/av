@@ -30,7 +30,7 @@ export default function Dashboard() {
         <Stat label="متأخرة" value={s.late_orders} to="/orders?late=1" tone={s.late_orders ? 'bad' : 'plain'} />
         <Stat label="مكتملة (جاهزة/مسلمة)" value={s.completed_orders} sub={`${s.ready_orders} بانتظار التسليم`} tone="ok" />
       </div>
-      <h3 className="mb">الذهب (جرام)</h3>
+      <h3 className="mb">الذهب (جرام صافي عيار 24)</h3>
       <div className="grid g4 mb">
         <Stat label="إجمالي الذهب في المصنع" value={fmtW(s.gold_in_factory)} unit="جم" tone="gold" sub="خزنة + طلبات + عمال + مكائن + خامات + بقايا + جاهز + معلق" />
         <Stat label="لدى العمال" value={fmtW(s.gold_with_people)} unit="جم" to="/sup/workers" />
@@ -38,18 +38,18 @@ export default function Dashboard() {
         <Stat label="في الخامات" value={fmtW(s.gold_in_findings)} unit="جم" to="/admin/findings" sub="سلاسل، أقفال، كور سحب…" />
         <Stat label="في المخزون (الخزنة)" value={fmtW(s.gold_in_vault)} unit="جم" to="/admin/inventory" sub={`تحت التشغيل ${fmtW(s.gold_in_orders)} · بقايا ${fmtW(s.gold_scrap)}`} />
         <Stat label="الذهب لدى جمل الصافي" value={dl ? fmtW(dl.total) : '…'} unit="جم" to="/admin/gold-dealers" sub={dl ? dl.dealers.filter((d) => d.active).map((d) => `${d.name} ${fmtW(d.balance)}`).join(' · ') : ''} />
-        <Stat label="الذهب لدى الجملة" value={cg ? fmtW(cg.total) : '…'} unit="جم" tone="gold" to="/admin/customer-gold" sub={cg ? `صافي عيار 24 · ${cg.count} عميل` : ''} />
+        <Stat label="الذهب لدى الجملة" value={cg ? fmtW(cg.total) : '…'} unit="جم" tone="gold" to="/admin/customer-gold" sub={cg ? `${cg.count} عميل` : ''} />
         <Stat label="رصيد مقدم للموردين" value={sp ? fmtW(sp.total) : '…'} unit="جم" to="/admin/suppliers" sub={sp ? sp.suppliers.filter((x) => x.active).map((x) => `${x.name} ${fmtW(x.balance)}`).join(' · ') : ''} />
       </div>
       <div className="grid g4 mb">
-        <Stat label="الذهب الجاهز للتسليم" value={og ? fmtW(og.ready.weight) : '…'} unit="جم" tone="ok" to="/orders?status=ready" sub={og ? `${og.ready.count} طلب جاهز · صافي ${fmtW(og.ready.pure)}` : ''} />
+        <Stat label="الذهب الجاهز للتسليم" value={og ? fmtW(og.ready.pure) : '…'} unit="جم" tone="ok" to="/orders?status=ready" sub={og ? `${og.ready.count} طلب جاهز · الوزن الفعلي ${fmtW(og.ready.weight)}` : ''} />
         {['taiba', 'store'].map((k) => {
           const b = og?.branches[k];
-          return <Stat key={k} label={`مخزون ${b?.name || ''}`} value={b ? fmtW(b.weight) : '…'} unit="جم"
-            sub={b ? `${b.karat !== 24 ? `عيار ${b.karat} · صافي ${fmtW(b.pure)}` : 'عيار 24'}${b.updated_at ? ` · ${new Date(b.updated_at).toLocaleDateString('ar-SA-u-nu-latn')}` : ''}` : ''}
+          return <Stat key={k} label={`مخزون ${b?.name || ''}`} value={b ? fmtW(b.pure) : '…'} unit="جم"
+            sub={b ? `${b.karat !== 24 ? `${fmtW(b.weight)} جم عيار ${b.karat}` : 'عيار 24'}${b.updated_at ? ` · ${new Date(b.updated_at).toLocaleDateString('ar-SA-u-nu-latn')}` : ''}` : ''}
             onClick={isAdmin && b ? () => setBm({ key: k, name: b.name, weight: String(b.weight || ''), karat: String(b.karat) }) : undefined} />;
         })}
-        <Stat label="ذهب المؤسسة" value={og ? fmtW(og.total) : '…'} unit="جم" tone="gold" sub="صافي عيار 24 · المصنع والفروع والعملاء والموردين" onClick={og ? () => setShowOrg(true) : undefined} />
+        <Stat label="ذهب المؤسسة" value={og ? fmtW(og.total) : '…'} unit="جم" tone="gold" sub="المصنع والفروع والعملاء والجمل والموردين" onClick={og ? () => setShowOrg(true) : undefined} />
       </div>
       <Modal open={!!bm} onClose={() => setBm(null)} title={`مخزون ${bm?.name || ''}`}>
         {bm && <>
@@ -88,7 +88,7 @@ export default function Dashboard() {
             </div>
           ))}
         </Card>
-        <Card title="توزيع الذهب حسب المادة والموقع" pad={false}>
+        <Card title="توزيع الذهب حسب المادة والموقع (صافي عيار 24)" pad={false}>
           <Table rows={Object.entries(mats).map(([name, v]) => ({ name, ...v }))} columns={[['المادة', 'name'], ...['vault', 'order', 'worker', 'scrap', 'finished', 'loss_suspense'].map((k) => [LOCS[k], (r) => <span className="n">{fmtW(r[k] || 0)}</span>])]} />
           <div className="card-body"><Link to="/admin/inventory?tab=rec" className="link">مطابقة الأرصدة ←</Link></div>
         </Card>
