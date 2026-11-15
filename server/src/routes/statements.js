@@ -12,6 +12,9 @@ import { materialFor } from './orders.js';
 import { branchOf } from './finance.js';
 import { sendXlsx } from '../lib/xlsx.js';
 
+/** طرق السداد بالذهب */
+const GOLD_METHOD = { gold: 'تسليم ذهب', diwan: 'ديوان الذهب', coin: 'الجنيه العربي' };
+
 const KARATS = [18, 21, 22, 24];
 const isoDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
 const period = (q) => ({ from: isoDate(q.from), to: isoDate(q.to) });
@@ -142,7 +145,7 @@ staff.post('/submissions/:id/approve', requirePerm('payments.manage'), async (re
       const mv = await goldIntoVault(db, req, s.customer_id, s.karat, w, `سداد ذهب من العميل (${s.submission_no})`);
       entryId = (await db.query(`insert into customer_entries(entry_no, customer_id, entry_date, kind, gold_credit, karat, description, document_path, submission_id, ledger_id, created_by, branch_id)
         values (next_doc_no('CEN'),$1,coalesce($2::date, (now() at time zone 'Asia/Riyadh')::date),'gold_payment',$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
-        [s.customer_id, s.paid_at, w, s.karat, `مستند ${s.submission_no}${s.reference ? ` — ${s.reference}` : ''}${note ? ` — ${note}` : ''}`, s.document_path, s.id, mv.id, req.user.id, s.branch_id])).rows[0].id;
+        [s.customer_id, s.paid_at, w, s.karat, `مستند ${s.submission_no}${GOLD_METHOD[s.method] ? ` — ${GOLD_METHOD[s.method]}` : ''}${s.reference ? ` — ${s.reference}` : ''}${note ? ` — ${note}` : ''}`, s.document_path, s.id, mv.id, req.user.id, s.branch_id])).rows[0].id;
     }
     await db.query("update customer_submissions set status='approved', review_note=$2, reviewed_by=$3, reviewed_at=now(), payment_id=$4, entry_id=$5 where id=$1", [s.id, note, req.user.id, paymentId, entryId]);
     await notifyCustomer(db, s.customer_id, { kind: 'payment', title: `اعتُمد مستند السداد ${s.submission_no}`, body: s.kind === 'money' ? `${s.amount} ر.س أُضيفت لحسابكم` : `${s.weight} جم عيار ${s.karat} أُضيفت لحسابكم`, link: '/store/statement' });
@@ -191,7 +194,7 @@ store.post('/submissions', requirePerm('store.access'), approvedOnly, upload.sin
       values (next_doc_no('PDS'),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning *`,
       [req.user.customer_id, req.user.branch_id || null, kind, kind === 'money' ? money(b.amount, 'المبلغ') : null,
        kind === 'gold' ? W(b.weight, 'الوزن') : null, kind === 'gold' ? 24 : null, // سداد الذهب من العميل بعيار 24 فقط
-       kind === 'money' ? oneOf(b.method || 'transfer', ['cash', 'transfer', 'card', 'cheque', 'other'], 'طريقة الدفع') : null,
+       kind === 'money' ? oneOf(b.method || 'transfer', ['cash', 'transfer'], 'طريقة الدفع') : oneOf(b.method || 'gold', ['gold', 'diwan', 'coin'], 'طريقة تسليم الذهب'),
        str(b.reference, 'المرجع', { max: 120 }), isoDate(b.paid_at) || new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10), str(b.note, 'ملاحظات', { max: 500 }), doc.path, doc.original_name, doc.mime, req.user.id])).rows[0];
     await notifyPerm(db, 'payments.manage', { kind: 'payment', title: `مستند سداد جديد من ${req.user.shop_name}`, body: kind === 'money' ? `${s.amount} ر.س` : `${s.weight} جم عيار ${s.karat}`, link: `/admin/customers/${req.user.customer_id}/statement` });
     await audit(db, req, 'submission.create', 'customer', req.user.customer_id, { submission: s.submission_no, kind });

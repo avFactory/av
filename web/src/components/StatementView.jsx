@@ -59,3 +59,6 @@ export default function StatementTable({ st, staff }) {
 
 const SUB_ST = { pending: ['بانتظار المراجعة', 'warn'], approved: ['معتمد', 'ok'], rejected: ['مرفوض', 'bad'] };
 export { SUB_ST };
+/** طرق السداد: المبالغ والذهب */
+export const PAY_METHODS = { money: [['cash', 'كاش'], ['transfer', 'تحويل بنكي']], gold: [['gold', 'تسليم ذهب'], ['diwan', 'ديوان الذهب'], ['coin', 'الجنيه العربي']] };
+export const methodLabel = (m) => [...PAY_METHODS.money, ...PAY_METHODS.gold].find(([k]) => k === m)?.[1] || '';

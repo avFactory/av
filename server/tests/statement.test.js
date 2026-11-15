@@ -76,7 +76,10 @@ test('كشف الحساب: أجور وألماس مدين، المستلم دا�
   assert.equal((await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '500' }, false))).status, 400, 'المستند إلزامي');
   const s1 = await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '500', method: 'transfer', reference: 'TRX-1', paid_at: '2026-11-01' }));
   assert.equal(s1.status, 200, JSON.stringify(s1.data));
-  const s2 = (await cu('POST', '/store/submissions', null, form({ kind: 'gold', weight: '4', karat: '18', note: 'تسليم سبائك' }) /* العيار يُفرض 24 */)).data;
+  const s2 = (await cu('POST', '/store/submissions', null, form({ kind: 'gold', weight: '4', karat: '18', method: 'diwan', note: 'تسليم سبائك' }) /* العيار يُفرض 24 */)).data;
+  assert.equal(s2.method, 'diwan', 'طريقة تسليم الذهب: ديوان الذهب');
+  assert.equal((await cu('POST', '/store/submissions', null, form({ kind: 'gold', weight: '1', method: 'cash' }))).status, 400, 'الكاش ليس طريقة لتسليم الذهب');
+  assert.equal((await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '10', method: 'coin' }))).status, 400, 'الجنيه ليس طريقة دفع مبلغ');
   const s3 = (await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '50' }))).data;
   // قبل الاعتماد لا يتغير الرصيد
   assert.equal((await cu('GET', '/store/statement')).data.balance.money, 1045);

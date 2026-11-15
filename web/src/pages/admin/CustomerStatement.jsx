@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl, qs } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
-import StatementTable, { StatementSummary, SUB_ST, money2, gold3 } from '../../components/StatementView.jsx';
+import StatementTable, { StatementSummary, SUB_ST, methodLabel, money2, gold3 } from '../../components/StatementView.jsx';
 import { fmtDT } from '../../format.js';
 import { Badge, Btn, Card, Field, Input, Loader, Modal, Page, ReasonModal, Select, Tabs, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
 
@@ -24,7 +24,7 @@ export function SubmissionsList({ list, onDone, showCustomer }) {
               {s.mime?.startsWith('image') ? <img src={fileUrl(s.document_path, 200)} alt="" /> : <span>PDF</span>}
             </a>
             <div className="sub-main">
-              <b>{s.kind === 'money' ? `مبلغ ${money2(s.amount)} ر.س` : `ذهب ${gold3(s.weight)} جم عيار ${s.karat}`}</b>
+              <b>{s.kind === 'money' ? `مبلغ ${money2(s.amount)} ر.س` : `ذهب ${gold3(s.weight)} جم عيار ${s.karat}`}</b>{methodLabel(s.method) && <span className="badge text-bg-light border fw-normal ms-1">{methodLabel(s.method)}</span>}
               <span className="small text-body-secondary">{showCustomer && <><Link to={`/admin/customers/${s.customer_id}/statement`}>{s.shop_name}</Link>{s.branch_name ? ` — ${s.branch_name}` : ''} · </>}
                 <span dir="ltr">{s.submission_no}</span>{s.paid_at ? ` · بتاريخ ${String(s.paid_at).slice(0, 10)}` : ''}{s.reference ? ` · مرجع ${s.reference}` : ''} · رُفع {fmtDT(s.created_at)}</span>
               {s.note && <span className="small">{s.note}</span>}

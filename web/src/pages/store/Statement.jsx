@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, fileUrl, qs } from '../../api.js';
-import StatementTable, { StatementSummary, SUB_ST, money2, gold3 } from '../../components/StatementView.jsx';
+import StatementTable, { StatementSummary, SUB_ST, PAY_METHODS, methodLabel, money2, gold3 } from '../../components/StatementView.jsx';
 import { fmtDT } from '../../format.js';
 import { Badge, Btn, Card, Field, Input, Loader, Page, Select, Tabs, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
 
@@ -39,7 +39,8 @@ export default function Statement() {
       <StatementSummary st={st} />
       {f && (
         <Card className="mb no-print" title="رفع مستند سداد" actions={<Btn size="sm" kind="ghost" onClick={() => setF(null)}>إلغاء</Btn>}>
-          <Field label="نوع السداد"><div className="chips">{[['money', 'تحويل / دفع مبلغ'], ['gold', 'تسليم ذهب']].map(([k, l]) => <button key={k} type="button" className={`chip ${f.kind === k ? 'on' : ''}`} onClick={() => setF({ ...f, kind: k })}>{l}</button>)}</div></Field>
+          <Field label="نوع السداد"><div className="chips">{[['money', 'تحويل / دفع مبلغ'], ['gold', 'تسليم ذهب']].map(([k, l]) => <button key={k} type="button" className={`chip ${f.kind === k ? 'on' : ''}`} onClick={() => setF({ ...f, kind: k, method: k === 'money' ? 'transfer' : 'gold' })}>{l}</button>)}</div></Field>
+          <Field label={f.kind === 'money' ? 'طريقة الدفع' : 'طريقة تسليم الذهب'}><div className="chips">{PAY_METHODS[f.kind].map(([k, l]) => <button key={k} type="button" className={`chip ${f.method === k ? 'on' : ''}`} onClick={() => setF({ ...f, method: k })}>{l}</button>)}</div></Field>
           <div className="grid g2">
             {f.kind === 'money' ? <>
               <Field label="المبلغ (ر.س) *"><Input dir="ltr" inputMode="decimal" value={f.amount} onChange={(x) => setF({ ...f, amount: num(x.target.value) })} /></Field>
@@ -59,7 +60,7 @@ export default function Statement() {
             <div key={s.id} className={`sub-row ${s.status}`}>
               <a href={fileUrl(s.document_path)} target="_blank" rel="noreferrer" className="sub-doc">{s.mime?.startsWith('image') ? <img src={fileUrl(s.document_path, 200)} alt="" /> : <span>PDF</span>}</a>
               <div className="sub-main">
-                <b>{s.kind === 'money' ? `مبلغ ${money2(s.amount)} ر.س` : `ذهب ${gold3(s.weight)} جم عيار ${s.karat}`}</b>
+                <b>{s.kind === 'money' ? `مبلغ ${money2(s.amount)} ر.س` : `ذهب ${gold3(s.weight)} جم عيار ${s.karat}`}</b>{methodLabel(s.method) && <span className="small">{methodLabel(s.method)}</span>}
                 <span className="small text-body-secondary"><span dir="ltr">{s.submission_no}</span> · {fmtDT(s.created_at)}{s.reference ? ` · ${s.reference}` : ''}</span>
                 {s.review_note && <span className="small">{s.status === 'rejected' ? 'سبب الرفض: ' : ''}{s.review_note}</span>}
               </div>
