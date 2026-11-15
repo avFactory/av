@@ -76,8 +76,8 @@ test('كشف الحساب: أجور وألماس مدين، المستلم دا�
   assert.equal((await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '500' }, false))).status, 400, 'المستند إلزامي');
   const s1 = await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '500', method: 'transfer', reference: 'TRX-1', paid_at: '2026-11-01' }));
   assert.equal(s1.status, 200, JSON.stringify(s1.data));
-  const s2 = (await cu('POST', '/store/submissions', null, form({ kind: 'gold', weight: '4', karat: '18', method: 'diwan', note: 'تسليم سبائك' }) /* العيار يُفرض 24 */)).data;
-  assert.equal(s2.method, 'diwan', 'طريقة تسليم الذهب: ديوان الذهب');
+  const s2 = (await cu('POST', '/store/submissions', null, form({ kind: 'gold', weight: '4', karat: '18', note: 'تسليم سبائك' }) /* العيار يُفرض 24 */)).data;
+  assert.equal(s2.method, 'gold', 'طريقة تسليم الذهب الافتراضية: تسليم ذهب');
   assert.equal((await cu('POST', '/store/submissions', null, form({ kind: 'gold', weight: '1', method: 'cash' }))).status, 400, 'الكاش ليس طريقة لتسليم الذهب');
   assert.equal((await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '10', method: 'coin' }))).status, 400, 'الجنيه ليس طريقة دفع مبلغ');
   const s3 = (await cu('POST', '/store/submissions', null, form({ kind: 'money', amount: '50' }))).data;
@@ -190,4 +190,45 @@ test('الذهب لدى الجملة: مجموع رصيد الذهب الصاف�
   assert.ok(c, 'العميل في القائمة');
   assert.equal(c.pure, 5, 'رصيده 5 جم صافي من فاتورة الطلب');
   assert.equal(r.data.total, Math.round(r.data.rows.filter((x) => x.pure > 0).reduce((a, x) => a + x.pure, 0) * 10000) / 10000);
+});
+
+test('جمل الصافي: سداد العميل عن طريق ديوان الذهب يدخل رصيد الجمل، والسحب للخزنة، وإضافة ذهب من عميل', async () => {
+  const cid = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('محل الجمل','م','0500002222','approved') returning id")).rows[0].id;
+  await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id, must_change_password) values ('dealercu',$1,'م','customer',$2,false)", [hashPassword('Dealer#2026cu'), cid]);
+  const cu = client();
+  assert.equal((await cu('POST', '/auth/login', { username: 'dealercu', password: 'Dealer#2026cu' })).status, 200);
+  const m24 = (await pool.query("select id from materials where metal='gold' and karat=24 and active order by id limit 1")).rows[0].id;
+  const m21 = (await pool.query("select id from materials where metal='gold' and karat=21 and active order by id limit 1")).rows[0].id;
+  const vault = async (m) => Number((await pool.query("select coalesce(sum(balance),0) b from gold_balances where loc_type='vault' and material_id=$1", [m])).rows[0].b);
+  const dealers = async () => (await admin('GET', '/inventory/dealers')).data;
+  const diwan = (await dealers()).dealers.find((d) => d.code === 'diwan');
+  assert.ok(diwan && (await dealers()).dealers.some((d) => d.code === 'coin'), 'ديوان الذهب والجنيه العربي موجودان');
+  const d0 = Number(diwan.balance), v0 = await vault(m24);
+
+  const s = (await cu('POST', '/store/submissions', null, form({ kind: 'gold', weight: '10', method: 'diwan' }))).data;
+  assert.equal((await admin('POST', `/finance/submissions/${s.id}/approve`, {})).status, 200);
+  assert.equal(await vault(m24), v0, 'لا يدخل الخزنة');
+  assert.equal(Number((await dealers()).dealers.find((d) => d.id === diwan.id).balance), d0 + 10, 'يدخل رصيد الجمل');
+  assert.equal((await cu('GET', '/store/statement')).data.balance.pure, -10, 'يُقيد للعميل في كشفه');
+
+  // السحب للخزنة من الجمل: لا يتجاوز الرصيد
+  assert.equal((await admin('POST', '/inventory/gold/in', { source: 'dealer', dealer_id: diwan.id, material_id: m24, weight: String(d0 + 11) })).status, 400);
+  assert.equal((await admin('POST', '/inventory/gold/in', { source: 'dealer', dealer_id: diwan.id, material_id: m24, weight: '6' })).status, 200);
+  assert.equal(await vault(m24), v0 + 6);
+  assert.equal(Number((await dealers()).dealers.find((d) => d.id === diwan.id).balance), d0 + 4);
+  // إلغاء السداد بعد سحب أكثر من المتبقي يُرفض
+  assert.equal((await admin('POST', '/inventory/gold/in', { source: 'dealer', dealer_id: diwan.id, material_id: m24, weight: '4' })).status, 200);
+  const ent = (await pool.query('select id from customer_entries where submission_id=$1', [s.id])).rows[0].id;
+  assert.equal((await admin('POST', `/finance/entries/${ent}/reverse`, { reason: 'خطأ' })).status, 409, 'الذهب سُحب من الجمل');
+
+  // من عميل: يدخل الخزنة ويُقيد سداد ذهب في كشفه
+  const src = (await admin('GET', '/inventory/gold/sources')).data;
+  assert.ok(src.customers.some((c) => c.id === cid) && src.dealers.length >= 2);
+  const v21 = await vault(m21);
+  assert.equal((await admin('POST', '/inventory/gold/in', { source: 'customer', customer_id: cid, material_id: m21, weight: '8' })).status, 200);
+  assert.equal(await vault(m21), v21 + 8);
+  assert.equal((await cu('GET', '/store/statement')).data.balance.pure, -10 - 7, '8 جم عيار 21 = 7 صافي');
+  // شراء: البيان إلزامي
+  assert.equal((await admin('POST', '/inventory/gold/in', { source: 'purchase', material_id: m24, weight: '1' })).status, 400);
+  assert.equal((await admin('POST', '/inventory/gold/in', { source: 'purchase', material_id: m24, weight: '1', note: 'شراء سبيكة' })).status, 200);
 });

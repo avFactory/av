@@ -11,6 +11,7 @@ import { buildStatement } from '../lib/statement.js';
 import { materialFor } from './orders.js';
 import { branchOf } from './finance.js';
 import { sendXlsx } from '../lib/xlsx.js';
+import { dealerByMethod, dealerEntry, dealerBalanceSql } from '../lib/goldDealers.js';
 
 /** طرق السداد بالذهب */
 const GOLD_METHOD = { gold: 'تسليم ذهب', diwan: 'ديوان الذهب', coin: 'الجنيه العربي' };
@@ -109,6 +110,12 @@ staff.post('/entries/:id/reverse', requirePerm('payments.manage'), async (req, r
       await ledger.requireBalance(db, mv.to_type, mv.to_ref, mv.material_id, mv.weight, 'رصيد الخزنة لا يكفي لإلغاء سداد الذهب');
       await ledger.reverse(db, mv, `إلغاء ${e.entry_no}: ${reason}`, req.user.id);
     }
+    const de = (await db.query('select e.*, d.name from gold_dealer_entries e join gold_dealers d on d.id=e.dealer_id where e.customer_entry_id=$1 and not e.reversed', [e.id])).rows[0];
+    if (de) {
+      const bal = Number((await db.query(`select ${dealerBalanceSql} as b from gold_dealers d where d.id=$1`, [de.dealer_id])).rows[0].b);
+      if (bal + 1e-6 < Number(de.weight)) throw conflict(`رصيد الذهب لدى ${de.name} لا يكفي لإلغاء السداد (سُحب للخزنة)`);
+      await db.query('update gold_dealer_entries set reversed=true where id=$1', [de.id]);
+    }
     await db.query('update customer_entries set reversed=true, reversed_by=$2, reversed_at=now(), reversal_reason=$3 where id=$1', [e.id, req.user.id, reason]);
     if (e.submission_id) await db.query("update customer_submissions set status='rejected', review_note=$2 where id=$1", [e.submission_id, `أُلغي القيد: ${reason}`]);
     await audit(db, req, 'customer_entry.reverse', 'customer', e.customer_id, { entry: e.entry_no, reason });
@@ -142,10 +149,13 @@ staff.post('/submissions/:id/approve', requirePerm('payments.manage'), async (re
       paymentId = p.id;
     } else {
       const w = req.body.weight ? W(req.body.weight, 'الوزن') : s.weight;
-      const mv = await goldIntoVault(db, req, s.customer_id, s.karat, w, `سداد ذهب من العميل (${s.submission_no})`);
+      // السداد عن طريق جمل الصافي (ديوان الذهب / الجنيه العربي): يُضاف لرصيد المصنع لدى الجمل وليس للخزنة
+      const dealer = await dealerByMethod(db, s.method);
+      const mv = dealer ? null : await goldIntoVault(db, req, s.customer_id, s.karat, w, `سداد ذهب من العميل (${s.submission_no})`);
       entryId = (await db.query(`insert into customer_entries(entry_no, customer_id, entry_date, kind, gold_credit, karat, description, document_path, submission_id, ledger_id, created_by, branch_id)
         values (next_doc_no('CEN'),$1,coalesce($2::date, (now() at time zone 'Asia/Riyadh')::date),'gold_payment',$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
-        [s.customer_id, s.paid_at, w, s.karat, `مستند ${s.submission_no}${GOLD_METHOD[s.method] ? ` — ${GOLD_METHOD[s.method]}` : ''}${s.reference ? ` — ${s.reference}` : ''}${note ? ` — ${note}` : ''}`, s.document_path, s.id, mv.id, req.user.id, s.branch_id])).rows[0].id;
+        [s.customer_id, s.paid_at, w, s.karat, `مستند ${s.submission_no}${GOLD_METHOD[s.method] ? ` — ${GOLD_METHOD[s.method]}` : ''}${s.reference ? ` — ${s.reference}` : ''}${note ? ` — ${note}` : ''}`, s.document_path, s.id, mv?.id || null, req.user.id, s.branch_id])).rows[0].id;
+      if (dealer) await dealerEntry(db, { dealerId: dealer.id, kind: 'deposit', weight: (Number(w) * s.karat / 24).toFixed(4), customerId: s.customer_id, customerEntryId: entryId, note: `سداد العميل — مستند ${s.submission_no}`, userId: req.user.id });
     }
     await db.query("update customer_submissions set status='approved', review_note=$2, reviewed_by=$3, reviewed_at=now(), payment_id=$4, entry_id=$5 where id=$1", [s.id, note, req.user.id, paymentId, entryId]);
     await notifyCustomer(db, s.customer_id, { kind: 'payment', title: `اعتُمد مستند السداد ${s.submission_no}`, body: s.kind === 'money' ? `${s.amount} ر.س أُضيفت لحسابكم` : `${s.weight} جم عيار ${s.karat} أُضيفت لحسابكم`, link: '/store/statement' });

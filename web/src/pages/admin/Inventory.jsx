@@ -5,6 +5,8 @@ import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtDT, LOCS } from '../../format.js';
 import { Btn, Card, Field, Input, Loader, Modal, Page, Select, Table, Tabs, WeightInput, useAction, useFetch, Badge } from '../../ui.jsx';
 
+import GoldIn from './GoldIn.jsx';
+
 const CATS = [['raw', 'مواد خام'], ['semi', 'نصف مصنعة'], ['finished', 'منتجات جاهزة'], ['supply', 'مستلزمات'], ['other', 'أخرى']];
 
 export default function Inventory() {
@@ -24,7 +26,7 @@ export default function Inventory() {
     <Page title="المخزون" subtitle="الذهب يُحاسب منفصلاً لكل عيار ولون" actions={tab === 'gold' && <>
       {can('custody.issue', 'inventory.manage') && <Btn kind="dark" onClick={() => setM({ type: 'worker', material_id: mats[3]?.id, loss_rate_percent: '0' })}>تحويل لعامل (عهدة عامة)</Btn>}
       {can('inventory.manage') && <>
-      <Btn onClick={() => setM({ type: 'in', material_id: mats[3]?.id })}>إضافة ذهب للخزنة</Btn>
+      <Btn onClick={() => setM({ type: 'in', source: 'customer', material_id: mats[3]?.id })}>إضافة ذهب للخزنة</Btn>
       <Btn kind="ghost" onClick={() => setM({ type: 'out', material_id: mats[3]?.id, from: 'vault' })}>صرف</Btn>
       <Btn kind="ghost" onClick={() => setM({ type: 'scrap', material_id: mats[3]?.id })}>بقايا ← الخزنة</Btn>
       {can('stocktake.approve') && <Btn kind="ghost" onClick={() => setM({ type: 'convert' })}>تحويل موثق بين العيارات</Btn>}
@@ -56,7 +58,8 @@ export default function Inventory() {
         </>}
       </Modal>
       <Modal open={!!m && m.type !== 'worker'} onClose={() => setM(null)} title={{ in: 'إضافة ذهب للخزنة', out: 'صرف ذهب لخارج المصنع', scrap: 'تحويل البقايا إلى الخزنة', convert: 'تحويل موثق بين مادتين' }[m?.type]}>
-        {m && m.type !== 'convert' && <>
+        {m?.type === 'in' && <GoldIn m={m} setM={setM} mats={mats} busy={busy} onSubmit={(body) => op('/inventory/gold/in', body, 'تمت إضافة الذهب للخزنة')} />}
+        {m && m.type !== 'convert' && m.type !== 'in' && <>
           <Field label="المادة"><Select value={m.material_id} onChange={(e) => setM({ ...m, material_id: e.target.value })} options={mats.map((x) => [x.id, x.name])} /></Field>
           {m.type === 'out' && <Field label="من"><Select value={m.from} onChange={(e) => setM({ ...m, from: e.target.value })} options={[['vault', 'الخزنة'], ['scrap', 'البقايا (للتنقية)']]} /></Field>}
           <Field label="الوزن (جم)"><WeightInput big value={m.weight || ''} onChange={(v) => setM({ ...m, weight: v })} /></Field>

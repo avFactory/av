@@ -6,6 +6,8 @@ import { bad, conflict, notFound, int, str, weight as W, oneOf } from '../lib/ht
 import { audit } from '../lib/audit.js';
 import * as ledger from '../lib/ledger.js';
 import { notifyPerm } from '../lib/notify.js';
+import { statementRows } from '../lib/statement.js';
+import { listDealers, dealerEntry } from '../lib/goldDealers.js';
 
 const r = Router();
 
@@ -21,12 +23,80 @@ r.get('/gold', requirePerm('inventory.view', 'custody.view_all', 'dashboard.view
 /** إضافة ذهب للخزنة (شراء/استلام خام) أو صرف منها لخارج المصنع */
 r.post('/gold/in', requirePerm('inventory.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
-    const m = int(req.body.material_id, 'المادة');
-    const w = W(req.body.weight, 'الوزن');
-    const note = str(req.body.note, 'البيان', { required: true });
-    const mv = await ledger.post(db, { kind: 'stock_in', material_id: m, weight: w, from: ['external', null], to: ['vault', null], reason: note, user_id: req.user.id });
-    await audit(db, req, 'gold.in', 'gold_ledger', mv.id, { material: m, weight: w, note });
+    const b = req.body;
+    const source = oneOf(b.source || 'purchase', ['purchase', 'customer', 'dealer'], 'مصدر الذهب');
+    const m = int(b.material_id, 'المادة');
+    const w = W(b.weight, 'الوزن');
+    const mat = (await db.query('select id, name, karat from materials where id=$1', [m])).rows[0];
+    if (!mat) throw notFound('المادة غير موجودة');
+    let note = str(b.note, 'البيان', { required: source === 'purchase', max: 300 }) || '';
+    let mv;
+    if (source === 'customer') {
+      // تسليم ذهب من العميل: يدخل الخزنة ويُقيد سداد ذهب في كشف حسابه
+      const cid = int(b.customer_id, 'العميل');
+      const c = (await db.query('select id, shop_name, branches_only from customers where id=$1', [cid])).rows[0];
+      if (!c) throw notFound('العميل غير موجود');
+      const branchId = b.branch_id ? int(b.branch_id, 'الفرع') : null;
+      if (branchId && !(await db.query('select 1 from customer_branches where id=$1 and customer_id=$2', [branchId, cid])).rowCount) throw bad('الفرع لا يتبع العميل');
+      if (!branchId && c.branches_only) throw bad('اختر الفرع (الشركة بفروع فقط)');
+      mv = await ledger.post(db, { kind: 'customer_gold_payment', material_id: m, weight: w, from: ['external', cid], to: ['vault', null], reason: `تسليم ذهب من العميل ${c.shop_name}${note ? `: ${note}` : ''}`, user_id: req.user.id });
+      await db.query(`insert into customer_entries(entry_no, customer_id, entry_date, kind, gold_credit, karat, description, ledger_id, created_by, branch_id)
+        values (next_doc_no('CEN'),$1,(now() at time zone 'Asia/Riyadh')::date,'gold_payment',$2,$3,$4,$5,$6,$7)`,
+        [cid, w, mat.karat, `تسليم ذهب للخزنة${note ? ` — ${note}` : ''}`, mv.id, req.user.id, branchId]);
+    } else if (source === 'dealer') {
+      // سحب من رصيد المصنع لدى جمل الصافي (ديوان الذهب / الجنيه العربي)
+      const d = (await db.query('select id, name from gold_dealers where id=$1', [int(b.dealer_id, 'الجمل')])).rows[0];
+      if (!d) throw notFound('الجمل غير موجود');
+      mv = await ledger.post(db, { kind: 'stock_in', material_id: m, weight: w, from: ['external', null], to: ['vault', null], reason: `استلام ذهب من ${d.name}${note ? `: ${note}` : ''}`, user_id: req.user.id });
+      await dealerEntry(db, { dealerId: d.id, kind: 'withdraw', weight: (Number(w) * Number(mat.karat) / 24).toFixed(4), ledgerId: mv.id, note: note || 'سحب للخزنة', userId: req.user.id });
+    } else {
+      mv = await ledger.post(db, { kind: 'stock_in', material_id: m, weight: w, from: ['external', null], to: ['vault', null], reason: `شراء: ${note}`, user_id: req.user.id });
+    }
+    await audit(db, req, 'gold.in', 'gold_ledger', mv.id, { material: m, weight: w, source, note, customer_id: b.customer_id || null, dealer_id: b.dealer_id || null });
     return mv;
+  }));
+});
+
+/** مصادر إضافة الذهب: العملاء (مع رصيد الذهب عليهم) وجمل الصافي (مع رصيد المصنع لديهم) */
+r.get('/gold/sources', requirePerm('inventory.manage'), async (_req, res) => {
+  const customers = await many(`select c.id, c.shop_name, c.branches_only,
+      coalesce((select json_agg(json_build_object('id', b.id, 'name', b.name) order by b.name) from customer_branches b where b.customer_id=c.id and b.active), '[]') as branches
+    from customers c where c.status='approved' order by c.shop_name`);
+  const owe = new Map();
+  for (const c of customers) {
+    let pure = 0;
+    for (const x of await statementRows(pool, c.id, 'all')) pure += x.pure_debit - x.pure_credit;
+    owe.set(c.id, Math.round(pure * 10000) / 10000);
+  }
+  for (const c of customers) c.pure = owe.get(c.id);
+  customers.sort((a, b) => b.pure - a.pure || a.shop_name.localeCompare(b.shop_name, 'ar'));
+  res.json({ customers, dealers: await listDealers(pool) });
+});
+
+// ------------------------------------------------------------------ جمل الصافي
+r.get('/dealers', requirePerm('dashboard.view', 'inventory.manage', 'finance.view'), async (_req, res) => {
+  const dealers = await listDealers(pool, { all: true });
+  const entries = await many(`select e.*, e.weight::text, d.name as dealer_name, c.shop_name, u.full_name as created_by_name
+    from gold_dealer_entries e join gold_dealers d on d.id=e.dealer_id left join customers c on c.id=e.customer_id left join users u on u.id=e.created_by
+    order by e.id desc limit 300`);
+  const total = dealers.filter((d) => d.active).reduce((a, d) => a + Number(d.balance), 0);
+  res.json({ total: Math.round(total * 10000) / 10000, dealers, entries });
+});
+
+r.post('/dealers', requirePerm('inventory.manage'), async (req, res) => {
+  const name = str(req.body.name, 'اسم الجمل', { required: true, max: 120 });
+  if ((await pool.query('select 1 from gold_dealers where name=$1', [name])).rowCount) throw conflict('الاسم مسجل مسبقاً');
+  const d = await one('insert into gold_dealers(name, phone, note) values ($1,$2,$3) returning *', [name, str(req.body.phone, 'الجوال', { max: 30 }), str(req.body.note, 'ملاحظات', { max: 300 })]);
+  await audit(pool, req, 'dealer.create', 'gold_dealers', d.id, { name });
+  res.json(d);
+});
+
+/** رصيد افتتاحي / إيداع يدوي لدى الجمل (مثلاً ذهب اشتراه المصنع وبقي عنده) */
+r.post('/dealers/:id/deposit', requirePerm('inventory.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const e = await dealerEntry(db, { dealerId: int(req.params.id), kind: 'deposit', weight: W(req.body.weight, 'الوزن الصافي'), note: str(req.body.note, 'البيان', { required: true, max: 300 }), userId: req.user.id });
+    await audit(db, req, 'dealer.deposit', 'gold_dealers', e.dealer_id, { entry: e.entry_no, weight: e.weight });
+    return e;
   }));
 });
 
