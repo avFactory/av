@@ -1,12 +1,21 @@
 import { Link } from 'react-router-dom';
 import { fmtW, fmtMoney, LOCS } from '../../format.js';
-import { Card, Loader, Stat, Table, useFetch } from '../../ui.jsx';
+import { useState } from 'react';
+import { api } from '../../api.js';
+import { useAuth } from '../../auth.jsx';
+import { Btn, Card, Field, Loader, Modal, Select, Stat, Table, WeightInput, useAction, useFetch } from '../../ui.jsx';
 
 export default function Dashboard() {
   const { data: s } = useFetch('/admin/stats', { live: ['orders', 'gold_ledger', 'settlements'] });
   const { data: cg } = useFetch('/admin/customer-gold', { live: ['gold_ledger'] });
   const { data: dl } = useFetch('/inventory/dealers', { live: ['gold_ledger'] });
   const { data: sp } = useFetch('/inventory/suppliers', { live: ['gold_ledger'] });
+  const { data: og, reload: reloadOg } = useFetch('/admin/org-gold', { live: ['gold_ledger', 'orders'] });
+  const { me } = useAuth();
+  const isAdmin = me?.role_code === 'admin';
+  const [bm, setBm] = useState(null); // تعديل مخزون فرع
+  const [showOrg, setShowOrg] = useState(false);
+  const [run, busy] = useAction();
   if (!s) return <Loader />;
   const maxStage = Math.max(1, ...s.byStage.map((x) => x.n));
   const mats = {};
@@ -32,6 +41,36 @@ export default function Dashboard() {
         <Stat label="الذهب لدى الجملة" value={cg ? fmtW(cg.total) : '…'} unit="جم" tone="gold" to="/admin/customer-gold" sub={cg ? `صافي عيار 24 · ${cg.count} عميل` : ''} />
         <Stat label="رصيد مقدم للموردين" value={sp ? fmtW(sp.total) : '…'} unit="جم" to="/admin/suppliers" sub={sp ? sp.suppliers.filter((x) => x.active).map((x) => `${x.name} ${fmtW(x.balance)}`).join(' · ') : ''} />
       </div>
+      <div className="grid g4 mb">
+        <Stat label="الذهب الجاهز للتسليم" value={og ? fmtW(og.ready.weight) : '…'} unit="جم" tone="ok" to="/orders?status=ready" sub={og ? `${og.ready.count} طلب جاهز · صافي ${fmtW(og.ready.pure)}` : ''} />
+        {['taiba', 'store'].map((k) => {
+          const b = og?.branches[k];
+          return <Stat key={k} label={`مخزون ${b?.name || ''}`} value={b ? fmtW(b.weight) : '…'} unit="جم"
+            sub={b ? `${b.karat !== 24 ? `عيار ${b.karat} · صافي ${fmtW(b.pure)}` : 'عيار 24'}${b.updated_at ? ` · ${new Date(b.updated_at).toLocaleDateString('ar-SA-u-nu-latn')}` : ''}` : ''}
+            onClick={isAdmin && b ? () => setBm({ key: k, name: b.name, weight: String(b.weight || ''), karat: String(b.karat) }) : undefined} />;
+        })}
+        <Stat label="ذهب المؤسسة" value={og ? fmtW(og.total) : '…'} unit="جم" tone="gold" sub="صافي عيار 24 · المصنع والفروع والعملاء والموردين" onClick={og ? () => setShowOrg(true) : undefined} />
+      </div>
+      <Modal open={!!bm} onClose={() => setBm(null)} title={`مخزون ${bm?.name || ''}`}>
+        {bm && <>
+          <Field label="الوزن (جم)"><WeightInput big value={bm.weight} onChange={(v) => setBm({ ...bm, weight: v })} /></Field>
+          <Field label="العيار"><Select value={bm.karat} onChange={(e) => setBm({ ...bm, karat: e.target.value })} options={[['24', '24'], ['21', '21'], ['18', '18']]} /></Field>
+          <Btn loading={busy} onClick={() => run(async () => { await api.put(`/admin/branch-stock/${bm.key}`, { weight: bm.weight || '0', karat: bm.karat }); setBm(null); reloadOg(); }, 'تم التحديث')}>حفظ</Btn>
+        </>}
+      </Modal>
+      <Modal open={showOrg} onClose={() => setShowOrg(false)} title="ذهب المؤسسة (صافي عيار 24)">
+        {og && <Table rows={[
+          ['المصنع (خزنة، طلبات، عمال، مكائن، خامات، بقايا)', og.parts.factory, '/admin/inventory', `يشمل الجاهز للتسليم ${fmtW(og.ready.pure)}`],
+          [og.branches.taiba.name, og.parts.taiba], [og.branches.store.name, og.parts.store],
+          ['لدى عملاء الجملة', og.parts.customers, '/admin/customer-gold'],
+          ['لدى جمل الصافي', og.parts.dealers, '/admin/gold-dealers'],
+          ['رصيد مقدم للموردين', og.parts.suppliers, '/admin/suppliers'],
+        ].map(([label, v, to, note]) => ({ label, v, to, note }))} columns={[
+          ['البند', (x) => <>{x.to ? <Link to={x.to} onClick={() => setShowOrg(false)}>{x.label}</Link> : x.label}{x.note && <div className="small text-body-secondary">{x.note}</div>}</>],
+          ['الصافي (جم)', (x) => <b className="n" dir="ltr">{fmtW(x.v)}</b>],
+        ]} />}
+        {og && <div className="d-flex justify-content-between fs-5 fw-bold border-top pt-2 mt-2"><span>الإجمالي</span><span className="n" dir="ltr">{fmtW(og.total)} جم</span></div>}
+      </Modal>
       <h3 className="mb">المالية (أجور التصنيع فقط)</h3>
       <div className="grid g4 mb">
         <Stat label="إجمالي أجور التصنيع" value={fmtMoney(s.labor_revenue)} sub="قبل الضريبة" to="/admin/reports" />

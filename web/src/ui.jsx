@@ -261,7 +261,7 @@ export function ModeTiles({ tiles, value, onChange }) {
   );
 }
 
-export function Stat({ label, value, unit, tone, to, sub }) {
+export function Stat({ label, value, unit, tone, to, sub, onClick }) {
   const body = (
     <>
       <span className="stat-l">{label}</span>
@@ -269,6 +269,7 @@ export function Stat({ label, value, unit, tone, to, sub }) {
       {sub && <span className="stat-s">{sub}</span>}
     </>
   );
+  if (onClick) return <button type="button" onClick={onClick} className={`stat stat-${tone || 'plain'} text-start w-100`}>{body}</button>;
   return to ? <Link to={to} className={`stat stat-${tone || 'plain'}`}>{body}</Link> : <div className={`stat stat-${tone || 'plain'}`}>{body}</div>;
 }
 

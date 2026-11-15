@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { monthlyLossSummary, workerLossRows, monthTotals, monthStart } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, hashPassword, has } from '../lib/auth.js';
-import { bad, conflict, forbidden, notFound, int, str, oneOf } from '../lib/http.js';
+import { bad, conflict, forbidden, notFound, int, str, oneOf, weight as W } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyCustomer, notifyUsers } from '../lib/notify.js';
 import multer from 'multer';
@@ -80,8 +80,53 @@ r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
 });
 
 /** الذهب لدى عملاء الجملة: رصيد الذهب الصافي (عيار 24) والمبالغ لكل عميل من كشف حسابه */
-r.get('/customer-gold', requirePerm('dashboard.view', 'finance.view', 'customers.view'), async (_req, res) => {
-  // العملاء الذين لهم حركات (فواتير، تسليم ذهب، قيود، مدفوعات)
+/** مخزون الفروع (طيبة، المتجر): رقم يدخله المدير يدوياً بالوزن والعيار */
+const BRANCHES = { taiba: 'فرع طيبة', store: 'فرع المتجر' };
+async function branchStock(db) {
+  const v = (await db.query("select value from settings where key='branch_stock'")).rows[0]?.value || {};
+  return Object.fromEntries(Object.entries(BRANCHES).map(([k, name]) => {
+    const x = v[k] || {};
+    const weight = Number(x.weight) || 0, karat = Number(x.karat) || 24;
+    return [k, { name, weight, karat, pure: Math.round((weight * karat / 24) * 10000) / 10000, updated_at: x.updated_at || null, updated_by: x.updated_by || null }];
+  }));
+}
+
+r.put('/branch-stock/:key', requirePerm('dashboard.view'), async (req, res) => {
+  if (req.user.role_code !== 'admin') throw forbidden('تعديل مخزون الفروع للمدير فقط');
+  const key = oneOf(req.params.key, Object.keys(BRANCHES), 'الفرع');
+  const weight = W(req.body.weight, 'الوزن', { allowZero: true });
+  const karat = oneOf(int(req.body.karat ?? 24, 'العيار'), [18, 21, 24], 'العيار');
+  await tx(async (db) => {
+    const cur = (await db.query("select value from settings where key='branch_stock' for update")).rows[0]?.value || {};
+    const before = cur[key] || null;
+    cur[key] = { weight: Number(weight), karat, updated_at: new Date().toISOString(), updated_by: req.user.full_name };
+    await db.query("insert into settings(key, value) values ('branch_stock', $1) on conflict (key) do update set value=excluded.value", [JSON.stringify(cur)]);
+    await audit(db, req, 'branch_stock.update', 'settings', null, { branch: BRANCHES[key], before, after: cur[key] });
+  });
+  res.json(await branchStock(pool));
+});
+
+/** ذهب المؤسسة: كل الذهب الذي تملكه (المصنع + الفروع + لدى العملاء + جمل الصافي + الموردين) بالصافي عيار 24 */
+r.get('/org-gold', requirePerm('dashboard.view'), async (_req, res) => {
+  const factory = await one(`select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4)::text as pure, coalesce(sum(b.balance),0)::text as weight
+    from gold_balances b join materials m on m.id=b.material_id where b.loc_type in ('vault','order','worker','scrap','finished','loss_suspense','findings')`);
+  const ready = await many(`select o.id, o.order_no, o.title, o.cart_ref, c.shop_name, m.karat, b.balance::text as weight
+    from gold_balances b join orders o on o.id=b.loc_ref join materials m on m.id=b.material_id left join customers c on c.id=o.customer_id
+    where b.loc_type='order' and b.balance <> 0 and o.status='ready' order by o.id`);
+  const readyW = ready.reduce((a, x) => a + Number(x.weight), 0);
+  const readyP = ready.reduce((a, x) => a + Number(x.weight) * x.karat / 24, 0);
+  const readyCount = Number((await one("select count(distinct coalesce(cart_ref, id::text))::int n from orders where status='ready'")).n);
+  const branches = await branchStock(pool);
+  const customers = (await customerGold()).total;
+  const dealers = Number((await one(`select coalesce(sum(case when e.kind='deposit' then e.weight else -e.weight end),0)::text t from gold_dealer_entries e join gold_dealers d on d.id=e.dealer_id where not e.reversed and d.active`)).t);
+  const suppliers = Number((await one(`select coalesce(sum(case when e.kind='findings_in' then -e.pure else e.pure end),0)::text t from gold_supplier_entries e join gold_suppliers s on s.id=e.supplier_id where s.active`)).t);
+  const r4 = (x) => Math.round(x * 10000) / 10000;
+  const parts = { factory: r4(Number(factory.pure)), taiba: branches.taiba.pure, store: branches.store.pure, customers, dealers: r4(dealers), suppliers: r4(suppliers) };
+  res.json({ ready: { weight: r4(readyW), pure: r4(readyP), count: readyCount, orders: ready }, branches, parts, factory_weight: Number(factory.weight),
+    total: r4(Object.values(parts).reduce((a, x) => a + x, 0)) });
+});
+
+async function customerGold() {
   const cs = await many(`select c.id, c.shop_name, c.phone, t.name as tier_name from customers c left join customer_tiers t on t.id=c.tier_id
     where exists (select 1 from orders o where o.customer_id=c.id and o.status in ('delivered','ready','in_production'))
        or exists (select 1 from customer_entries e where e.customer_id=c.id)
@@ -89,13 +134,17 @@ r.get('/customer-gold', requirePerm('dashboard.view', 'finance.view', 'customers
   const rows = [];
   for (const c of cs) {
     let pure = 0, money = 0;
-    for (const r of await statementRows(pool, c.id, 'all')) { pure += r.pure_debit - r.pure_credit; money += r.money_debit - r.money_credit; }
+    for (const x of await statementRows(pool, c.id, 'all')) { pure += x.pure_debit - x.pure_credit; money += x.money_debit - x.money_credit; }
     pure = Math.round(pure * 10000) / 10000; money = Math.round(money * 100) / 100;
     if (Math.abs(pure) > 0.00005 || Math.abs(money) > 0.005) rows.push({ ...c, pure, money });
   }
   rows.sort((a, b) => b.pure - a.pure);
-  const total = Math.round(rows.filter((r) => r.pure > 0).reduce((a, r) => a + r.pure, 0) * 10000) / 10000;
-  res.json({ total, count: rows.filter((r) => r.pure > 0).length, rows });
+  const total = Math.round(rows.filter((x) => x.pure > 0).reduce((a, x) => a + x.pure, 0) * 10000) / 10000;
+  return { total, count: rows.filter((x) => x.pure > 0).length, rows };
+}
+
+r.get('/customer-gold', requirePerm('dashboard.view', 'finance.view', 'customers.view'), async (_req, res) => {
+  res.json(await customerGold());
 });
 
 // ------------------------------------------------------------------ الموظفون

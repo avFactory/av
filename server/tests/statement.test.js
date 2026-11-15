@@ -260,3 +260,22 @@ test('الموردون: صرف ذهب صافي مقدماً للمورد، وا�
   assert.equal((await admin('POST', `/inventory/suppliers/${n.data.id}/opening`, { weight: '5', note: 'قبل النظام' })).status, 200);
   assert.equal(Number((await sups()).suppliers.find((s) => s.id === n.data.id).balance), 5);
 });
+
+test('ذهب المؤسسة: الجاهز للتسليم، مخزون الفروع (للمدير فقط)، والمجموع من كل المواقع', async () => {
+  const og0 = (await admin('GET', '/admin/org-gold')).data;
+  assert.ok(og0.ready && og0.branches.taiba && og0.branches.store);
+  assert.equal((await admin('PUT', '/admin/branch-stock/taiba', { weight: '240', karat: '21' })).status, 200);
+  assert.equal((await admin('PUT', '/admin/branch-stock/store', { weight: '100', karat: '24' })).status, 200);
+  assert.equal((await admin('PUT', '/admin/branch-stock/other', { weight: '1' })).status, 400);
+  const og = (await admin('GET', '/admin/org-gold')).data;
+  assert.equal(og.branches.taiba.pure, 210, '240 × 21/24');
+  assert.equal(og.parts.store, 100);
+  const sum = Object.values(og.parts).reduce((a, x) => a + x, 0);
+  assert.ok(Math.abs(og.total - sum) < 0.001, 'الإجمالي = مجموع البنود');
+  assert.ok(Math.abs(og.total - og0.total - (210 - og0.parts.taiba) - (100 - og0.parts.store)) < 0.001);
+  // موظف غير مدير لا يعدل مخزون الفروع
+  await pool.query("insert into users(username, password_hash, full_name, role_code, must_change_password) values ('supdash',$1,'مشرف','supervisor',false) on conflict do nothing", [hashPassword('Sup#2026dash')]);
+  const sup = client();
+  await sup('POST', '/auth/login', { username: 'supdash', password: 'Sup#2026dash' });
+  assert.equal((await sup('PUT', '/admin/branch-stock/taiba', { weight: '1', karat: '24' })).status, 403);
+});
