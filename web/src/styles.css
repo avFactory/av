@@ -79,10 +79,10 @@ p { margin: 0; }
 
 /* إحصائيات */
 .stat { display: flex; flex-direction: column; gap: 4px; padding: 1rem 1.15rem; border-radius: var(--bs-border-radius-lg); background: var(--card); border: 1px solid var(--line); text-decoration: none; color: inherit; box-shadow: var(--shadow); min-width: 0; }
-.stat-l { color: var(--muted); font-size: .86rem; font-weight: 500; }
-.stat-v { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.stat-v small { font-size: .85rem; color: var(--muted); font-weight: 500; }
-.stat-s { font-size: .8rem; color: var(--muted); }
+.stat-l { color: var(--ink, inherit); font-size: .98rem; font-weight: 700; }
+.stat-v { font-size: 1.7rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.stat-v small { font-size: .9rem; color: inherit; font-weight: 700; opacity: .8; }
+.stat-s { font-size: .86rem; color: inherit; font-weight: 600; opacity: .78; line-height: 1.55; }
 a.stat:hover { border-color: var(--gold); color: inherit; }
 .stat-gold { border-top: 3px solid var(--gold); } .stat-warn { border-top: 3px solid var(--warn); } .stat-bad { border-top: 3px solid var(--bad); } .stat-ok { border-top: 3px solid var(--ok); }
 
