@@ -24,6 +24,7 @@ import publicRoutes from './routes/public.js';
 import castingRoutes from './routes/casting.js';
 import findingsRoutes from './routes/findings.js';
 import { staff as statementStaff, store as statementStore } from './routes/statements.js';
+import storeReportRoutes from './routes/storeReports.js';
 
 export function createApp() {
   const app = express();
@@ -91,6 +92,7 @@ export function createApp() {
   app.use('/api/catalog', catalogRoutes);
   app.use('/api/finance', statementStaff);
   app.use('/api/finance', financeRoutes);
+  app.use('/api/reports/store', storeReportRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/store', statementStore);
   app.use('/api/store', storeRoutes);

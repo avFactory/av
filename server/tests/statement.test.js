@@ -283,3 +283,27 @@ test('ذهب المؤسسة: الجاهز للتسليم، مخزون الفرو
   await sup('POST', '/auth/login', { username: 'supdash', password: 'Sup#2026dash' });
   assert.equal((await sup('PUT', '/admin/branch-stock/taiba', { weight: '1', karat: '24' })).status, 403);
 });
+
+test('تقارير المتجر: المؤشرات والمنتجات الأكثر طلباً والعملاء والأصناف', async () => {
+  const cid = (await pool.query("insert into customers(shop_name, owner_name, phone, status, city) values ('محل التقارير','م','0500003333','approved','الرياض') returning id")).rows[0].id;
+  const m21 = (await pool.query("select id from materials where metal='gold' and karat=21 and active order by id limit 1")).rows[0].id;
+  const p = (await pool.query("insert into products(sku, name, product_type, karats, colors) values ('RPT-1','خاتم التقارير','خاتم','{21}','{yellow}') returning id")).rows[0].id;
+  for (const [q, st] of [[5, 'approved'], [3, 'delivered'], [2, 'cancelled']]) {
+    await pool.query(`insert into orders(order_no, customer_id, source, product_id, product_type, title, material_id, quantity, status, final_weight, delivered_at, labor_estimate)
+      values (next_doc_no('RPT'),$1,'store_catalog',$2,'خاتم','خاتم التقارير',$3,$4,$5,$6,$7,100)`, [cid, p, m21, q, st, st === 'delivered' ? 24 : null, st === 'delivered' ? new Date() : null]);
+  }
+  const r = await admin('GET', '/reports/store');
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const d = r.data;
+  const prod = d.products.find((x) => x.id === p);
+  assert.equal(prod.pieces, 8, 'الملغى لا يُحسب');
+  assert.equal(Number(prod.delivered_pure), 21, '24 جم عيار 21 = 21 صافي');
+  const cust = d.customers.find((x) => x.id === cid);
+  assert.equal(cust.pieces, 8); assert.equal(cust.delivered_pieces, 3);
+  assert.ok(d.byType.some((x) => x.key === 'خاتم' && x.pieces >= 8));
+  assert.ok(d.byCity.some((x) => x.key === 'الرياض'));
+  assert.ok(d.kpi.pieces >= 8 && d.kpi.cancelled_items >= 1);
+  assert.ok(d.trend.length >= 1);
+  assert.equal((await admin('GET', '/reports/store?from=2026-12-01&to=2026-01-01')).status, 400);
+  assert.equal((await client()('GET', '/reports/store')).status, 401);
+});

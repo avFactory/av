@@ -38,6 +38,7 @@ const NAV = [
     ['/admin/gold-dealers', 'جمل الصافي', ['inventory.manage', 'finance.view']],
     ['/admin/suppliers', 'الموردون', ['inventory.view', 'findings.manage', 'finance.view']],
     ['/admin/products', 'منتجات المتجر', ['products.manage']],
+    ['/admin/store-reports', 'تقارير المتجر', ['reports.view', 'products.manage']],
     ['/admin/pricing', 'التسعيرة', ['pricing.manage', 'links.pricing', 'links.pricing_short']],
   ]],
   ['المالية', [
