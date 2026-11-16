@@ -6,7 +6,7 @@ import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
 import { ShortageModal, WithdrawModal, SHORTAGE_KINDS } from '../../components/ShortageTools.jsx';
 import { TransferModal } from '../../components/TransferTools.jsx';
 import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS, stoneItems } from '../../format.js';
-import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal, showAlert } from '../../ui.jsx';
 
 /** رابط تتبع عام للطلب (عرض فقط بدون تسجيل دخول): نسخ أو إرسال واتساب */
 function TrackLinkBtn({ o }) {
@@ -91,7 +91,7 @@ export default function OrderDetail() {
           onShortage={can('custody.receive', 'orders.advance') ? setShort : null}
           canMove={inProd && (can('orders.advance') || (me?.is_3d && cur?.kind === 'design'))} can3d={!!me?.is_3d || can('orders.advance')}
           onSplit={() => open('split', { quantity: '', route_id: o.route_id ? String(o.route_id) : '' })}
-          onStartAll={() => run(async () => { const r = await api.post('/orders/group/start', { ref: o.cart_ref }); reload(); if (r.skipped?.length) window.alert(`لم يبدأ:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`); }, 'تم بدء إنتاج الطلب')} />
+          onStartAll={() => run(async () => { const r = await api.post('/orders/group/start', { ref: o.cart_ref }); reload(); if (r.skipped?.length) showAlert(`لم يبدأ:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`); }, 'تم بدء إنتاج الطلب')} />
       )}
       {o.stage_state === 'shortage' && (
         <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2 mb">
@@ -297,7 +297,7 @@ function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove
   const moveAll = () => run(async () => {
     const r = await api.post(`/orders/${o.id}/group-advance`);
     reload();
-    if (r.skipped?.length) window.alert(`لم ينتقل:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`);
+    if (r.skipped?.length) showAlert(`لم ينتقل:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`);
   }, 'انتقل الطلب كاملاً للمرحلة التالية');
   const mark = (x, k) => run(async () => {
     const next = { needs_design: x.needs_3d_design, needs_print: x.needs_3d_print, [k]: !(k === 'needs_design' ? x.needs_3d_design : x.needs_3d_print) };

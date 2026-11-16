@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
-import { Btn, Card, Input, Loader, Page, useAction, useFetch } from '../../ui.jsx';
+import { Btn, Card, Input, Loader, Page, useAction, useFetch, askConfirm } from '../../ui.jsx';
 import PricingSheet from '../../components/PricingSheet.jsx';
 
 /** إدارة صفحة التسعيرة: سعر الذهب، الثوابت، والرابط الخارجي */
@@ -18,8 +18,8 @@ export default function Pricing() {
   const copyText = async (u) => { try { await navigator.clipboard.writeText(u); } catch { window.prompt('انسخ الرابط', u); } };
   const copy = () => copyText(url);
   const save = () => run(async () => { setS(await api.put('/admin/pricing', { gold24: s.gold24, updated_at: s.updated_at, rows: s.rows })); }, 'تم حفظ التسعيرة');
-  const rotate = (which = 'full') => {
-    if (!window.confirm('إنشاء رابط جديد؟ الرابط القديم سيتوقف فوراً عن العمل لكل من لديه.')) return;
+  const rotate = async (which = 'full') => {
+    if (!await askConfirm('إنشاء رابط جديد؟ الرابط القديم سيتوقف فوراً عن العمل لكل من لديه.')) return;
     run(async () => { await api.post('/admin/pricing/token', { which }); reload(); }, 'تم إنشاء رابط جديد').catch(() => {});
   };
   return (

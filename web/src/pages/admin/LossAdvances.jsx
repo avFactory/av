@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtMoney, fmtDT } from '../../format.js';
-import { Badge, Btn, Card, Input, Loader, Page, Table, useAction, useFetch } from '../../ui.jsx';
+import { Badge, Btn, Card, Input, Loader, Page, Table, useAction, useFetch, askConfirm } from '../../ui.jsx';
 
 const thisMonth = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 7);
 
@@ -19,13 +19,13 @@ export default function LossAdvances() {
   const adv = (w) => data.advances.find((a) => a.worker_id === w.worker_id);
   const value = (w) => Number(w.charged_pure) * Number(price || 0);
   const totalCharged = data.workers.reduce((a, w) => a + Number(w.charged), 0);
-  const record = (w) => {
+  const record = async (w) => {
     const pending = w.under_review > 0;
-    if (pending && !window.confirm(`لدى ${w.full_name} عجز تحت المراجعة (${w.under_review}). تسجيله الآن يشمل العجز الحالي كما هو. متابعة؟`)) return;
-    if (!pending && !window.confirm(`تسجيل سلفة ${fmtMoney(value(w))} على ${w.full_name} لشهر ${month}؟`)) return;
+    if (pending && !await askConfirm(`لدى ${w.full_name} عجز تحت المراجعة (${w.under_review}). تسجيله الآن يشمل العجز الحالي كما هو. متابعة؟`)) return;
+    if (!pending && !await askConfirm(`تسجيل سلفة ${fmtMoney(value(w))} على ${w.full_name} لشهر ${month}؟`)) return;
     run(async () => { await api.post('/admin/loss-advances', { worker_id: w.worker_id, month, price_per_gram: price, include_pending: pending }); reload(); }, 'تم تسجيل السلفة').catch(() => {});
   };
-  const cancel = (a) => { if (window.confirm('إلغاء هذه السلفة؟')) run(async () => { await api.del(`/admin/loss-advances/${a.id}`); reload(); }, 'تم الإلغاء').catch(() => {}); };
+  const cancel = async (a) => { if (await askConfirm('إلغاء هذه السلفة؟')) run(async () => { await api.del(`/admin/loss-advances/${a.id}`); reload(); }, 'تم الإلغاء').catch(() => {}); };
   return (
     <Page title="سلف العجز" subtitle="إجمالي عجز الشهر ناقص المسموح (الوزن المستلم × نسبة مهنة العامل) يبقى على حسابه، ثم يُسجَّل سلفة تُخصم من الراتب"
       actions={<div className="d-flex gap-2 align-items-end">

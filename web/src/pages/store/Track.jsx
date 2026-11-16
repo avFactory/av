@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtDate, fmtDT, fmtMoney, fmtW, STATUS, DESIGN_STATUS, METHODS, COLORS, stoneItems } from '../../format.js';
-import { Btn, Card, Field, Kv, Loader, Page, StatusBadge, Textarea, useAction, useFetch, ErrorBox } from '../../ui.jsx';
+import { Btn, Card, Field, Kv, Loader, Page, StatusBadge, Textarea, useAction, useFetch, ErrorBox, askConfirm } from '../../ui.jsx';
 
 /** متابعة الطلب للعميل - بدون معلومات داخلية */
 export default function Track() {
@@ -17,9 +17,9 @@ export default function Track() {
   const { order: o, stages, current_seq: seq, items = [], files, designs, invoices, notes = [] } = data;
   const deletable = ['pending_review', 'quoted'].includes(o.status);
   const pendingItems = items.filter((x) => ['pending_review', 'quoted'].includes(x.status));
-  const del = (all) => {
+  const del = async (all) => {
     const msg = all ? `حذف الطلب كاملاً (${pendingItems.length} منتجات لم تُقبل بعد)؟` : `حذف ${o.title} (${o.order_no}) من الطلب؟`;
-    if (!window.confirm(`${msg}\nلا يمكن التراجع عن الحذف.`)) return;
+    if (!await askConfirm(`${msg}\nلا يمكن التراجع عن الحذف.`)) return;
     run(async () => {
       await api.post(`/store/orders/${o.id}/cancel`, { all });
       const left = all ? [] : items.filter((x) => x.id !== o.id && x.status !== 'cancelled');

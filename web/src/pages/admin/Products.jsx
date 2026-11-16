@@ -3,7 +3,7 @@ import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { COLORS, METHODS, fmtW, fmtMoney } from '../../format.js';
 import BullionPick from '../../components/BullionPick.jsx';
-import { Btn, Field, Input, Loader, Modal, Page, Select, Table, Textarea, useAction, useFetch, Badge, FilePicker } from '../../ui.jsx';
+import { Btn, Field, Input, Loader, Modal, Page, Select, Table, Textarea, useAction, useFetch, Badge, FilePicker, askConfirm } from '../../ui.jsx';
 
 const AV = { available: 'متوفر', made_to_order: 'حسب الطلب', unavailable: 'غير متوفر' };
 
@@ -34,8 +34,8 @@ export default function Products() {
     if (f.id) await api.put(`/catalog/products/${f.id}`, fd); else await api.post('/catalog/products', fd);
     setF(null); reload();
   }, 'تم حفظ المنتج');
-  const remove = (p) => {
-    if (!window.confirm(`حذف المنتج "${p.name}" (${p.sku})؟\nإذا كان مرتبطاً بطلبات سابقة سيُخفى ويُؤرشف بدل الحذف النهائي.`)) return;
+  const remove = async (p) => {
+    if (!await askConfirm(`حذف المنتج "${p.name}" (${p.sku})؟\nإذا كان مرتبطاً بطلبات سابقة سيُخفى ويُؤرشف بدل الحذف النهائي.`)) return;
     run(async () => {
       const r = await api.del(`/catalog/products/${p.id}`);
       setF(null); reload();

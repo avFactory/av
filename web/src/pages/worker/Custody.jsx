@@ -4,7 +4,7 @@ import { api, fileUrl } from '../../api.js';
 import { fmtW, fmtDT, fmtPct, WORK_STATE, calcLoss, CUSTODY_STATUS, COLORS, stoneItems } from '../../format.js';
 import OrderGroupItems from '../../components/OrderGroupItems.jsx';
 import { TransferModal } from '../../components/TransferTools.jsx';
-import { Btn, Card, Field, Input, Loader, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Loader, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal, askConfirm } from '../../ui.jsx';
 
 /** شاشة العهدة للعامل: تأكيد الاستلام، بدء/إيقاف العمل، تسجيل الأوزان، رفع الصور، إنهاء المرحلة */
 export default function WCustody() {
@@ -102,12 +102,12 @@ export default function WCustody() {
                 {grp && <div className="mb-2">الإجمالي: <b dir="ltr">{fmtW(total)} جم</b></div>}
                 <Field label={gain ? 'سبب زيادة الوزن *' : 'ملاحظة'}><Input value={fin.note} onChange={(e) => setFin({ ...fin, note: e.target.value })} /></Field>
                 <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started' || !ok || (gain && !fin.note)}
-                  onClick={() => { if (window.confirm(`اعتماد الوزن النهائي ${fmtW(total)} جم ونقل الطلب للفوترة؟`)) act('finish', grp ? { weights: fin.weights, note: fin.note } : { weight: fin.weight, note: fin.note }, 'تم — انتقل الطلب للفوترة'); }}>✓ انتهيت — نقل للفوترة</Btn>
+                  onClick={async () => { if (await askConfirm(`اعتماد الوزن النهائي ${fmtW(total)} جم ونقل الطلب للفوترة؟`)) act('finish', grp ? { weights: fin.weights, note: fin.note } : { weight: fin.weight, note: fin.note }, 'تم — انتقل الطلب للفوترة'); }}>✓ انتهيت — نقل للفوترة</Btn>
               </Card>
             );
           })() : <>
           <div className="small text-body-secondary">بعد الانتهاء سلّم القطعة والبقايا للمشرف، وهو يزنها ويعتمد الوزن الفعلي.</div>
-          <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started'} onClick={() => { if (window.confirm('إنهاء المرحلة وتسليمها للمشرف؟')) act('finish', {}, 'تم إنهاء المرحلة - سلّم القطعة للمشرف'); }}>إنهاء المرحلة وتسليمها</Btn>
+          <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started'} onClick={async () => { if (await askConfirm('إنهاء المرحلة وتسليمها للمشرف؟')) act('finish', {}, 'تم إنهاء المرحلة - سلّم القطعة للمشرف'); }}>إنهاء المرحلة وتسليمها</Btn>
           </>}
         </>
       )}

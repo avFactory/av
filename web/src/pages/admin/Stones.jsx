@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtDT, fmtMoney } from '../../format.js';
-import { Btn, Field, Input, Loader, Modal, Page, Select, Table, useAction, useFetch, Textarea, Search, Badge, Empty, Kv } from '../../ui.jsx';
+import { Btn, Field, Input, Loader, Modal, Page, Select, Table, useAction, useFetch, Textarea, Search, Badge, Empty, Kv, askConfirm } from '../../ui.jsx';
 
 const MK = { in: 'إضافة', issue: 'تسليم لعامل', return: 'مرتجع من عامل', used: 'مستخدم (مركب)', lost: 'مفقود', adjust_in: 'تسوية زيادة', adjust_out: 'تسوية نقص', reversal: 'عكس حركة' };
 const ICONS = [['round', 'دائري'], ['oval', 'بيضاوي'], ['pear', 'دمعة'], ['heart', 'قلب'], ['marquise', 'ماركيز'], ['square', 'مربع'], ['emerald', 'زمردي'], ['baguette', 'باجيت'], ['other', 'آخر']];
@@ -297,8 +297,8 @@ function ShareStock() {
   const show = () => { setOpen(true); if (!token) api.get('/stones/share').then((r) => setToken(r.token)).catch(() => {}); };
   const url = token ? `${location.origin}/s/${token}` : '';
   const copy = async () => { try { await navigator.clipboard.writeText(url); } catch { window.prompt('انسخ الرابط', url); } };
-  const rotate = () => {
-    if (!window.confirm('إنشاء رابط جديد؟ الرابط الحالي سيتوقف فوراً لكل من لديه.')) return;
+  const rotate = async () => {
+    if (!await askConfirm('إنشاء رابط جديد؟ الرابط الحالي سيتوقف فوراً لكل من لديه.')) return;
     run(async () => setToken((await api.post('/stones/share/rotate')).token), 'تم إنشاء رابط جديد').catch(() => {});
   };
   return (

@@ -4,7 +4,7 @@ import { api, fileUrl, qs } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import StatementTable, { StatementSummary, SUB_ST, methodLabel, money2, gold3 } from '../../components/StatementView.jsx';
 import { fmtDT } from '../../format.js';
-import { Badge, Btn, Card, Field, Input, Loader, Modal, Page, ReasonModal, Select, Tabs, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
+import { Badge, Btn, Card, Field, Input, Loader, Modal, Page, ReasonModal, Select, Tabs, Textarea, WeightInput, useAction, useFetch, askConfirm } from '../../ui.jsx';
 
 const KINDS = [['opening', 'رصيد افتتاحي'], ['gold_payment', 'سداد ذهب من العميل'], ['money_adjust', 'تسوية مبالغ'], ['gold_adjust', 'تسوية ذهب']];
 const num = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
@@ -33,7 +33,7 @@ export function SubmissionsList({ list, onDone, showCustomer }) {
             <div className="sub-act">
               <Badge tone={SUB_ST[s.status][1]}>{SUB_ST[s.status][0]}</Badge>
               {s.status === 'pending' && can('payments.manage') && <>
-                <Btn size="sm" kind="ok" loading={busy} onClick={() => window.confirm(`اعتماد المستند ${s.submission_no} وإضافته لحساب العميل؟`) && run(async () => { await api.post(`/finance/submissions/${s.id}/approve`, {}); onDone(); }, 'تم الاعتماد وإضافته للحساب')}>اعتماد</Btn>
+                <Btn size="sm" kind="ok" loading={busy} onClick={async () => await askConfirm(`اعتماد المستند ${s.submission_no} وإضافته لحساب العميل؟`) && run(async () => { await api.post(`/finance/submissions/${s.id}/approve`, {}); onDone(); }, 'تم الاعتماد وإضافته للحساب')}>اعتماد</Btn>
                 <Btn size="sm" kind="ghost" onClick={() => setRej(s)}>رفض</Btn>
               </>}
             </div>

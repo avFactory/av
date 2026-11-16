@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtDate, COLORS, stoneItems } from '../../format.js';
-import { Btn, Loader, useAction, useFetch } from '../../ui.jsx';
+import { Btn, Loader, useAction, useFetch, showAlert } from '../../ui.jsx';
 
 /**
  * طابور مرحلة 3D (لفريق 3D): كل طلب بمنتجاته، ولكل قطعة: تحتاج تصميم / طباعة / لا تحتاج،
@@ -21,7 +21,7 @@ export default function Queue3d() {
   const move = (g) => run(async () => {
     const r = await api.post(`/w/orders/${g.items[0].id}/group-advance`);
     reload();
-    if (r.skipped?.length) window.alert(`لم ينتقل:\n${r.skipped.map((s) => `${s.order_no}: ${s.reason}`).join('\n')}`);
+    if (r.skipped?.length) showAlert(`لم ينتقل:\n${r.skipped.map((s) => `${s.order_no}: ${s.reason}`).join('\n')}`);
   }, 'انتقل الطلب للمرحلة التالية');
   return (
     <div className="d-grid gap-2">

@@ -60,6 +60,54 @@ export function useFetch(url, { live = [], deps = [] } = {}) {
 
 // ------------------------------------------------------------- التنبيهات
 const ToastCtx = createContext(() => {});
+// ------------------------------------------------------------- رسائل التأكيد والتنبيه (بدل نوافذ المتصفح) في منتصف الصفحة
+let openDialog = null;
+/** نافذة تأكيد: تعيد true عند الموافقة */
+export function askConfirm(message, opts = {}) {
+  return new Promise((resolve) => {
+    if (!openDialog) { resolve(window.confirm(message)); return; }
+    openDialog({ kind: 'confirm', message, ...opts, resolve });
+  });
+}
+/** نافذة تنبيه بزر واحد */
+export function showAlert(message, opts = {}) {
+  return new Promise((resolve) => {
+    if (!openDialog) { window.alert(message); resolve(true); return; }
+    openDialog({ kind: 'alert', message, ...opts, resolve });
+  });
+}
+
+function DialogHost() {
+  const [d, setD] = useState(null);
+  const okRef = useRef(null);
+  useEffect(() => { openDialog = (x) => setD(x); return () => { openDialog = null; }; }, []);
+  const close = useCallback((v) => { setD((cur) => { cur?.resolve(v); return null; }); }, []);
+  useEffect(() => {
+    if (!d) return undefined;
+    okRef.current?.focus();
+    const k = (e) => { if (e.key === 'Escape') close(false); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [d, close]);
+  if (!d) return null;
+  const danger = d.danger ?? (d.kind === 'confirm' && /حذف|إلغاء|إيقاف|رفض/.test(d.message));
+  const title = d.title || (d.kind === 'alert' ? 'تنبيه' : danger ? 'تأكيد الحذف' : 'تأكيد');
+  const okLabel = d.ok || (d.kind === 'alert' ? 'حسناً' : danger && /حذف/.test(d.message) ? 'نعم، احذف' : 'تأكيد');
+  return (
+    <div className="cdlg" role="alertdialog" aria-modal="true" aria-labelledby="cdlg-t" onMouseDown={(e) => e.target === e.currentTarget && close(false)}>
+      <div className={`cdlg-card${danger ? ' danger' : ''}`}>
+        <div className="cdlg-ic" aria-hidden="true">{d.kind === 'alert' ? 'i' : danger ? '!' : '✓'}</div>
+        <h3 id="cdlg-t" className="cdlg-t">{title}</h3>
+        <div className="cdlg-m">{d.message}</div>
+        <div className={`cdlg-b${d.kind === 'alert' ? ' one' : ''}`}>
+          <button ref={okRef} type="button" className={`btn btn-lg ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={() => close(true)}>{okLabel}</button>
+          {d.kind === 'confirm' && <button type="button" className="btn btn-lg btn-outline-secondary" onClick={() => close(false)}>{d.cancel || 'إلغاء'}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ToastProvider({ children }) {
   const [items, setItems] = useState([]);
   const push = useCallback((msg, type = 'ok') => {
@@ -70,6 +118,7 @@ export function ToastProvider({ children }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
+      <DialogHost />
       <div className="toast-container position-fixed bottom-0 end-0 p-3 toasts" role="status" aria-live="polite">
         {items.map((t) => (
           <div key={t.id} className={`toast show border-0 shadow ${t.type === 'bad' ? 'text-bg-danger' : t.type === 'ok' ? 'text-bg-success' : 'text-bg-dark'}`}>

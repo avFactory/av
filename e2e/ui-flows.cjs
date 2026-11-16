@@ -85,7 +85,11 @@ async function sign(page) {
   // العامل لا يسجل أوزاناً (لا يملك ميزاناً) — المشرف يعتمد الوزن الفعلي عند الاستلام
   if (await wk.locator('text=تسجيل الأوزان').count()) problems.push('worker still sees weights section');
   wk.on('dialog', (d) => d.accept());
-  await wk.click('button:has-text("إنهاء المرحلة وتسليمها")'); await wk.waitForTimeout(700);
+  await wk.click('button:has-text("إنهاء المرحلة وتسليمها")'); await wk.waitForTimeout(300);
+  // نافذة التأكيد في منتصف الصفحة
+  await wk.waitForSelector('.cdlg', { timeout: 3000 });
+  await wk.screenshot({ path: SHOTS + 'confirm-dialog.png' });
+  await wk.click('.cdlg .btn-primary'); await wk.waitForTimeout(700);
   await wk.screenshot({ path: SHOTS + 'worker_custody.png', fullPage: true });
   await wk.goto(BASE + '/w/losses'); await wk.waitForLoadState('networkidle');
   await wk.screenshot({ path: SHOTS + 'worker_losses.png', fullPage: true });

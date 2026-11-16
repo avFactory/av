@@ -4,7 +4,7 @@ import { api, qs, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
 import { fmtW, fmtDate, STATUS, DESIGN_STATUS } from '../../format.js';
-import { Btn, LinkBtn, Loader, Page, Search, Select, StatusBadge, Table, useAction, useFetch, Badge } from '../../ui.jsx';
+import { Btn, LinkBtn, Loader, Page, Search, Select, StatusBadge, Table, useAction, useFetch, Badge, showAlert } from '../../ui.jsx';
 
 /** تجميع بنود الطلب الواحد (نفس رقم الطلب من السلة أو بعد التقسيم) في صف واحد قابل للفتح */
 function groupRows(data, open) {
@@ -37,7 +37,7 @@ export default function Orders() {
   const [run, busy] = useAction();
   const startAll = (g) => run(async () => {
     const r = await api.post('/orders/group/start', { ref: g.ref });
-    if (r.skipped?.length) window.alert(`بدأ إنتاج ${r.started.length} بند.\nلم يبدأ:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`);
+    if (r.skipped?.length) showAlert(`بدأ إنتاج ${r.started.length} بند.\nلم يبدأ:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`);
   }, 'تم بدء إنتاج الطلب');
   const rows = data ? groupRows(data, open) : null;
   const G = (fn, gfn) => (o) => (o.group ? gfn(o) : fn(o));

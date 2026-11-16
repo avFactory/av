@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtDT, fmtPct } from '../../format.js';
-import { Btn, Card, Field, Input, Loader, Modal, Page, Select, Table, Tabs, useAction, useFetch, Badge } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Loader, Modal, Page, Select, Table, Tabs, useAction, useFetch, Badge, askConfirm } from '../../ui.jsx';
 
 const KINDS = [['normal', 'عادية'], ['intake', 'استلام الطلب'], ['design', 'تصميم'], ['design_approval', 'اعتماد التصميم من العميل'], ['final_weight', 'الوزن النهائي'], ['invoicing', 'الفوترة'], ['delivery_ready', 'جاهز للتسليم'], ['delivered', 'تم التسليم']];
 const FIELDS = [['photo', 'صورة التنفيذ إلزامية']];
@@ -40,7 +40,7 @@ export default function Stages() {
               {active.findIndex((a) => a.id === x.id) > 0 && <Btn size="sm" kind="ghost" onClick={() => move(active.findIndex((a) => a.id === x.id), -1)}>↑</Btn>}
               {active.findIndex((a) => a.id === x.id) < active.length - 1 && <Btn size="sm" kind="ghost" onClick={() => move(active.findIndex((a) => a.id === x.id), 1)}>↓</Btn>}
               <Btn size="sm" kind="ghost" onClick={() => setS({ ...x })}>تعديل</Btn>
-              <Btn size="sm" kind="ghost" onClick={() => window.confirm(`حذف مرحلة ${x.name}؟`) && run(async () => { await api.del(`/admin/stages/${x.id}`); reload(); reloadRoutes(); }, 'تم الحذف')}>حذف</Btn>
+              <Btn size="sm" kind="ghost" onClick={async () => await askConfirm(`حذف مرحلة ${x.name}؟`) && run(async () => { await api.del(`/admin/stages/${x.id}`); reload(); reloadRoutes(); }, 'تم الحذف')}>حذف</Btn>
             </div>],
           ]} /></div>
           <SpecialtyRates />

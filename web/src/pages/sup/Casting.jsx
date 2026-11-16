@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { fmtDT } from '../../format.js';
-import { Btn, Card, Loader, Page, useAction, useToast } from '../../ui.jsx';
+import { Btn, Card, Loader, Page, useAction, useToast, askConfirm } from '../../ui.jsx';
 import { castingCalc, karatConvert } from '../../../../server/src/lib/castingFormulas.js';
 
 const fmt = (v) => (!v || Math.abs(v) < 0.005 ? '-' : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
@@ -44,8 +44,8 @@ export default function Casting() {
     const nt = await api.post('/casting', { tree_no: '', karat: 18, color: 'اصفر', order_ids: orderId ? [orderId] : [] });
     setRows((rs) => [...(rs || []), nt]);
   });
-  const remove = (t) => {
-    if (!window.confirm(`حذف الشجرة ${t.tree_no}؟`)) return;
+  const remove = async (t) => {
+    if (!await askConfirm(`حذف الشجرة ${t.tree_no}؟`)) return;
     run(async () => { await api.del(`/casting/${t.id}`); setRows((rs) => rs.filter((x) => x.id !== t.id)); }, 'تم الحذف').catch(() => {});
   };
   const linkHere = (t) => run(async () => { const nt = await api.put(`/casting/${t.id}`, { add_orders: [orderId] }); setRows((rs) => rs.map((x) => (x.id === t.id ? nt : x))); }, 'تم ربط الطلب بالشجرة').catch(() => {});

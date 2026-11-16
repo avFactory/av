@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
-import { Btn, Field, Input, Loader, Modal, Page, Select, Table, useAction, useFetch, Badge, Search } from '../../ui.jsx';
+import { Btn, Field, Input, Loader, Modal, Page, Select, Table, useAction, useFetch, Badge, Search, askConfirm } from '../../ui.jsx';
 
 export default function Employees() {
   const { lookups, can } = useAuth();
@@ -22,7 +22,7 @@ export default function Employees() {
     if (f.id) await api.put(`/admin/employees/${f.id}`, body); else await api.post('/admin/employees', body);
     setF(null); reload();
   }, 'تم الحفظ');
-  const del = (u) => { if (window.confirm(`حذف ${u.full_name}؟ (إن كان مرتبطاً بحركات سيتم تعطيله فقط)`)) run(async () => { await api.del(`/admin/employees/${u.id}`); reload(); }, 'تم'); };
+  const del = async (u) => { if (await askConfirm(`حذف ${u.full_name}؟ (إن كان مرتبطاً بحركات سيتم تعطيله فقط)`)) run(async () => { await api.del(`/admin/employees/${u.id}`); reload(); }, 'تم'); };
   if (!data) return <Loader />;
   const rows = data.filter((u) => !q || u.full_name.includes(q) || (u.employee_no || '').includes(q) || u.username.includes(q));
   return (

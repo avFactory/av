@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtDate, fmtDT, fmtW } from '../../format.js';
 import { useAuth } from '../../auth.jsx';
-import { Btn, Empty, Loader, Page, useAction, useFetch } from '../../ui.jsx';
+import { Btn, Empty, Loader, Page, useAction, useFetch, askConfirm } from '../../ui.jsx';
 import { printLabels } from '../../components/PrintLabelsBtn.jsx';
 
 /** مرحلة النواقص: القطع المنتظرة لتوفر الألماس أو الخامات، واستئنافها بعد التوفر */
@@ -12,8 +12,8 @@ export default function Shortages() {
   const [run, busy] = useAction();
   if (!data) return <Loader />;
   const { rows, kinds } = data;
-  const resume = (o) => {
-    if (!window.confirm(`توفرت النواقص للطلب ${o.order_no}؟ سيعود لمرحلته (${o.stage_name}) ويكمل الإنتاج.`)) return;
+  const resume = async (o) => {
+    if (!await askConfirm(`توفرت النواقص للطلب ${o.order_no}؟ سيعود لمرحلته (${o.stage_name}) ويكمل الإنتاج.`)) return;
     run(async () => { await api.post(`/orders/${o.id}/shortage/resume`); reload(); }, 'استؤنف الإنتاج');
   };
   return (
