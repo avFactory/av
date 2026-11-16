@@ -11,6 +11,7 @@ import { audit } from '../lib/audit.js';
 import { orderThumb } from '../lib/orderThumb.js';
 import { is3D, addInternalImages } from '../lib/internalImages.js';
 import { advanceGroup, set3d, queue3d } from '../lib/orderGroup3d.js';
+import { checkAckWeight, workerCloseStage } from '../lib/workerClose.js';
 import { createTransfer, acceptTransfer, rejectTransfer, cancelTransfer, transferCols } from '../lib/transfer.js';
 
 const r = Router();
@@ -38,7 +39,7 @@ r.get('/tasks', async (req, res) => {
     select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
            c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text, c.issue_batch_id,
            coalesce(case when gc.n > 1 then o.cart_ref end, o.order_no, 'عهدة عامة') as order_no,
-           coalesce(case when gc.n > 1 then 'الطلب كامل · ' || gc.n || ' أصناف' end, o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, m.name as material_name, c.kind, c.purpose,
+           coalesce(case when gc.n > 1 then 'الطلب كامل · ' || gc.n || ' أصناف' end, o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, coalesce(s.worker_closes, false) as worker_closes, c.gross_weight::text, m.name as material_name, c.kind, c.purpose,
            coalesce(
              (select f.path from order_files f where f.order_id=o.id and f.mime like 'image/%' order by (f.kind='design') desc, (f.kind='reference') desc, (f.kind='sketch') desc, f.id desc limit 1),
              (select pm.path from product_media pm where pm.product_id=o.product_id and pm.kind='image' order by pm.sort, pm.id limit 1)) as thumb
@@ -91,7 +92,9 @@ r.post('/custody/:id/ack', async (req, res) => {
     const c = await myCustody(db, req, req.params.id, true);
     if (c.status !== 'open') throw conflict('العهدة لم تعد مفتوحة');
     if (c.worker_ack_at) return { ok: true, already: true };
-    await db.query('update custodies set worker_ack_at=now(), ack_ip=$2, worker_rejected_at=null, worker_reject_reason=null where id=$1', [c.id, req.ip]);
+    const ackStage = c.stage_id ? (await db.query('select * from stages where id=$1', [c.stage_id])).rows[0] : null;
+    const ackW = checkAckWeight(c, ackStage, req.body);
+    await db.query('update custodies set worker_ack_at=now(), ack_ip=$2, worker_rejected_at=null, worker_reject_reason=null, ack_weight=$3 where id=$1', [c.id, req.ip, ackW]);
     await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'ack',$2,'قبول إلكتروني')", [c.id, req.user.id]);
     await audit(db, req, 'custody.accept', 'custody', c.id, { weight: c.weight_issued, at: new Date().toISOString() });
     return { ok: true };
@@ -184,6 +187,8 @@ r.post('/custody/:id/finish', async (req, res) => {
     if (c.status !== 'open') throw conflict('العهدة مغلقة');
     if (!c.worker_ack_at) throw conflict('يجب قبول استلام العهدة أولاً');
     const stage = (await db.query('select * from stages where id=$1', [c.stage_id])).rows[0];
+    // مرحلة يديرها عاملها (الجودة والوزن النهائي): يعتمد الوزن النهائي وينقل الطلب للفوترة
+    if (stage?.worker_closes) return workerCloseStage(db, req, c, stage, req.body);
     // العامل لا يملك ميزاناً: الوزن الفعلي يعتمده المشرف عند الاستلام (لا يُشترط تسجيل أوزان أو صور من العامل)
     void stage;
     await db.query("update custodies set work_state='finished', finished_at=now() where id=$1", [c.id]);

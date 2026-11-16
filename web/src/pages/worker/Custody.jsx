@@ -18,6 +18,8 @@ export default function WCustody() {
   const [pause, setPause] = useState(false);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
+  const [ackW, setAckW] = useState('');
+  const [fin, setFin] = useState({ weight: '', weights: {}, note: '' });
   const [run, busy] = useAction();
   const [trOpen, setTrOpen] = useState(false);
   const { data: trs, reload: reloadTr } = useFetch('/w/transfers', { live: ['custodies', 'custody_transfers'] });
@@ -73,7 +75,8 @@ export default function WCustody() {
           <p className="mb">أقر باستلام <b dir="ltr">{fmtW(c.weight_issued)} جم</b> من {c.material_name}{c.kind === 'general' ? <> كعهدة عامة: {c.purpose}</> : <> و<b>{c.pieces}</b> قطعة للطلب {c.order_no}</>}.</p>
           <p className="small muted mb">ضغطك على "قبول" يُسجَّل كتوقيعك الإلكتروني على العهدة بالتاريخ والوقت.</p>
           <div className="grid g2">
-            <Btn size="xl" kind="ok" loading={busy} onClick={() => act('ack', {}, 'تم قبول العهدة')}>✓ قبول الاستلام</Btn>
+            {c.worker_closes && <div style={{ gridColumn: '1 / -1' }}><Field label="زِن القطعة على ميزانك (جم) *" hint={`وزن التسليم ${fmtW(c.gross_weight || c.weight_issued)} جم`}><WeightInput big value={ackW} onChange={setAckW} /></Field></div>}
+            <Btn size="xl" kind="ok" loading={busy} disabled={c.worker_closes && !ackW} onClick={() => act('ack', c.worker_closes ? { weight: ackW } : {}, 'تم قبول العهدة')}>✓ قبول الاستلام</Btn>
             <Btn size="xl" kind="ghost" onClick={() => setRejectOpen(true)}>رفض (الوزن أو الطلب غير صحيح)</Btn>
           </div>
         </Card>
@@ -85,8 +88,27 @@ export default function WCustody() {
             {c.work_state === 'in_progress' && <Btn size="xl" kind="ghost" onClick={() => setPause(true)}>إيقاف مؤقت</Btn>}
             {c.work_state === 'paused' && <Btn size="xl" onClick={() => act('resume', {}, 'تم الاستئناف')} loading={busy}>استئناف العمل</Btn>}
           </div>
+          {c.worker_closes ? (() => {
+            const grp = (od?.group || []).length > 1 ? od.group : null;
+            const total = grp ? grp.reduce((a, x) => a + (Number(fin.weights[x.id]) || 0), 0) : Number(fin.weight) || 0;
+            const ok = grp ? grp.every((x) => Number(fin.weights[x.id]) > 0) : Number(fin.weight) > 0;
+            const gain = total > Number(c.gross_weight || c.weight_issued) + 0.0001;
+            return (
+              <Card title="الوزن النهائي واعتماد الطلب">
+                <div className="small text-body-secondary mb-2">بعد التشييك: زِن القطعة واكتب الوزن النهائي، ثم اضغط «انتهيت» فينتقل الطلب للفوترة مباشرة.</div>
+                {grp ? grp.map((x) => (
+                  <Field key={x.id} label={`${x.title || x.product_type} — ${x.quantity} قطعة`}><WeightInput value={fin.weights[x.id] || ''} onChange={(v) => setFin({ ...fin, weights: { ...fin.weights, [x.id]: v } })} /></Field>
+                )) : <Field label="الوزن النهائي على الميزان (جم) *"><WeightInput big value={fin.weight} onChange={(v) => setFin({ ...fin, weight: v })} /></Field>}
+                {grp && <div className="mb-2">الإجمالي: <b dir="ltr">{fmtW(total)} جم</b></div>}
+                <Field label={gain ? 'سبب زيادة الوزن *' : 'ملاحظة'}><Input value={fin.note} onChange={(e) => setFin({ ...fin, note: e.target.value })} /></Field>
+                <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started' || !ok || (gain && !fin.note)}
+                  onClick={() => { if (window.confirm(`اعتماد الوزن النهائي ${fmtW(total)} جم ونقل الطلب للفوترة؟`)) act('finish', grp ? { weights: fin.weights, note: fin.note } : { weight: fin.weight, note: fin.note }, 'تم — انتقل الطلب للفوترة'); }}>✓ انتهيت — نقل للفوترة</Btn>
+              </Card>
+            );
+          })() : <>
           <div className="small text-body-secondary">بعد الانتهاء سلّم القطعة والبقايا للمشرف، وهو يزنها ويعتمد الوزن الفعلي.</div>
           <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started'} onClick={() => { if (window.confirm('إنهاء المرحلة وتسليمها للمشرف؟')) act('finish', {}, 'تم إنهاء المرحلة - سلّم القطعة للمشرف'); }}>إنهاء المرحلة وتسليمها</Btn>
+          </>}
         </>
       )}
       {c.work_state === 'finished' && c.status === 'open' && <div className="alert alert-success">أنهيت المرحلة. سلّم القطعة والبقايا للمشرف ليزنها ويعتمد الوزن الفعلي.</div>}

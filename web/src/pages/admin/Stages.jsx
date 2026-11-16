@@ -66,7 +66,7 @@ export default function Stages() {
             <Field label="مدة الإنجاز المتوقعة (ساعات)"><Input inputMode="decimal" value={s.expected_hours ?? ''} onChange={(e) => setS({ ...s, expected_hours: e.target.value })} /></Field>
           </div>
           <div className="hrow gap wrap">
-            {[['handles_gold', 'تتضمن تسليم/استلام ذهب'], ['requires_weight', 'وزن إلزامي'], ['requires_approval', 'تحتاج اعتماد المشرف'], ['customer_visible', 'تظهر للعميل في المتابعة']].map(([k, l]) => <label key={k} className="check"><input type="checkbox" checked={!!s[k]} onChange={(e) => setS({ ...s, [k]: e.target.checked })} />{l}</label>)}
+            {[['handles_gold', 'تتضمن تسليم/استلام ذهب'], ['requires_weight', 'وزن إلزامي'], ['requires_approval', 'تحتاج اعتماد المشرف'], ['customer_visible', 'تظهر للعميل في المتابعة'], ...(s.kind === 'final_weight' && s.handles_gold ? [['worker_closes', 'عامل المرحلة يستلم تلقائياً ويعتمد الوزن النهائي وينقل للفوترة (بدون المشرف)']] : [])].map(([k, l]) => <label key={k} className="check"><input type="checkbox" checked={!!s[k]} onChange={(e) => setS({ ...s, [k]: e.target.checked })} />{l}</label>)}
           </div>
           <Field label="حقول مطلوبة من العامل">{FIELDS.map(([k, l]) => <label key={k} className="check"><input type="checkbox" checked={(s.required_fields || []).includes(k)} onChange={(e) => setS({ ...s, required_fields: e.target.checked ? [...(s.required_fields || []), k] : s.required_fields.filter((x) => x !== k) })} />{l}</label>)}</Field>
           <Field label="العمال المحددون لهذه المرحلة">

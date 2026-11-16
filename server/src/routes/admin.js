@@ -668,15 +668,15 @@ function stageVals(b, s = {}) {
     b.handles_gold ?? s.handles_gold ?? false, b.requires_approval ?? s.requires_approval ?? false, b.requires_weight ?? s.requires_weight ?? false,
     JSON.stringify(b.required_fields ?? s.required_fields ?? []),
     b.expected_hours === '' ? null : b.expected_hours ?? s.expected_hours ?? null,
-    b.customer_visible ?? s.customer_visible ?? true, b.active ?? s.active ?? true,
+    b.customer_visible ?? s.customer_visible ?? true, b.active ?? s.active ?? true, !!(b.worker_closes ?? s.worker_closes ?? false),
   ];
 }
 
 r.post('/stages', requirePerm('stages.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
     const max = (await db.query('select coalesce(max(sort_order),0)+1 n from stages')).rows[0].n;
-    const s = (await db.query(`insert into stages(name, kind, handles_gold, requires_approval, requires_weight, required_fields, expected_hours, customer_visible, active, sort_order)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`, [...stageVals(req.body), max])).rows[0];
+    const s = (await db.query(`insert into stages(name, kind, handles_gold, requires_approval, requires_weight, required_fields, expected_hours, customer_visible, active, worker_closes, sort_order)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`, [...stageVals(req.body), max])).rows[0];
     await audit(db, req, 'stage.create', 'stage', s.id, s);
     return s;
   }));
@@ -688,7 +688,7 @@ r.put('/stages/:id', requirePerm('stages.manage'), async (req, res) => {
     const s = (await db.query('select * from stages where id=$1 for update', [id])).rows[0];
     if (!s) throw notFound();
     await db.query(`update stages set name=$2, kind=$3, handles_gold=$4, requires_approval=$5, requires_weight=$6, required_fields=$7, expected_hours=$8,
-      customer_visible=$9, active=$10 where id=$1`, [id, ...stageVals(req.body, s)]);
+      customer_visible=$9, active=$10, worker_closes=$11 where id=$1`, [id, ...stageVals(req.body, s)]);
     if (Array.isArray(req.body.worker_ids)) {
       await db.query('delete from stage_workers where stage_id=$1', [id]);
       for (const w of req.body.worker_ids) await db.query('insert into stage_workers values ($1,$2) on conflict do nothing', [id, int(w)]);

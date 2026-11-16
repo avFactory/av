@@ -375,3 +375,47 @@ test('تحويل الطلب من عامل لعامل المرحلة التالي
   // المصادر المتاحة للإضافة تشمل العهدة العامة
   assert.ok((await call('GET', `/findings/worker/${B.id}`)).data.some((x) => x.general));
 });
+
+test('مرحلة الجودة يديرها عاملها: تسليم تلقائي، قبول بوزن الميزان، وزن نهائي وانتهيت ← الفوترة بدون المشرف', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '50', note: 'رصيد' });
+  const id = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, specialty) values ('walidqc',$1,'وليد','worker','QC1','الجودة') returning id", [hashPassword('Qc#2026xx')])).rows[0].id;
+  let ck = '';
+  const W = async (m, p, body) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  await W('POST', '/auth/login', { username: 'walidqc', password: 'Qc#2026xx' });
+  const qc = (await pool.query("select id from stages where code='qc'")).rows[0].id;
+  const s = (await call('GET', '/admin/stages')).data.find((x) => x.id === qc);
+  assert.equal((await call('PUT', `/admin/stages/${qc}`, { ...s, worker_closes: true, worker_ids: [id] })).status, 200);
+  await call('POST', `/admin/stages/${qc}/rate`, { rate_percent: '1', note: 'x' });
+
+  const o = (await call('POST', '/orders', { title: 'خاتم جودة', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat })).data;
+  const cur = async () => (await pool.query('select o.current_stage_id id, s.code, s.kind, o.final_weight from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0];
+  for (let i = 0; i < 6 && !['casting', 'prep'].includes((await cur()).code); i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'اختبار' });
+  assert.equal((await call('POST', `/orders/${o.id}/allocate`, { weight: '10' })).status, 200);
+  // من الغسيل للجودة (تجاوز المراحل للاختبار)
+  for (let i = 0; i < 12 && (await cur()).code !== 'qc'; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'اختبار' });
+  assert.equal((await cur()).code, 'qc');
+  const tasks = (await W('GET', '/w/tasks')).data.custodies;
+  const c = tasks.find((x) => x.order_id === o.id);
+  assert.ok(c, 'سُلِّم تلقائياً لوليد');
+  assert.equal(c.worker_closes, true);
+  assert.equal(Number(c.weight_issued), 10);
+  assert.equal(await bal('worker', id, mat), 10);
+  // القبول بوزن الميزان
+  assert.equal((await W('POST', `/w/custody/${c.id}/ack`, {})).status, 400, 'الوزن إلزامي');
+  assert.equal((await W('POST', `/w/custody/${c.id}/ack`, { weight: '9.5' })).status, 400, 'وزن مختلف ← يرفض ويبلغ المشرف');
+  assert.equal((await W('POST', `/w/custody/${c.id}/ack`, { weight: '10' })).status, 200);
+  await W('POST', `/w/custody/${c.id}/start`, {});
+  assert.equal((await W('POST', `/w/custody/${c.id}/finish`, {})).status, 400, 'الوزن النهائي إلزامي');
+  const fin = await W('POST', `/w/custody/${c.id}/finish`, { weight: '9.95' });
+  assert.equal(fin.status, 200, JSON.stringify(fin.data));
+  const after = await cur();
+  assert.equal(after.kind, 'invoicing', 'انتقل للفوترة بدون اعتماد المشرف');
+  assert.equal(Number(after.final_weight), 9.95);
+  assert.equal(await bal('worker', id, mat), 0);
+  assert.equal(await bal('order', o.id, mat), 9.95);
+  const stl = (await pool.query('select actual_loss::float l, status from settlements where custody_id=$1', [c.id])).rows[0];
+  assert.deepEqual([stl.l, stl.status], [0.05, 'approved'], 'العجز على عامل الجودة');
+  assert.ok((await pool.query("select 1 from notifications where title like $1", [`%جاهز للفوترة%`])).rowCount, 'إشعار المحاسب');
+  await call('PUT', `/admin/stages/${qc}`, { ...s, worker_closes: false });
+});

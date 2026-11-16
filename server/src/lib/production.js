@@ -111,6 +111,8 @@ async function enterStage(db, order, stage, userId) {
     await notifyPerm(db, 'custody.issue', { kind: 'issue', title: `الطلب ${order.order_no} بانتظار تسليم الذهب`, body: stage.name, link: `/sup/issue?order=${order.id}` });
     const w = await db.query('select user_id from stage_workers where stage_id=$1', [stage.id]);
     if (w.rows.length === 1) await db.query('update orders set assigned_worker_id=$2 where id=$1', [order.id, w.rows[0].user_id]);
+    // مرحلة يديرها عاملها (الجودة): تُسلَّم له تلقائياً بوزن الطلب الحالي
+    if (stage.worker_closes && w.rows.length === 1) await autoIssue(db, order.id, stage, w.rows[0].user_id, userId);
   }
   // مرحلة المختبر لإصدار الشهادة لطلبات الألماس فقط: تُتخطى تلقائياً إذا لم يكن في الطلب ألماس
   if (stage.code === 'lab' && !(await hasDiamonds(db, order.id))) {
@@ -124,6 +126,33 @@ async function enterStage(db, order, stage, userId) {
     await logStage(db, order.id, stage.id, 'completed', userId, 'تخطي تلقائي: لا يتطلب اعتماد تصميم', false);
     const fresh = (await db.query('select * from orders where id=$1', [order.id])).rows[0];
     await advance(db, fresh, userId, { auto: true });
+  }
+}
+
+/** تسليم تلقائي لعامل المرحلة الوحيد. أي تعذر (رصيد، ...) لا يوقف نقل الطلب: يبقى للمشرف يسلّمه يدوياً */
+async function autoIssue(db, orderId, stage, workerId, userId) {
+  const g = await groupInfo(db, orderId);
+  const lead = g?.isGroup ? g.lead : orderId;
+  if (lead !== orderId) return; // بقية بنود الطلب تتبع البند القائد
+  if ((await db.query("select 1 from custodies where order_id=$1 and status in ('open','under_review')", [lead])).rowCount) return;
+  const o = (await db.query('select id, order_no, material_id from orders where id=$1', [lead])).rows[0];
+  const ids = g?.isGroup ? g.ids : [lead];
+  let bal = 0;
+  for (const id of ids) bal += Number(await ledger.balance(db, 'order', id, o.material_id));
+  if (!(bal > 0)) return;
+  const stones = Number((await goldStonesGrams(db, lead)).used);
+  await db.query('savepoint auto_issue');
+  try {
+    const { issue } = await import('./custody.js');
+    await issue(db, { user: { id: userId, perms: new Set() }, ip: null }, {
+      worker_id: workerId, note: `تسليم تلقائي لمرحلة ${stage.name}`,
+      items: [{ order_id: lead, weight: (bal + stones).toFixed(4), stones_weight: stones.toFixed(4), from_vault: false }],
+    });
+    await db.query('release savepoint auto_issue');
+  } catch (e) {
+    await db.query('rollback to savepoint auto_issue');
+    if (!e.status) throw e;
+    await logStage(db, lead, stage.id, 'note', userId, `تعذر التسليم التلقائي: ${e.message}`, false);
   }
 }
 
