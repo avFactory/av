@@ -721,6 +721,16 @@ test('مدة تنفيذ الطلب: حسب الفئة وتصنيف العميل�
   assert.ok(Math.abs(days(g.d) - cd(18)) <= 1 && g.due_auto, JSON.stringify(g));
   assert.ok(Math.abs(days(d.d) - cd(10)) <= 1, JSON.stringify(d));
   assert.equal(s.d, null, 'المتوفر في المخزون بدون موعد');
+  // السلة تُقسم لطلبين: المتوفر وما يحتاج تصنيعاً، وكل طلب ببنود مرقمة من 1
+  assert.ok(sent.stock_ref && sent.make_ref && sent.stock_ref !== sent.make_ref, JSON.stringify(sent));
+  assert.equal(sent.cart_ref, sent.make_ref);
+  assert.deepEqual(sent.orders.map((o) => o.order_no), [`${sent.make_ref}-1`, `${sent.make_ref}-2`, `${sent.stock_ref}-1`]);
+  // كمية أكبر من المخزون: يحتاج تصنيعاً كاملاً
+  const big = (await cu('POST', '/store/orders', { items: [{ product_id: pStock.id, karat: 21, quantity: 9 }] })).data;
+  assert.deepEqual([big.stock_ref, !!big.make_ref], [null, true]);
+  // كله متوفر: طلب واحد
+  const allStock = (await cu('POST', '/store/orders', { items: [{ product_id: pStock.id, karat: 21, quantity: 2 }] })).data;
+  assert.deepEqual([!!allStock.stock_ref, allStock.make_ref, allStock.cart_ref], [true, null, allStock.stock_ref]);
   // التصميم الخاص: نفس مدة حسب الطلب، والموعد الذي يطلبه العميل لا يتغير
   assert.equal((await cu('GET', '/store/lead-times')).data.custom_gold, 18);
   const f1 = new FormData(); for (const [k, v] of Object.entries({ product_type: 'حلق', karat: '21' })) f1.append(k, v);

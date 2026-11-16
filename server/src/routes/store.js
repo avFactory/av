@@ -135,13 +135,25 @@ r.post('/orders', async (req, res) => {
   const items = Array.isArray(req.body.items) ? req.body.items : [];
   if (!items.length) throw bad('السلة فارغة');
   res.json(await tx(async (db) => {
-    // طلب واحد برقم واحد، وكل صنف بند فيه (ORD-…-1، -2 …) يُصنَّع ويُتتبع مستقلاً
-    const cartRef = await newGroupNo(db);
+    // السلة تُقسم لطلبين: المتوفر في المخزون، وما يحتاج تصنيعاً — كل طلب برقم، وكل صنف بند فيه (ORD-…-1، -2 …)
     const created = [];
     const mins = await getMinOrder(db);
-    for (const [idx, it] of items.entries()) {
+    const prods = [];
+    for (const it of items) {
       const p = (await db.query(`select * from products p where p.id=$1 and p.active and ${visibleTo(2)} for update`, [int(it.product_id), req.user.customer_id ?? null])).rows[0];
       if (!p || p.availability === 'unavailable') throw bad('منتج غير متوفر');
+      prods.push(p);
+    }
+    // المخزون يُحسب لكل منتج على مجموع كمياته في السلة
+    const want = new Map();
+    items.forEach((it, i) => want.set(prods[i].id, (want.get(prods[i].id) || 0) + (Number(it.quantity) || 1)));
+    const isStock = (p) => p.availability === 'available' && Number(p.stock_qty) >= want.get(p.id);
+    const refs = {};
+    const seq = {};
+    const refFor = async (stock) => { const k = stock ? 'stock' : 'make'; refs[k] ||= await newGroupNo(db); seq[k] = (seq[k] || 0) + 1; return { ref: refs[k], no: `${refs[k]}-${seq[k]}` }; };
+    for (const [idx, it] of items.entries()) {
+      const p = prods[idx];
+      const { ref: cartRef, no: itemNo } = await refFor(isStock(p));
       const karat = int(it.karat, 'العيار');
       if (!p.karats.includes(karat)) throw bad(`العيار ${karat} غير متاح للمنتج ${p.name}`);
       const color = it.color || p.colors[0];
@@ -158,15 +170,20 @@ r.post('/orders', async (req, res) => {
         values ($22,$1,'store_catalog',$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$23,$24) returning *`,
         [req.user.customer_id, cartRef, p.id, p.product_type, p.name, await materialFor(db, karat), w ? (await db.query('select ($1::numeric * $2)::text v', [w, qty])).rows[0].v : null,
          str(it.size, 'المقاس'), qty, str(it.notes, 'ملاحظات'), labor?.method || null, labor?.rate || null,
-         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null, orderColor(color), JSON.stringify(p.diamonds || []), p.pearl_weight, p.stone_weight, p.zircon_weight, `${cartRef}-${idx + 1}`, p.bullion_type, p.bullion_weight])).rows[0];
-      await prod.logStage(db, o.id, null, 'created', req.user.id, `طلب من المتجر (${cartRef})`, true);
+         labor ? laborAmount(labor.method, labor.rate, w, 1) * (labor.method === 'fixed' ? 1 : qty) : null, req.user.id, p.route_id, req.user.branch_id || null, orderColor(color), JSON.stringify(p.diamonds || []), p.pearl_weight, p.stone_weight, p.zircon_weight, itemNo, p.bullion_type, p.bullion_weight])).rows[0];
+      const stock = cartRef === refs.stock;
+      await prod.logStage(db, o.id, null, 'created', req.user.id, `طلب من المتجر (${cartRef}) — ${stock ? 'متوفر في المخزون' : 'يحتاج تصنيع'}`, true);
       // المتوفر في المخزون لا يحتاج مدة تنفيذ
-      if (!(p.availability === 'available' && Number(p.stock_qty) >= qty)) await applyDueDate(db, o.id);
+      if (!stock) await applyDueDate(db, o.id);
       created.push(o);
     }
-    await notifyPerm(db, 'orders.manage', { kind: 'order', title: `طلب جديد من ${req.user.shop_name}${req.user.branch_name ? ' - ' + req.user.branch_name : ''}`, body: `${created.length} صنف - ${cartRef}`, link: `/orders?q=${encodeURIComponent(cartRef)}` });
-    await audit(db, req, 'store.order', 'cart', cartRef, { orders: created.map((o) => o.order_no) });
-    return { cart_ref: cartRef, orders: created.map((o) => ({ id: o.id, order_no: o.order_no })) };
+    const who = `${req.user.shop_name}${req.user.branch_name ? ' - ' + req.user.branch_name : ''}`;
+    for (const [k, ref] of Object.entries(refs)) {
+      const n = created.filter((o) => o.cart_ref === ref).length;
+      await notifyPerm(db, 'orders.manage', { kind: 'order', title: `طلب ${k === 'stock' ? 'متوفر' : 'تصنيع'} جديد من ${who}`, body: `${n} صنف - ${ref}`, link: `/orders?q=${encodeURIComponent(ref)}` });
+    }
+    await audit(db, req, 'store.order', 'cart', refs.make || refs.stock, { stock: refs.stock || null, make: refs.make || null, orders: created.map((o) => o.order_no) });
+    return { cart_ref: refs.make || refs.stock, stock_ref: refs.stock || null, make_ref: refs.make || null, orders: created.map((o) => ({ id: o.id, order_no: o.order_no, cart_ref: o.cart_ref })) };
   }));
 });
 

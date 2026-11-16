@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { COLORS, fmtMoney, METHODS } from '../../format.js';
-import { Btn, Empty, Page, useAction, LinkBtn } from '../../ui.jsx';
+import { Btn, Empty, Page, useAction, LinkBtn, showAlert } from '../../ui.jsx';
 import { delFiles, getFiles } from '../../fileStore.js';
 import { useCart, OrderGate } from '../../components/StoreLayout.jsx';
 import { useAuth } from '../../auth.jsx';
@@ -15,8 +15,12 @@ export default function Cart() {
   const send = () => run(async () => {
     const ready = cart.filter((i) => i.kind !== 'custom');
     const custom = cart.filter((i) => i.kind === 'custom');
-    let ref = '';
-    if (ready.length) ref = (await api.post('/store/orders', { items: ready })).cart_ref;
+    // السلة تُقسم: طلب للمتوفر في المخزون وطلب لما يحتاج تصنيعاً (التصاميم الخاصة تنضم لطلب التصنيع)
+    let ref = '', stockRef = null;
+    if (ready.length) {
+      const r = await api.post('/store/orders', { items: ready });
+      stockRef = r.stock_ref; ref = r.make_ref || '';
+    }
     let left = custom;
     for (const c of custom) {
       const fd = new FormData();
@@ -33,7 +37,8 @@ export default function Cart() {
       setCart(left);
     }
     setCart([]);
-    nav('/store/orders', { state: { cart: ref } });
+    nav('/store/orders', { state: { cart: ref || stockRef } });
+    if (stockRef && ref) await showAlert(`قُسم طلبك إلى طلبين:\n• ${stockRef} — المنتجات المتوفرة في المخزون\n• ${ref} — المنتجات التي تحتاج تصنيعاً`, { title: 'تم إرسال الطلب للمصنع' });
   }, 'تم إرسال الطلب للمصنع');
   const remove = (n) => { const it = cart[n]; if (it.kind === 'custom') delFiles(it.key); setCart(cart.filter((_, j) => j !== n)); };
   const minOf = (x) => x.min || (x.kind === 'custom' ? (lookups?.settings?.min_order?.diamond ?? 2) : 1);
@@ -51,7 +56,8 @@ export default function Cart() {
               <div key={n} className="cart-row">
                 {i.kind === 'custom' ? <span className="cart-custom-ic">✎</span> : i.image ? <img className="cart-img" src={fileUrl(i.image, 400)} alt="" /> : <span className="cart-custom-ic">◇</span>}
                 <div className="cart-info">
-                  <div className="cart-name">{i.name}{i.kind === 'custom' && <span className="badge text-bg-warning ms-2">تصميم خاص</span>}</div>
+                  <div className="cart-name">{i.name}{i.kind === 'custom' ? <span className="badge text-bg-warning ms-2">تصميم خاص</span>
+                    : i.stock != null && (i.stock >= (Number(i.quantity) || 1) ? <span className="badge text-bg-success ms-2">متوفر</span> : <span className="badge text-bg-light border ms-2">يحتاج تصنيع</span>)}</div>
                   <div className="cart-meta">
                     {i.kind === 'custom' ? <span>{i.file_count || 0} ملف</span> : <span dir="ltr">{i.sku}</span>}
                     <span>عيار {i.karat}</span>{i.color && <span>{COLORS[i.color]}</span>}{i.size && <span>مقاس {i.size}</span>}

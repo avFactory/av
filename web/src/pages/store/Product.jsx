@@ -29,7 +29,7 @@ export default function Product() {
   const add = () => {
     if (p.sizes.length && !sel.size) return toast('اختر المقاس', 'bad');
     if ((Number(qtyVal) || 0) < minQ) return toast(`أقل كمية لهذا المنتج ${minQ} قطع`, 'bad');
-    setCart([...cart, { product_id: p.id, name: p.name, sku: p.sku, product_type: p.product_type, karat, color, size: sel.size, quantity: Number(qtyVal), min: minQ, notes: sel.notes, image: p.media[0]?.path, labor: p.labor }]);
+    setCart([...cart, { product_id: p.id, name: p.name, sku: p.sku, product_type: p.product_type, karat, color, size: sel.size, quantity: Number(qtyVal), min: minQ, notes: sel.notes, image: p.media[0]?.path, labor: p.labor, stock: p.availability === 'available' ? Number(p.stock_qty) || 0 : 0 }]);
     toast('أضيف إلى السلة');
     // الرجوع لنفس مكان العميل في المتجر (نفس الفلاتر وموضع التمرير)
     if ((window.history.state?.idx ?? 0) > 0) nav(-1); else nav('/store');
