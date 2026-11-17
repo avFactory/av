@@ -76,22 +76,27 @@ r.use((req, _res, next) => {
   next();
 });
 
+/** منتج مخصص لعملاء محددين (بالاسم أو الفئة) — العميل يراه فقط إن كان منهم */
+const EXCLUSIVE = '(cardinality(p.allowed_customer_ids) > 0 or cardinality(p.allowed_tier_ids) > 0)';
+
 r.get('/products', async (req, res) => {
   const f = req.query;
   // صفحات: 48 منتجاً في كل مرة (التمرير يجلب المزيد)، وصورة الغلاف فقط في القائمة
   const limit = Math.min(Math.max(int(f.limit ?? 48, 'limit', { min: 1 }), 1), 200);
   const offset = Math.max(int(f.offset ?? 0, 'offset', { min: 0 }), 0);
-  const params = [f.type || null, f.karat ? int(f.karat) : null, String(f.q ?? '').trim() ? `%${String(f.q).trim().replace(/[%_\\]/g, (c) => '\\' + c)}%` : null, ['gold', 'diamond', 'pearl', 'stone', 'bullion'].includes(f.cat) ? f.cat : null, req.user.customer_id ?? null];
+  const params = [f.type || null, f.karat ? int(f.karat) : null, String(f.q ?? '').trim() ? `%${String(f.q).trim().replace(/[%_\\]/g, (c) => '\\' + c)}%` : null, ['gold', 'diamond', 'pearl', 'stone', 'bullion', 'exclusive'].includes(f.cat) ? f.cat : null, req.user.customer_id ?? null];
   const where = `p.active and p.availability <> 'unavailable' and ${visibleTo(5)}
       and ($1::text is null or p.product_type=$1) and ($2::int is null or $2 = any(p.karats)) and ($3::text is null or p.name ilike $3 or p.sku ilike $3 or p.product_type ilike $3)
       and ($4::text is null or ($4='diamond' and jsonb_array_length(p.diamonds) > 0) or ($4='pearl' and coalesce(p.pearl_weight,0) > 0)
         or ($4='stone' and coalesce(p.stone_weight,0) > 0) or ($4='bullion' and p.bullion_type is not null)
-        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and p.bullion_type is null))`; // الذهب يشمل القطع المرصعة بالأحجار (لا يوجد تصنيف أحجار مستقل)
+        or ($4='gold' and jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight,0) = 0 and p.bullion_type is null)
+        or ($4='exclusive' and ${EXCLUSIVE}))`; // الذهب يشمل القطع المرصعة بالأحجار (لا يوجد تصنيف أحجار مستقل)
   const rows = await many(`select p.id, p.sku, p.name, p.product_type, p.karats, p.colors, p.approx_weight::text, p.final_weight::text, p.sizes,
       p.stock_qty, p.availability, p.labor_method, p.labor_rate,
       coalesce((select json_build_array(json_build_object('path', m.path, 'kind', m.kind)) from product_media m where m.product_id=p.id order by m.sort, m.id limit 1), '[]') as media,
       jsonb_array_length(p.diamonds) > 0 as has_diamond, coalesce(p.pearl_weight, 0) > 0 as has_pearl, coalesce(p.stone_weight, 0) > 0 as has_stone,
-  (jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight, 0) = 0 and coalesce(p.stone_weight, 0) = 0 and p.bullion_type is null) as is_gold, p.bullion_type is not null as has_bullion, p.bullion_type, p.bullion_weight::text
+  (jsonb_array_length(p.diamonds) = 0 and coalesce(p.pearl_weight, 0) = 0 and coalesce(p.stone_weight, 0) = 0 and p.bullion_type is null) as is_gold, p.bullion_type is not null as has_bullion, p.bullion_type, p.bullion_weight::text,
+      ${EXCLUSIVE} as is_exclusive
     from products p where ${where}
     order by p.id desc limit ${limit + 1} offset ${offset}`, params);
   const hasMore = rows.length > limit;
@@ -104,13 +109,15 @@ r.get('/products', async (req, res) => {
   }
   const total = offset === 0 ? (await one(`select count(*)::int n from products p where ${where}`, params)).n : undefined;
   const types = offset === 0 ? (await many(`select distinct p.product_type from products p where p.active and ${visibleTo(1)} order by 1`, [req.user.customer_id ?? null])).map((t) => t.product_type) : undefined;
-  res.json({ products: rows, types, total, has_more: hasMore, offset });
+  // منتجات خاصة بهذا العميل (بالاسم أو بفئته) — يظهر لها صنف «خاص بك»
+  const exclusive = offset === 0 && req.user.customer_id ? (await one(`select count(*)::int n from products p where p.active and p.availability <> 'unavailable' and ${visibleTo(1)} and ${EXCLUSIVE}`, [req.user.customer_id])).n : undefined;
+  res.json({ products: rows, types, total, has_more: hasMore, offset, exclusive });
 });
 
 r.get('/products/:id', async (req, res) => {
   const p = await one(`select p.id, p.sku, p.name, p.product_type, p.description, p.karats, p.colors, p.approx_weight::text, p.final_weight::text, p.sizes, p.stock_qty, p.availability,
       coalesce((select json_agg(json_build_object('path', m.path, 'kind', m.kind) order by m.sort, m.id) from product_media m where m.product_id=p.id), '[]') as media,
-      p.pearl_weight::text, p.stone_weight::text, p.zircon_weight::text, p.bullion_type, p.bullion_weight::text,
+      p.pearl_weight::text, p.stone_weight::text, p.zircon_weight::text, p.bullion_type, p.bullion_weight::text, ${EXCLUSIVE} as is_exclusive,
       coalesce((select json_agg(json_build_object('shape', s.name, 'size', l.size_label, 'color', l.color, 'clarity', l.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
         from jsonb_array_elements(p.diamonds) d join stone_lots l on l.id=(d->>'lot_id')::int left join stone_shapes s on s.id=l.shape_id), '[]') as diamond_details
     from products p where p.id=$1 and p.active and ${visibleTo(2)}`, [int(req.params.id), req.user.customer_id ?? null]);

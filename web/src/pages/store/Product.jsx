@@ -35,7 +35,7 @@ export default function Product() {
     if ((window.history.state?.idx ?? 0) > 0) nav(-1); else nav('/store');
   };
   return (
-    <Page title={p.name} subtitle={`${p.sku} · ${p.product_type}`} back="/store">
+    <Page title={p.is_exclusive ? <>{p.name} <span className="badge rounded-pill badge-excl align-middle fs-6">★ خاص بك</span></> : p.name} subtitle={`${p.sku} · ${p.product_type}`} back="/store">
       <div className="grid g2">
         <div>
           <div className="gallery">{media ? (media.kind === 'video' ? <video src={fileUrl(media.path)} controls /> : (

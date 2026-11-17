@@ -844,6 +844,15 @@ test('تخصيص المنتج: الافتراضي للجميع، أو لعملا
   assert.equal((await other.cu('GET', `/store/products/${priv.id}`)).status, 404);
   assert.equal((await other.cu('POST', '/store/orders', { items: [{ product_id: priv.id, karat: 21, quantity: 1 }] })).status, 400, 'ولا يستطيع طلبه');
   assert.ok((await call('GET', '/catalog/audience')).data.customers.some((c) => c.id === named.id));
+  // صنف «خاص بك»: المنتجات المخصصة للعميل فقط
+  const ex = (await named.cu('GET', '/store/products?cat=exclusive')).data;
+  assert.equal(ex.exclusive, 1, 'عدد المنتجات الخاصة');
+  assert.deepEqual(ex.products.map((p) => p.id), [priv.id]);
+  assert.equal(ex.products[0].is_exclusive, true);
+  assert.equal((await named.cu('GET', `/store/products/${priv.id}`)).data.is_exclusive, true);
+  assert.equal((await named.cu('GET', '/store/products?limit=200')).data.products.find((p) => p.id === pub.id).is_exclusive, false);
+  const oex = (await other.cu('GET', '/store/products?cat=exclusive')).data;
+  assert.deepEqual([oex.exclusive, oex.products.length], [0, 0], 'غيره بدون صنف خاص');
   // إلغاء التخصيص: يرجع للجميع
   const f = new FormData(); for (const [k, v] of Object.entries({ name: 'منتج مخصص', product_type: 'خاتم', karats: '21', colors: 'yellow', allowed_customer_ids: '', allowed_tier_ids: '' })) f.append(k, v);
   assert.equal((await call('PUT', `/catalog/products/${priv.id}`, null, f)).status, 200);

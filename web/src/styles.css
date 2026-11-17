@@ -959,3 +959,8 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .cdlg-b .btn { border-radius: 14px; font-weight: 700; }
 @keyframes cdlg-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes cdlg-up { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+
+/* صنف «خاص بك»: منتجات مخصصة للعميل */
+.cat-tab.excl { border-color: var(--gold, #b08d57); color: var(--gold-ink, #8a6a35); font-weight: 700; }
+.cat-tab.excl.on { background: var(--gold, #b08d57); color: #fff; }
+.badge-excl { background: linear-gradient(135deg, #c9a24a, #9c7a35); color: #fff; font-weight: 700 !important; }

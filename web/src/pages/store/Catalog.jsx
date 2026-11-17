@@ -10,7 +10,7 @@ let SNAP = null;
 import { useCart } from '../../components/StoreLayout.jsx';
 
 const CATS = [['', 'الكل', '✦'], ['gold', 'ذهب', '◯'], ['diamond', 'ألماس مخبري', '💎'], ['pearl', 'لؤلؤ', '⚪'], ['bullion', 'سبائك', '🪙']];
-const catBadges = (p) => [p.has_diamond && 'ألماس مخبري', p.has_pearl && 'لؤلؤ', p.has_stone && 'أحجار', p.has_bullion && (p.bullion_type === 'coin' ? 'جنيهات' : 'سبائك'), p.is_gold && 'ذهب'].filter(Boolean);
+const catBadges = (p) => [p.is_exclusive && 'خاص بك', p.has_diamond && 'ألماس مخبري', p.has_pearl && 'لؤلؤ', p.has_stone && 'أحجار', p.has_bullion && (p.bullion_type === 'coin' ? 'جنيهات' : 'سبائك'), p.is_gold && 'ذهب'].filter(Boolean);
 
 export default function Catalog() {
   // يرجع العميل لنفس المكان (الفلاتر والمنتجات المحمّلة وموضع التمرير) بعد فتح منتج والرجوع منه
@@ -43,6 +43,10 @@ export default function Catalog() {
     return () => io.disconnect();
   });
   const data = first;
+  // صنف «خاص بك» يظهر فقط لمن لديه منتجات مخصصة له
+  const [excl, setExcl] = useState(() => SNAP?.excl || 0);
+  useEffect(() => { if (first?.exclusive != null) { setExcl(first.exclusive); SNAP = { ...(SNAP || {}), excl: first.exclusive }; } }, [first]);
+  const cats = excl ? [CATS[0], ['exclusive', 'خاص بك', '★'], ...CATS.slice(1)] : CATS;
   useEffect(() => {
     if (!first || !restoreY.current) return;
     const y = restoreY.current; restoreY.current = 0;
@@ -56,8 +60,8 @@ export default function Catalog() {
       </div>
       {/* التصنيف حسب الخامة: الذهب يشمل القطع التي فيها زركون */}
       <div className="cat-tabs mb" role="tablist" aria-label="التصنيف">
-        {CATS.map(([k, label, icon]) => (
-          <button key={k} type="button" role="tab" aria-selected={f.cat === k} className={`cat-tab${f.cat === k ? ' on' : ''}`} onClick={() => setF({ ...f, cat: k })}>
+        {cats.map(([k, label, icon]) => (
+          <button key={k} type="button" role="tab" aria-selected={f.cat === k} className={`cat-tab${f.cat === k ? ' on' : ''}${k === 'exclusive' ? ' excl' : ''}`} onClick={() => setF({ ...f, cat: k })}>
             <span aria-hidden="true">{icon}</span>{label}
           </button>
         ))}
@@ -79,7 +83,7 @@ export default function Catalog() {
               <div className="info">
                 <b>{p.name}</b>
                 <span className="small muted">{p.sku} · {p.product_type} · عيار {p.karats.join('/')}</span>
-                <span className="d-flex flex-wrap gap-1">{catBadges(p).map((c) => <span key={c} className="badge rounded-pill text-bg-light border fw-normal">{c}</span>)}</span>
+                <span className="d-flex flex-wrap gap-1">{catBadges(p).map((c) => <span key={c} className={`badge rounded-pill fw-normal ${c === 'خاص بك' ? 'badge-excl' : 'text-bg-light border'}`}>{c === 'خاص بك' ? '★ ' : ''}{c}</span>)}</span>
                 <span className="small">الوزن التقريبي {fmtW(p.final_weight || p.approx_weight)} جم</span>
                 {p.labor && <span><b style={{ color: 'var(--gold-ink)' }}>{fmtMoney(p.labor.rate)}</b> <span className="small muted">{METHODS[p.labor.method]}</span></span>}
                 {!approved && <span className="small muted">أجور التصنيع تظهر بعد تسجيل الدخول</span>}
