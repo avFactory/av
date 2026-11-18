@@ -80,3 +80,46 @@ test('استيراد ملف Excel: معاينة ثم اعتماد، وإعادة
   const shapes = await call('GET', '/stones/shapes');
   assert.equal(shapes.find((s) => s.name === 'راوند').items, 3);
 });
+
+test('استيراد الألماس مع عمود العدد: إنشاء بالعدد، وجرد العدد والقيراط في اتجاهين مختلفين، ونموذج الملف', async () => {
+  const mkFile = async (rowsIn) => {
+    const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('S');
+    ws.addRow(['الصنف', 'القيراط', 'العدد']);
+    for (const r of rowsIn) ws.addRow(r);
+    const fd = new FormData(); fd.append('file', new Blob([await wb.xlsx.writeBuffer()]), 'count.xlsx');
+    return (await call('POST', '/stones/import/parse', null, fd)).rows;
+  };
+  const rows = await mkFile([['قلب 1.7 mm', 3.5, 120], ['قلب 1.9 mm', 1.25, '٤٥']]);
+  assert.deepEqual(rows.map((r) => [r.name, r.carats, r.count]), [['قلب 1.7 mm', '3.5000', '120'], ['قلب 1.9 mm', '1.2500', '45']]);
+  const { plan } = await call('POST', '/stones/import/preview', { rows });
+  assert.deepEqual(plan.map((p) => [p.action, p.target_count]), [['create', 120], ['create', 45]]);
+  await call('POST', '/stones/import/commit', { rows });
+  const lot = async (size) => (await call('GET', '/stones')).find((l) => l.size_label === size && l.shape_name === 'قلب');
+  const a = await lot('1.7 mm');
+  assert.deepEqual([Number(a.stock_carats), a.stock_count], [3.5, 120]);
+  // جرد: القيراط يزيد والعدد ينقص ← حركتان
+  const rows2 = await mkFile([['قلب 1.7 mm', 3.6, 118], ['قلب 1.9 mm', 1.25, 45]]);
+  const plan2 = (await call('POST', '/stones/import/preview', { rows: rows2 })).plan;
+  assert.deepEqual(plan2.map((p) => [p.action, p.diff, p.count_diff]), [['adjust', 0.1, -2], ['none', 0, 0]]);
+  const r2 = await call('POST', '/stones/import/commit', { rows: rows2 });
+  assert.deepEqual([r2.created, r2.adjusted], [0, 1]);
+  const a2 = await lot('1.7 mm');
+  assert.deepEqual([Number(a2.stock_carats), a2.stock_count], [3.6, 118]);
+  // ملف بدون عمود العدد: العدد لا يتغير
+  const fd = new FormData();
+  const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('S'); ws.addRow(['الصنف', 'القيراط']); ws.addRow(['قلب 1.7 mm', 3.6]);
+  fd.append('file', new Blob([await wb.xlsx.writeBuffer()]), 'nocount.xlsx');
+  const rows3 = (await call('POST', '/stones/import/parse', null, fd)).rows;
+  assert.equal(rows3[0].count, undefined);
+  const plan3 = (await call('POST', '/stones/import/preview', { rows: rows3 })).plan;
+  assert.deepEqual([plan3[0].action, plan3[0].count_diff], ['none', 0]);
+  // نموذج الملف
+  const t = await fetch(`${base}/api/stones/import/template.xlsx`, { headers: { cookie } });
+  assert.equal(t.status, 200);
+  const tw = new ExcelJS.Workbook(); await tw.xlsx.load(Buffer.from(await t.arrayBuffer()));
+  assert.deepEqual(tw.worksheets[0].getRow(1).values.slice(1), ['الصنف', 'القيراط', 'العدد']);
+  // النموذج نفسه يُرفع كما هو بدون أسطر زائدة
+  const fd2 = new FormData(); fd2.append('file', new Blob([Buffer.from(await tw.xlsx.writeBuffer())]), 'template.xlsx');
+  const back = (await call('POST', '/stones/import/parse', null, fd2)).rows;
+  assert.deepEqual(back.map((r) => [r.name, r.carats, r.count]), [['راوند 1.3 mm', '2.5000', '250'], ['اوفال 0.25', '1.7500', '7']]);
+});

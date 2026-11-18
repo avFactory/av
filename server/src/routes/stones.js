@@ -116,16 +116,26 @@ r.post('/import/parse', requirePerm('stones.manage'), memUpload.single('file'), 
     });
   }
   const rows = [];
+  // صف العناوين (إن وُجد): عمود القيراط وعمود العدد (عدد الألماسات/الحبات)
+  let col = null;
   for (const cells of table) {
+    const heads = cells.map((c) => (typeof c === 'string' ? norm(c) : ''));
+    const ci = heads.findIndex((h) => /عدد|حبات|حبه|حبة|count|pcs|qty|quantity/i.test(h));
+    const ki = heads.findIndex((h) => /قيراط|الرصيد|carat|\bct\b|الوزن/i.test(h));
+    if ((ci >= 0 || ki >= 0) && !cells.some((c) => parseCarats(c) !== null)) { col = { count: ci >= 0 ? ci : null, carats: ki >= 0 ? ki : null }; continue; }
     const texts = cells.filter((c) => typeof c === 'string' && c.trim() && parseCarats(c) === null);
-    const nums = cells.map(parseCarats).filter((x) => x !== null);
     const name = texts[0]?.trim();
+    const numsAt = cells.map((c, i) => ({ i, v: parseCarats(c) })).filter((x) => x.v !== null && x.i !== col?.count);
+    const nums = numsAt.map((x) => x.v);
     if (!name || /اسم|المخزون|الالماس في|الماس في/.test(norm(name)) && !nums.length) continue;
-    if (!nums.length && !cells.some((c) => typeof c === 'string' && /^[-–—]+$/.test(c.trim()))) {
+    const rawCount = col?.count != null ? cells[col.count] : null;
+    const count = rawCount == null || rawCount === '' ? null : /^\d+$/.test(String(rawCount).trim().replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))) ? String(Number(String(rawCount).trim().replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)))) : null;
+    const carats = col?.carats != null ? (parseCarats(cells[col.carats]) ?? null) : nums[nums.length - 1] ?? null;
+    if (carats === null && count === null && !cells.some((c) => typeof c === 'string' && /^[-–—]+$/.test(c.trim()))) {
       rows.push({ name, carats: '0', note: 'لا يوجد رصيد في الملف' });
       continue;
     }
-    rows.push({ name, carats: nums[nums.length - 1] ?? '0' });
+    rows.push({ name, carats: carats ?? '0', ...(count !== null ? { count } : {}) });
   }
   if (!rows.length) throw bad('لم يتم العثور على أصناف في الملف');
   res.json({ rows });
@@ -140,16 +150,35 @@ async function planImport(db, rows) {
     if (target === null) throw bad(`رصيد غير صالح للصنف "${name}"`);
     const p = r0.shape ? { ...parseStoneName(name, shapes), shape: r0.shape, size_label: r0.size_label ?? parseStoneName(name, shapes).size_label } : parseStoneName(name, shapes);
     const shape = shapes.find((s) => s.name === p.shape);
-    const lot = (await db.query(`select l.id, l.lot_no, b.stock_carats::text from stone_lots l join stone_lot_balances b on b.lot_id=l.id
+    const tCount = r0.count == null || r0.count === '' ? null : int(r0.count, `العدد للصنف "${name}"`, { min: 0 });
+    const lot = (await db.query(`select l.id, l.lot_no, b.stock_carats::text, b.stock_count from stone_lots l join stone_lot_balances b on b.lot_id=l.id
         where l.active and l.shape_id=$1 and coalesce(l.size_label,'')=coalesce($2,'') and l.stone_type=$3 and l.color is null and l.clarity is null`,
       [shape.id, p.size_label, p.stone_type])).rows[0];
     const current = lot ? lot.stock_carats : '0';
     const diff = Number((Number(target) - Number(current)).toFixed(4));
+    // العدد: يُسوّى فقط إذا كان في الملف عمود للعدد
+    const currentCount = lot ? Number(lot.stock_count) : 0;
+    const countDiff = tCount === null ? 0 : tCount - currentCount;
     plan.push({ name, shape: shape.name, shape_id: shape.id, size_label: p.size_label, size_unit: p.size_unit, size_value: p.size_value, stone_type: p.stone_type,
-      lot_id: lot?.id ?? null, lot_no: lot?.lot_no ?? null, current, target, diff, action: !lot ? 'create' : diff === 0 ? 'none' : 'adjust' });
+      lot_id: lot?.id ?? null, lot_no: lot?.lot_no ?? null, current, target, diff, current_count: currentCount, target_count: tCount, count_diff: countDiff,
+      action: !lot ? 'create' : diff === 0 && countDiff === 0 ? 'none' : 'adjust' });
   }
   return plan;
 }
+
+/** نموذج ملف الاستيراد: الصنف، القيراط، العدد */
+r.get('/import/template.xlsx', requirePerm('stones.manage'), async (_req, res) => {
+  // ورقة بسيطة بدون ترويسة (الصف الأول عناوين الأعمدة) حتى تُعاد رفعها كما هي
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('مخزون الألماس', { views: [{ rightToLeft: true }] });
+  ws.columns = [{ header: 'الصنف', width: 26 }, { header: 'القيراط', width: 14 }, { header: 'العدد', width: 12 }];
+  ws.getRow(1).font = { bold: true };
+  ws.addRow(['راوند 1.3 mm', 2.5, 250]);
+  ws.addRow(['اوفال 0.25', 1.75, 7]);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="diamonds-import-template.xlsx"');
+  res.end(Buffer.from(await wb.xlsx.writeBuffer()));
+});
 
 r.post('/import/preview', requirePerm('stones.manage'), async (req, res) => {
   const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
@@ -173,15 +202,18 @@ r.post('/import/commit', requirePerm('stones.manage'), async (req, res) => {
           values (next_doc_no('STN'),$1,$2,$3,$4,$5,$6,$7,$8) returning id`,
           [p.stone_type, p.shape, p.shape_id, p.size_label, p.size_unit, p.size_value, `مستورد: ${p.name}`, req.user.id])).rows[0].id;
         created++;
-        if (Number(p.target) > 0) await db.query("insert into stone_movements(lot_id, kind, carats, count, note, created_by) values ($1,'in',$2,0,$3,$4)", [lotId, p.target, note, req.user.id]);
-      } else if (p.diff !== 0) {
+        if (Number(p.target) > 0 || p.target_count > 0) await db.query("insert into stone_movements(lot_id, kind, carats, count, note, created_by) values ($1,'in',$2,$3,$4,$5)", [lotId, p.target, p.target_count || 0, note, req.user.id]);
+      } else if (p.diff !== 0 || p.count_diff !== 0) {
         await db.query('select pg_advisory_xact_lock(hashtext($1))', [`stone:${lotId}`]);
-        await db.query('insert into stone_movements(lot_id, kind, carats, count, note, created_by) values ($1,$2,$3,0,$4,$5)',
-          [lotId, p.diff > 0 ? 'adjust_in' : 'adjust_out', Math.abs(p.diff).toFixed(4), `${note} (من ${p.current} إلى ${p.target})`, req.user.id]);
+        const why = `${note} (من ${p.current} إلى ${p.target} قيراط${p.target_count !== null ? `، العدد من ${p.current_count} إلى ${p.target_count}` : ''})`;
+        // القيراط والعدد في نفس الاتجاه: حركة واحدة، وإلا حركتان (زيادة ونقص)
+        const inC = Math.max(p.diff, 0), outC = Math.max(-p.diff, 0), inN = Math.max(p.count_diff, 0), outN = Math.max(-p.count_diff, 0);
+        if (inC || inN) await db.query("insert into stone_movements(lot_id, kind, carats, count, note, created_by) values ($1,'adjust_in',$2,$3,$4,$5)", [lotId, inC.toFixed(4), inN, why, req.user.id]);
+        if (outC || outN) await db.query("insert into stone_movements(lot_id, kind, carats, count, note, created_by) values ($1,'adjust_out',$2,$3,$4,$5)", [lotId, outC.toFixed(4), outN, why, req.user.id]);
         adjusted++;
       }
     }
-    await audit(db, req, 'stone.import', 'stone_lot', null, { note, items: plan.length, created, adjusted, total_carats: plan.reduce((s, p) => s + Number(p.target), 0).toFixed(4) });
+    await audit(db, req, 'stone.import', 'stone_lot', null, { note, items: plan.length, created, adjusted, total_carats: plan.reduce((s, p) => s + Number(p.target), 0).toFixed(4), total_count: plan.reduce((s, p) => s + (p.target_count || 0), 0) });
     return { items: plan.length, created, adjusted };
   }));
 });

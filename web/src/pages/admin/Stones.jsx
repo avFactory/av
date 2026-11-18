@@ -234,16 +234,19 @@ function ImportModal({ imp, setImp, shapes, busy, run, onDone }) {
     const { plan } = await api.post('/stones/import/preview', { rows });
     setImp({ ...imp, rows, plan });
   });
-  const totals = imp.plan ? { target: imp.plan.reduce((s, p) => s + Number(p.target), 0), create: imp.plan.filter((p) => p.action === 'create').length, adjust: imp.plan.filter((p) => p.action === 'adjust').length } : null;
+  const hasCount = !!imp.plan?.some((p) => p.target_count !== null);
+  const totals = imp.plan ? { count: imp.plan.reduce((s, p) => s + (p.target_count || 0), 0), target: imp.plan.reduce((s, p) => s + Number(p.target), 0), create: imp.plan.filter((p) => p.action === 'create').length, adjust: imp.plan.filter((p) => p.action === 'adjust').length } : null;
   return (
     <Modal open onClose={() => setImp(null)} title="استيراد مخزون الألماس المخبري من Excel" wide>
       {imp.step === 1 && <>
-        <div className="alert alert-info small">ارفع ملف Excel أو CSV فيه عمود باسم الصنف (مثل "راوند 1.3 mm" أو "اوفال 0.25") وعمود بالرصيد بالقيراط. يتعرف النظام على القصّة والمقاس تلقائياً، وتراجع النتيجة قبل الاعتماد. إعادة الاستيراد لاحقاً (جرد) تسوّي الفروقات فقط بحركات موثقة.</div>
+        <div className="alert alert-info small">ارفع ملف Excel أو CSV فيه ثلاثة أعمدة بعناوينها: <b>الصنف</b> (مثل "راوند 1.3 mm" أو "اوفال 0.25")، <b>القيراط</b>، و<b>العدد</b> (عدد الألماسات). يتعرف النظام على القصّة والمقاس تلقائياً، وتراجع النتيجة قبل الاعتماد. إعادة الاستيراد لاحقاً (جرد) تسوّي الفروقات فقط بحركات موثقة.</div>
+        <a className="btn btn-outline-secondary" style={{ justifySelf: 'start' }} href="/api/stones/import/template.xlsx">⬇ تحميل نموذج الملف (الصنف · القيراط · العدد)</a>
         <label className="btn btn-primary btn-lg" style={{ justifySelf: 'start' }}>{busy ? 'جارٍ القراءة…' : 'اختيار الملف'}<input type="file" accept=".xlsx,.csv" hidden onChange={(e) => e.target.files[0] && parse(e.target.files[0])} /></label>
       </>}
       {imp.step === 2 && <>
         <div className="stone-stats">
           <div className="stone-stat main"><span>إجمالي الرصيد في الملف</span><b dir="ltr">{ct(totals.target)}</b><small>قيراط · {imp.plan.length} صنف</small></div>
+          {hasCount && <div className="stone-stat"><span>عدد الألماسات</span><b>{totals.count}</b><small>حبة</small></div>}
           <div className="stone-stat"><span>أصناف جديدة</span><b>{totals.create}</b><small>ستُنشأ</small></div>
           <div className="stone-stat"><span>أصناف موجودة بفرق</span><b>{totals.adjust}</b><small>تسوية جرد</small></div>
         </div>
@@ -252,6 +255,8 @@ function ImportModal({ imp, setImp, shapes, busy, run, onDone }) {
           ['الاسم في الملف', 'name'], ['التصنيف', (p) => <Select value={p.shape} onChange={(e) => changeShape(p.i, e.target.value)} options={shapes.map((s) => [s.name, s.name])} style={{ minWidth: 110 }} />],
           ['المقاس', (p) => <span dir="ltr">{p.size_label || '—'}</span>], ['الحالي', (p) => <span className="n">{ct(p.current)}</span>], ['الرصيد الجديد', (p) => <b className="n">{ct(p.target)}</b>],
           ['الفرق', (p) => <span className="n" style={{ color: p.diff > 0 ? 'var(--ok)' : p.diff < 0 ? 'var(--bad)' : undefined }}>{p.diff > 0 ? '+' : ''}{ct(p.diff)}</span>],
+          ...(hasCount ? [['العدد الحالي', (p) => <span className="n">{p.current_count}</span>], ['العدد الجديد', (p) => (p.target_count === null ? '—' : <b className="n">{p.target_count}</b>)],
+            ['فرق العدد', (p) => <span className="n" style={{ color: p.count_diff > 0 ? 'var(--ok)' : p.count_diff < 0 ? 'var(--bad)' : undefined }}>{p.count_diff > 0 ? '+' : ''}{p.count_diff}</span>]] : []),
           ['الإجراء', (p) => <Badge tone={p.action === 'create' ? 'info' : p.action === 'adjust' ? 'warn' : 'muted'}>{{ create: 'صنف جديد', adjust: 'تسوية', none: 'بدون تغيير' }[p.action]}</Badge>],
         ]} />
         <Field label="البيان (يسجل على الحركات)"><Input value={imp.note} onChange={(e) => setImp({ ...imp, note: e.target.value })} /></Field>
