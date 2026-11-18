@@ -38,6 +38,9 @@ export function robotsTxt() {
   ].join('\n');
 }
 
+/** متجر القطاعي للأفراد (موقع منفصل تابع للمؤسسة) */
+const RETAIL = 'https://avjewelrysa.com';
+
 export function sitemapXml() {
   const day = new Date().toISOString().slice(0, 10);
   const urls = [['/', '1.0', 'weekly'], ['/register', '0.6', 'monthly'], ['/login', '0.4', 'monthly']];
@@ -77,8 +80,12 @@ export async function landingHtml() {
         address: { '@type': 'PostalAddress', addressCountry: 'SA', ...(c.city ? { addressLocality: c.city } : {}), ...(c.address ? { streetAddress: c.address } : {}) },
         areaServed: { '@type': 'Country', name: 'Saudi Arabia' },
         knowsAbout: ['ذهب جملة', 'مصنع ذهب', 'مجوهرات', 'ألماس مخبري', 'سبائك ذهب', 'جنيهات ذهب'],
+        sameAs: [RETAIL],
+        subOrganization: { '@id': `${RETAIL}/#store` },
         makesOffer: ['مشغولات ذهب بالجملة', 'مجوهرات ألماس مخبري', 'سبائك وجنيهات ذهب', 'تصنيع حسب الطلب'].map((n) => ({ '@type': 'Offer', itemOffered: { '@type': 'Product', name: n } })),
       },
+      // متجر القطاعي للأفراد (نفس الجهة): مجوهرات اي في
+      { '@type': ['OnlineStore', 'JewelryStore'], '@id': `${RETAIL}/#store`, name: 'مجوهرات اي في – AV Jewelry', url: `${RETAIL}/`, description: 'متجر مجوهرات اي في للبيع بالقطاعي للأفراد', parentOrganization: { '@id': `${site}/#org` }, areaServed: { '@type': 'Country', name: 'Saudi Arabia' } },
       { '@type': 'WebSite', '@id': `${site}/#site`, url: `${site}/`, name, alternateName: 'AV Factory', inLanguage: 'ar', publisher: { '@id': `${site}/#org` } },
     ],
   };
@@ -121,12 +128,13 @@ section{padding:44px 0}h2{color:#f3d77a;font-size:26px;margin:0 0 18px;text-alig
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
 .card{background:#181818;border:1px solid #2a2a2a;border-radius:14px;padding:20px}.card h3{margin:6px 0;color:#f3d77a;font-size:19px}.card p{margin:0;color:#ccc}.ic{font-size:30px}
 .about p{max-width:860px;margin:0 auto 12px;color:#ccc;text-align:center}
+.retail{text-align:center}.retail .wrap{background:linear-gradient(135deg,#1d1a12,#141414);border:1px solid #3a3220;border-radius:18px;padding:30px 18px}.retail p{max-width:760px;margin:0 auto 12px;color:#ddd}
 footer{border-top:1px solid #2a2a2a;padding:24px 0;color:#999;text-align:center;font-size:14px}footer .c a{margin:0 8px}
 </style>
 </head>
 <body>
 <header class="hero"><div class="wrap">
-  <div class="top"><img src="/logo-gold.png" alt="شعار ${esc(name)} – AV Factory" width="56" height="56" /><nav><a href="/login">تسجيل الدخول</a><a href="/register">فتح حساب محل</a></nav></div>
+  <div class="top"><img src="/logo-gold.png" alt="شعار ${esc(name)} – AV Factory" width="56" height="56" /><nav><a href="${RETAIL}/" rel="noopener">متجر الأفراد</a><a href="/login">تسجيل الدخول</a><a href="/register">فتح حساب محل</a></nav></div>
   <h1>${esc(name)} – مصنع ذهب ومجوهرات بالجملة</h1>
   <p class="sub">مصنع اي في للمجوهرات (AV Factory): تصنيع المجوهرات وبيع <strong>الذهب بالجملة</strong> لمحلات الذهب، مشغولات عيار 18 و21، <strong>ألماس مخبري</strong>، سبائك وجنيهات، وتصاميم خاصة حسب طلبك.</p>
   <a class="btn p" href="/register">سجّل محلك وتصفح المنتجات</a><a class="btn s" href="/login">دخول العملاء</a>
@@ -143,6 +151,11 @@ footer{border-top:1px solid #2a2a2a;padding:24px 0;color:#999;text-align:center;
     ${card('🏭', 'مصنع ذهب سعودي', 'خطوط إنتاج متكاملة: صب، تشبيك، تركيب، تفنيش وتلميع، مع رقابة دقيقة على الأوزان والجودة.')}
   </div>
 </div></section>
+<section class="retail"><div class="wrap">
+  <h2>تبحث عن قطعة لك؟ تسوّق بالقطاعي من مجوهرات اي في</h2>
+  <p>هذا الموقع مخصص لمحلات الذهب (البيع بالجملة). للأفراد: تسوّق منتجاتنا بالقطاعي من متجرنا <strong>مجوهرات اي في – AV Jewelry</strong>، مع خدمة النقش المجانية والتواصل عبر واتساب.</p>
+  <p><a class="btn p" href="${RETAIL}/" rel="noopener">تسوّق الآن من avjewelrysa.com</a></p>
+</div></section>
 <section class="about"><div class="wrap">
   <h2>لماذا مصنع اي في للمجوهرات؟</h2>
   <p>${esc(name)} (AV Factory / AV Jewelry) مصنع ذهب ومجوهرات يخدم محلات الذهب والمجوهرات في المملكة العربية السعودية بنظام الجملة.</p>
@@ -152,6 +165,7 @@ footer{border-top:1px solid #2a2a2a;padding:24px 0;color:#999;text-align:center;
 </main>
 <footer><div class="wrap">
   ${contact.length ? `<div class="c">${contact.join(' · ')}</div>` : ''}
+  <div>للأفراد: <a href="${RETAIL}/" rel="noopener">مجوهرات اي في – avjewelrysa.com</a></div>
   <div>© ${new Date().getFullYear()} ${esc(name)} – AV Factory. مصنع ذهب، ذهب جملة، ألماس، مجوهرات.</div>
 </div></footer>
 </body>
