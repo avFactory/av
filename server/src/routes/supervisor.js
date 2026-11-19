@@ -7,7 +7,7 @@ import * as custody from '../lib/custody.js';
 import { embeddedStonesGrams, goldStonesGrams } from '../lib/production.js';
 import { groupInfo } from '../lib/orderGroups.js';
 import { withdrawCustody, SHORTAGE_KINDS } from '../lib/shortage.js';
-import { partialReturn } from '../lib/partialReturn.js';
+import { partialReturn, acceptReturnRequest, rejectReturnRequest, requestCols, requestFrom } from '../lib/partialReturn.js';
 import { createTransfer, cancelTransfer, transferCols } from '../lib/transfer.js';
 import * as ledger from '../lib/ledger.js';
 import { sendXlsx } from '../lib/xlsx.js';
@@ -212,6 +212,18 @@ r.post('/custody/:id/withdraw', requirePerm('custody.receive'), async (req, res)
 /** استلام جزء من عهدة العامل (الباقي يبقى لديه) */
 r.post('/custody/:id/partial-return', requirePerm('custody.receive'), async (req, res) => {
   res.json(await tx((db) => partialReturn(db, req, req.params.id, req.body)));
+});
+
+/** طلبات العمال تحويل جزء من العهدة للمشرف (بانتظار الوزن والتأكيد) */
+r.get('/return-requests', requirePerm('custody.receive', 'custody.view_all'), async (req, res) => {
+  const wid = req.query.worker ? int(req.query.worker) : null;
+  res.json(await many(`select ${requestCols} from ${requestFrom} where q.status='pending' and ($1::int is null or q.worker_id=$1) order by q.id`, [wid]));
+});
+r.post('/return-requests/:id/accept', requirePerm('custody.receive'), async (req, res) => {
+  res.json(await tx((db) => acceptReturnRequest(db, req, req.params.id, req.body)));
+});
+r.post('/return-requests/:id/reject', requirePerm('custody.receive'), async (req, res) => {
+  res.json(await tx((db) => rejectReturnRequest(db, req, req.params.id, req.body)));
 });
 
 /** تحويل الطلب من عامل لعامل المرحلة التالية (بانتظار قبول العامل الثاني) */

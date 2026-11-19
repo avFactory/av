@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth.jsx';
 import { fmtW } from '../../format.js';
 import { Card, Loader, Table, useFetch, Badge } from '../../ui.jsx';
+import ReturnRequests from '../../components/ReturnRequests.jsx';
 
 export default function SupHome() {
   const { can } = useAuth();
@@ -14,6 +15,7 @@ export default function SupHome() {
     <div className="page">
       {s.rejected > 0 && <Link to="/sup/workers" className="alert alert-danger mb" style={{ display: 'block', textDecoration: 'none' }}>⚠ {s.rejected} تسليم رفضه العمال - افتح ملف العامل لتصحيحه</Link>}
       <div className="page-h"><div><h1>لوحة المشرف</h1><p className="muted">الذهب لدى العمال الآن: <b dir="ltr">{fmtW(s.with_workers_weight)}</b> جم مع {s.active_workers} عامل{s.pending_ack ? ` · ${s.pending_ack} تسليم بانتظار قبول العمال` : ''}</p></div></div>
+      {can('custody.receive') && <ReturnRequests />}
       <div className="sup-cards">
         <Link to="/sup/issue" className="sup-card"><b>{s.awaiting_issue}</b><span>طلبات بانتظار التسليم</span></Link>
         <Link to="/sup/workers" className="sup-card"><b>{s.with_workers}</b><span>طلبات موجودة لدى العمال</span></Link>

@@ -12,6 +12,7 @@ import { orderThumb } from '../lib/orderThumb.js';
 import { is3D, addInternalImages } from '../lib/internalImages.js';
 import { advanceGroup, set3d, queue3d } from '../lib/orderGroup3d.js';
 import { checkAckWeight, workerCloseStage } from '../lib/workerClose.js';
+import { createReturnRequest, cancelReturnRequest } from '../lib/partialReturn.js';
 import { createTransfer, acceptTransfer, rejectTransfer, cancelTransfer, transferCols } from '../lib/transfer.js';
 
 const r = Router();
@@ -39,7 +40,8 @@ r.get('/tasks', async (req, res) => {
     select c.id, c.custody_no, c.order_id, (c.weight_issued - c.weight_used)::numeric(16,4)::text as weight_issued, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
            c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text, c.issue_batch_id,
            coalesce(case when gc.n > 1 then o.cart_ref end, o.order_no, 'عهدة عامة') as order_no,
-           coalesce(case when gc.n > 1 then 'الطلب كامل · ' || gc.n || ' أصناف' end, o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, coalesce(s.worker_closes, false) as worker_closes, c.gross_weight::text, m.name as material_name, c.kind, c.purpose,
+           coalesce(case when gc.n > 1 then 'الطلب كامل · ' || gc.n || ' أصناف' end, o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, coalesce(s.worker_closes, false) as worker_closes, c.gross_weight::text,
+           (select json_build_object('id', q.id, 'weight', q.weight::text, 'note', q.note) from custody_return_requests q where q.custody_id=c.id and q.status='pending') as return_request, m.name as material_name, c.kind, c.purpose,
            coalesce(
              (select f.path from order_files f where f.order_id=o.id and f.mime like 'image/%' order by (f.kind='design') desc, (f.kind='reference') desc, (f.kind='sketch') desc, f.id desc limit 1),
              (select pm.path from product_media pm where pm.product_id=o.product_id and pm.kind='image' order by pm.sort, pm.id limit 1)) as thumb
@@ -115,6 +117,14 @@ r.post('/custody/:id/reject', async (req, res) => {
     await audit(db, req, 'custody.reject', 'custody', c.id, { reason });
     return { ok: true };
   }));
+});
+
+/** تحويل جزء من العهدة للمشرف (يؤكده المشرف بالوزن) */
+r.post('/custody/:id/return-request', async (req, res) => {
+  res.json(await tx((db) => createReturnRequest(db, req, req.params.id, req.body)));
+});
+r.post('/return-requests/:id/cancel', async (req, res) => {
+  res.json(await tx((db) => cancelReturnRequest(db, req, req.params.id)));
 });
 
 /** تحويل الطلب لعامل المرحلة التالية */

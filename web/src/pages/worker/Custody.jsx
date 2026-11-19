@@ -22,6 +22,7 @@ export default function WCustody() {
   const [fin, setFin] = useState({ weight: '', weights: {}, note: '' });
   const [run, busy] = useAction();
   const [trOpen, setTrOpen] = useState(false);
+  const [ret, setRet] = useState(null);
   const { data: trs, reload: reloadTr } = useFetch('/w/transfers', { live: ['custodies', 'custody_transfers'] });
   if (!tasks) return <Loader />;
   if (!c) return <div className="wk-body"><div className="alert alert-info">العهدة غير موجودة أو تم استلامها. <Link to="/w" className="link">مهامي</Link></div></div>;
@@ -64,6 +65,31 @@ export default function WCustody() {
         );
       })()}
       {trOpen && <TransferModal custody={c} onClose={() => setTrOpen(false)} onDone={() => { reloadTr(); reload(); }} />}
+      {c.status === 'open' && c.worker_ack_at && (
+        <Card title="↩ تسليم جزء من العهدة للمشرف">
+          {c.return_request ? (
+            <div className="hrow between wrap gap">
+              <span>بانتظار تأكيد المشرف: <b dir="ltr">{fmtW(c.return_request.weight)} جم</b>{c.return_request.note ? ` — ${c.return_request.note}` : ''}</span>
+              <Btn kind="ghost" size="sm" loading={busy} onClick={() => run(async () => { await api.post(`/w/return-requests/${c.return_request.id}/cancel`); reload(); }, 'أُلغي الطلب')}>إلغاء</Btn>
+            </div>
+          ) : !ret ? (
+            <div className="d-grid gap-2">
+              <div className="small text-body-secondary">إذا عندك ذهب زائد عن حاجتك، سلّم جزءاً منه للمشرف وكمّل شغلك بالباقي. المشرف يزنه ويؤكد.</div>
+              <Btn kind="ghost" onClick={() => setRet({ weight: '', note: '' })}>تسليم جزء للمشرف</Btn>
+            </div>
+          ) : (
+            <div className="d-grid gap-2">
+              <Field label={`الوزن الذي تسلّمه (جم) — لديك ${fmtW(c.weight_issued)} جم`}><WeightInput big value={ret.weight} onChange={(v) => setRet({ ...ret, weight: v })} /></Field>
+              <Field label="ملاحظة"><Input value={ret.note} onChange={(e) => setRet({ ...ret, note: e.target.value })} placeholder="مثال: ذهب زائد" /></Field>
+              {Number(ret.weight) > 0 && <div className={Number(ret.weight) < Number(c.weight_issued) ? 'small text-body-secondary' : 'small text-danger'}>{Number(ret.weight) < Number(c.weight_issued) ? <>يبقى لديك <b dir="ltr">{fmtW(Number(c.weight_issued) - Number(ret.weight))} جم</b></> : 'الوزن أكبر من أو يساوي عهدتك — لتسليم الكل اضغط «إنهاء المرحلة»'}</div>}
+              <div className="grid g2">
+                <Btn kind="ok" loading={busy} disabled={!(Number(ret.weight) > 0 && Number(ret.weight) < Number(c.weight_issued))} onClick={() => run(async () => { await api.post(`/w/custody/${c.id}/return-request`, ret); setRet(null); reload(); }, 'أُرسل للمشرف — سلّمه الذهب ليزنه ويؤكد')}>إرسال للمشرف</Btn>
+                <Btn kind="ghost" onClick={() => setRet(null)}>إلغاء</Btn>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
       {od?.files?.length > 0 && (
         <Card title="التصاميم والصور">
           <div className="files">{od.files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt={f.original_name} /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>

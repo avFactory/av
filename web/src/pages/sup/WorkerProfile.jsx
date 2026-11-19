@@ -5,6 +5,7 @@ import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtDT, fmtPct, CUSTODY_STATUS, SETTLEMENT_STATUS, WORK_STATE, KINDS } from '../../format.js';
 import { Card, LinkBtn, Loader, Page, Stat, StatusBadge, Table, Tabs, useFetch, Badge, ReasonModal, useAction } from '../../ui.jsx';
 import PartialReturnModal from '../../components/PartialReturn.jsx';
+import ReturnRequests from '../../components/ReturnRequests.jsx';
 
 /** ملف العامل: كل بياناته وعهده وإدارتها من صفحة واحدة */
 export default function WorkerProfile() {
@@ -58,6 +59,7 @@ export default function WorkerProfile() {
         ['open', `الطلبات المسندة / لديه (${open.length + assigned.length})`], ['working', `يعمل عليها (${working.length})`], ['finished', `منتهية بانتظار الاستلام (${finished.length})`],
         ['review', `تحت المراجعة (${review.length})`], ['closed', `منتهية ومسلمة (${closed.length})`], ['stones', 'الأحجار لديه'], ['recent', 'آخر الحركات'],
       ]} />
+      {can('custody.receive') && <ReturnRequests worker={w.id} />}
       {part && <PartialReturnModal custody={part} onClose={() => setPart(null)} onDone={reload} />}
       {tab === 'open' && (
         <div className="grid">

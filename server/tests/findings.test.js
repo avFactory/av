@@ -456,3 +456,40 @@ test('استلام جزء من عهدة العامل للمشرف: يعود لم
   // حركة مسجلة في الدفتر
   assert.ok((await pool.query("select 1 from gold_ledger where kind='partial_return' and custody_id=$1", [gc])).rowCount);
 });
+
+test('العامل يسلّم جزءاً من عهدته للمشرف من صفحته: طلب ← المشرف يزن ويؤكد أو يرفض', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '50', note: 'رصيد' });
+  const id = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('rqw',$1,'عامل يسلم جزء','worker','RQ1') returning id", [hashPassword('Rq#2026xx')])).rows[0].id;
+  let ck = '';
+  const W = async (m, p, body) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  await W('POST', '/auth/login', { username: 'rqw', password: 'Rq#2026xx' });
+  await call('POST', '/inventory/gold/to-worker', { worker_id: id, material_id: mat, weight: '8', purpose: 'لحام', loss_rate_percent: '0' });
+  const c = (await W('GET', '/w/tasks')).data.custodies[0];
+  assert.equal((await W('POST', `/w/custody/${c.id}/return-request`, { weight: '2' })).status, 409, 'يقبل العهدة أولاً');
+  await W('POST', `/w/custody/${c.id}/ack`, {});
+  assert.equal((await W('POST', `/w/custody/${c.id}/return-request`, { weight: '8' })).status, 400, 'الكل ← إنهاء المرحلة');
+  const rq = await W('POST', `/w/custody/${c.id}/return-request`, { weight: '3', note: 'زائد' });
+  assert.equal(rq.status, 200, JSON.stringify(rq.data));
+  assert.equal((await W('POST', `/w/custody/${c.id}/return-request`, { weight: '1' })).status, 409, 'طلب واحد معلق');
+  assert.equal((await W('GET', '/w/tasks')).data.custodies[0].return_request.id, rq.data.id);
+  assert.equal(await bal('worker', id, mat), 8, 'لا يتحرك الذهب قبل تأكيد المشرف');
+  const list = (await call('GET', `/sup/return-requests?worker=${id}`)).data;
+  assert.deepEqual(list.map((x) => [x.id, Number(x.weight), Number(x.remaining)]), [[rq.data.id, 3, 8]]);
+  // المشرف يزن 2.95 ويؤكد
+  const v0 = await bal('vault', null, mat);
+  const ac = await call('POST', `/sup/return-requests/${rq.data.id}/accept`, { weight: '2.95' });
+  assert.equal(ac.status, 200, JSON.stringify(ac.data));
+  assert.equal(await bal('worker', id, mat), 5.05);
+  assert.equal(await bal('vault', null, mat), v0 + 2.95);
+  assert.equal(Number((await W('GET', '/w/tasks')).data.custodies[0].weight_issued), 5.05, 'العامل يرى المتبقي');
+  assert.equal((await call('POST', `/sup/return-requests/${rq.data.id}/accept`, {})).status, 409, 'لا تأكيد مرتين');
+  // رفض طلب ثانٍ، وإلغاء ثالث من العامل
+  const rq2 = (await W('POST', `/w/custody/${c.id}/return-request`, { weight: '1' })).data;
+  assert.equal((await call('POST', `/sup/return-requests/${rq2.id}/reject`, {})).status, 400, 'السبب إلزامي');
+  assert.equal((await call('POST', `/sup/return-requests/${rq2.id}/reject`, { reason: 'لم يصل الذهب' })).status, 200);
+  const rq3 = (await W('POST', `/w/custody/${c.id}/return-request`, { weight: '1' })).data;
+  assert.equal((await W('POST', `/w/return-requests/${rq3.id}/cancel`)).status, 200);
+  assert.equal(await bal('worker', id, mat), 5.05);
+  assert.equal((await call('GET', `/sup/return-requests?worker=${id}`)).data.length, 0);
+});
