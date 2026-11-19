@@ -419,3 +419,40 @@ test('مرحلة الجودة يديرها عاملها: تسليم تلقائي
   assert.ok((await pool.query("select 1 from notifications where title like $1", [`%جاهز للفوترة%`])).rowCount, 'إشعار المحاسب');
   await call('PUT', `/admin/stages/${qc}`, { ...s, worker_closes: false });
 });
+
+test('استلام جزء من عهدة العامل للمشرف: يعود لمكانه، تبقى العهدة بالباقي، والعجز على المتبقي فقط', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '100', note: 'رصيد' });
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('prw',$1,'عامل جزئي','worker','PR1') returning id", [hashPassword('Pr#2026xx')])).rows[0].id;
+  // عهدة طلب
+  const o = (await call('POST', '/orders', { title: 'خاتم جزئي', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat })).data;
+  for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0].h; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
+  const st = (await pool.query('select current_stage_id from orders where id=$1', [o.id])).rows[0].current_stage_id;
+  await call('POST', `/admin/stages/${st}/rate`, { rate_percent: '0', note: 'x' });
+  const cus = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: o.id, weight: '10' }] })).data.custodies[0];
+  assert.equal((await call('POST', `/sup/custody/${cus.id}/partial-return`, { weight: '10' })).status, 400, 'الكل ← استلام كامل');
+  assert.equal((await call('POST', `/sup/custody/${cus.id}/partial-return`, { weight: '0' })).status, 400);
+  const pr = await call('POST', `/sup/custody/${cus.id}/partial-return`, { weight: '3', note: 'ذهب زائد' });
+  assert.equal(pr.status, 200, JSON.stringify(pr.data));
+  assert.equal(await bal('worker', w, mat), 7);
+  assert.equal(await bal('order', o.id, mat), 3, 'رجع لرصيد الطلب');
+  const prof = (await call('GET', `/sup/workers/${w}`)).data.custodies.find((c) => c.id === cus.id);
+  assert.equal(Number(prof.weight_issued), 7, 'المعروض = المتبقي');
+  // الاستلام الكامل لاحقاً: العجز على المتبقي (7) فقط
+  const rc = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: cus.id, returned_weight: '6.9', advance: false }] });
+  assert.equal(rc.status, 200, JSON.stringify(rc.data));
+  const stl = rc.data.results[0].settlement;
+  assert.deepEqual([Number(stl.weight_issued), Number(stl.returned_weight), Number(stl.actual_loss)], [7, 6.9, 0.1]);
+  assert.equal(await bal('worker', w, mat), 0);
+  assert.equal(await bal('order', o.id, mat), 9.9);
+  // عهدة عامة: الجزء يعود للخزنة
+  const v0 = await bal('vault', null, mat);
+  const g = await call('POST', '/inventory/gold/to-worker', { worker_id: w, material_id: mat, weight: '5', purpose: 'لحام', loss_rate_percent: '0' });
+  assert.equal(g.status, 200, JSON.stringify(g.data));
+  const gc = (await pool.query("select id from custodies where worker_id=$1 and kind='general' and status='open'", [w])).rows[0].id;
+  assert.equal((await call('POST', `/sup/custody/${gc}/partial-return`, { weight: '2' })).status, 200);
+  assert.equal(await bal('vault', null, mat), v0 - 3);
+  assert.equal(await bal('worker', w, mat), 3);
+  // حركة مسجلة في الدفتر
+  assert.ok((await pool.query("select 1 from gold_ledger where kind='partial_return' and custody_id=$1", [gc])).rowCount);
+});

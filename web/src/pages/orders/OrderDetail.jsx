@@ -7,6 +7,7 @@ import { ShortageModal, WithdrawModal, SHORTAGE_KINDS } from '../../components/S
 import { TransferModal } from '../../components/TransferTools.jsx';
 import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal, showAlert } from '../../ui.jsx';
+import PartialReturnModal from '../../components/PartialReturn.jsx';
 
 /** رابط تتبع عام للطلب (عرض فقط بدون تسجيل دخول): نسخ أو إرسال واتساب */
 function TrackLinkBtn({ o }) {
@@ -44,6 +45,7 @@ export default function OrderDetail() {
   const [f, setF] = useState({});
   const [short, setShort] = useState(null);
   const [withdraw, setWithdraw] = useState(null);
+  const [part, setPart] = useState(null);
   const [transfer, setTransfer] = useState(null);
   const { data: pendTr, reload: reloadTr } = useFetch('/sup/transfers', { live: ['custody_transfers', 'custodies'] });
   const [run, busy] = useAction();
@@ -101,6 +103,7 @@ export default function OrderDetail() {
       )}
       {short && <ShortageModal item={short} custody={openCust.find((c) => c.status === 'open')} onClose={() => setShort(null)} onDone={() => reload()} />}
       {withdraw && <WithdrawModal custody={withdraw} onClose={() => setWithdraw(null)} onDone={() => reload()} />}
+      {part && <PartialReturnModal custody={part} onClose={() => setPart(null)} onDone={() => reload()} />}
       {transfer && <TransferModal custody={transfer} base="/sup" onClose={() => setTransfer(null)} onDone={() => { reloadTr(); reload(); }} />}
       {(() => { const grid = (
       <div className={`grid g3 ${siblings.length > 1 ? '' : 'mb'}`} style={{ gridTemplateColumns: '1fr 1fr auto' }}>
@@ -139,6 +142,7 @@ export default function OrderDetail() {
             {cur?.handles_gold && !openCust.length && can('custody.issue') && <LinkBtn kind="primary" to={`/sup/issue?order=${o.id}${o.assigned_worker_id ? `&worker=${o.assigned_worker_id}` : ''}`}>تسليم الذهب لعامل</LinkBtn>}
             {can('custody.receive') && openCust.filter((c) => c.status === 'open').map((c) => <LinkBtn key={c.id} kind="dark" to={`/sup/receive?worker=${c.worker_id}`}>استلام من {c.worker_name}</LinkBtn>)}
             {can('custody.receive') && openCust.filter((c) => c.status === 'open').map((c) => <Btn key={`w${c.id}`} kind="ghost" onClick={() => setWithdraw(c)}>سحب من {c.worker_name}</Btn>)}
+            {can('custody.receive') && openCust.filter((c) => c.status === 'open').map((c) => <Btn key={`p${c.id}`} kind="ghost" onClick={() => setPart({ ...c, order_id: o.id, order_no: o.order_no })}>استلام جزء من {c.worker_name}</Btn>)}
             {can('custody.issue') && can('custody.receive') && openCust.filter((c) => c.status === 'open' && !(pendTr || []).some((t) => t.custody_id === c.id)).map((c) => <Btn key={`t${c.id}`} kind="ghost" onClick={() => setTransfer(c)}>↪ تحويل من {c.worker_name} لعامل آخر</Btn>)}
             {inProd && o.stage_state !== 'shortage' && siblings.length < 2 && can('custody.receive', 'orders.advance') && <Btn kind="ghost" onClick={() => setShort(o)}>⚠ نقل للنواقص</Btn>}
             {(can('custody.issue') || can('orders.manage')) && inProd && <Btn kind="ghost" onClick={() => open('allocate', { source: 'vault' })}>تسجيل ذهب على الطلب</Btn>}

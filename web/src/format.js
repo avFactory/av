@@ -34,7 +34,7 @@ export const KINDS = {
   allocate: 'تخصيص من الخزنة', customer_gold_in: 'ذهب من العميل', stock_in: 'إضافة للخزنة', stock_out: 'صرف من الخزنة', issue: 'تسليم للعامل', general_issue: 'عهدة عامة للعامل', general_return: 'إرجاع عهدة عامة للخزنة',
   return: 'استلام من العامل', scrap_return: 'بقايا مستردة', normal_loss: 'عجز طبيعي', abnormal_pending: 'عجز غير طبيعي (معلق)', abnormal_loss: 'عجز غير طبيعي',
   abnormal_loss_approved: 'اعتماد عجز غير طبيعي', loss_recovered: 'مسترد بعد التحقيق', gain_pending: 'زيادة وزن', reversal: 'حركة عكسية',
-  delivery: 'تسليم للعميل', to_finished_stock: 'إدخال للمخزون الجاهز', from_finished_stock: 'صرف من المخزون الجاهز', final_excess: 'فائض الوزن النهائي',
+  delivery: 'تسليم للعميل', partial_return: 'استلام جزئي من العامل', shortage_return: 'سحب للنواقص من العامل', to_finished_stock: 'إدخال للمخزون الجاهز', from_finished_stock: 'صرف من المخزون الجاهز', final_excess: 'فائض الوزن النهائي',
   final_gain: 'زيادة الوزن النهائي', scrap_to_vault: 'بقايا إلى الخزنة', dealloc: 'إرجاع للخزنة', stock_adjust: 'تسوية جرد', convert_out: 'تحويل مادة (صادر)', convert_in: 'تحويل مادة (وارد)',
 };
 export const LOCS = {

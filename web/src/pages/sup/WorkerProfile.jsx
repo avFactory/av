@@ -4,6 +4,7 @@ import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtDT, fmtPct, CUSTODY_STATUS, SETTLEMENT_STATUS, WORK_STATE, KINDS } from '../../format.js';
 import { Card, LinkBtn, Loader, Page, Stat, StatusBadge, Table, Tabs, useFetch, Badge, ReasonModal, useAction } from '../../ui.jsx';
+import PartialReturnModal from '../../components/PartialReturn.jsx';
 
 /** ملف العامل: كل بياناته وعهده وإدارتها من صفحة واحدة */
 export default function WorkerProfile() {
@@ -13,6 +14,7 @@ export default function WorkerProfile() {
   const { data: perf } = useFetch(`/admin/employees/${id}/performance`);
   const [tab, setTab] = useState('open');
   const [rev, setRev] = useState(null);
+  const [part, setPart] = useState(null);
   const [run, busy] = useAction();
   if (!data) return <Loader />;
   const { worker: w, custodies, totals, balances, assigned, recent, stones } = data;
@@ -56,11 +58,13 @@ export default function WorkerProfile() {
         ['open', `الطلبات المسندة / لديه (${open.length + assigned.length})`], ['working', `يعمل عليها (${working.length})`], ['finished', `منتهية بانتظار الاستلام (${finished.length})`],
         ['review', `تحت المراجعة (${review.length})`], ['closed', `منتهية ومسلمة (${closed.length})`], ['stones', 'الأحجار لديه'], ['recent', 'آخر الحركات'],
       ]} />
+      {part && <PartialReturnModal custody={part} onClose={() => setPart(null)} onDone={reload} />}
       {tab === 'open' && (
         <div className="grid">
           <div className="card"><Table rows={open} empty="لا توجد عهدة مفتوحة" rowClass={(c) => (c.late ? 'row-warn' : '')} columns={[...cols,
             ['', (c) => <div className="hrow gap">
               {can('custody.receive') && <LinkBtn size="sm" kind="dark" to={`/sup/receive?worker=${w.id}`}>استلام</LinkBtn>}
+              {can('custody.receive') && <button className="btn btn-outline-dark btn-sm" onClick={() => setPart({ ...c, worker_name: w.full_name })}>استلام جزء</button>}
               {can('custody.reverse') && <button className="btn btn-outline-secondary btn-sm" onClick={() => setRev(c.id)}>إلغاء تسليم خاطئ</button>}
             </div>]]} /></div>
           {assigned.length > 0 && <Card title="مسندة إليه بدون ذهب بعد" pad={false}><Table rows={assigned} columns={[['الطلب', (o) => <Link className="link" to={`/orders/${o.id}`}>{o.order_no}</Link>], ['الوصف', 'title'], ['المرحلة', 'stage_name'],

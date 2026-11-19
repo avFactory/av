@@ -7,6 +7,7 @@ import * as custody from '../lib/custody.js';
 import { embeddedStonesGrams, goldStonesGrams } from '../lib/production.js';
 import { groupInfo } from '../lib/orderGroups.js';
 import { withdrawCustody, SHORTAGE_KINDS } from '../lib/shortage.js';
+import { partialReturn } from '../lib/partialReturn.js';
 import { createTransfer, cancelTransfer, transferCols } from '../lib/transfer.js';
 import * as ledger from '../lib/ledger.js';
 import { sendXlsx } from '../lib/xlsx.js';
@@ -76,7 +77,7 @@ r.get('/workers/:id', requirePerm('workers.view', 'custody.issue', 'custody.rece
                        from users u left join departments d on d.id=u.department_id where u.id=$1 and u.role_code='worker'`, [id]);
   if (!w) throw notFound('العامل غير موجود');
   const custodies = await many(`
-    select c.*, c.weight_issued::text, coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, o.due_date, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name,
+    select c.*, (c.weight_issued - c.weight_used)::numeric(16,4)::text as weight_issued, coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, o.due_date, coalesce(s.name, 'عهدة عامة') as stage_name, m.name as material_name,
       st.id as settlement_id, st.settlement_no, st.status as settlement_status, st.returned_weight::text, st.scrap_weight::text,
       st.actual_loss::text, st.normal_loss::text, st.abnormal_loss::text, st.received_at,
       (s.expected_hours is not null and c.status='open' and c.issued_at + (s.expected_hours || ' hours')::interval < now()) as late
@@ -206,6 +207,11 @@ r.post('/issue-split', requirePerm('custody.issue'), async (req, res) => {
 /** سحب الطلب من العامل (غياب أو ضرورة): وزن مؤكد وسبب إلزامي، والطلب يبقى في مرحلته */
 r.post('/custody/:id/withdraw', requirePerm('custody.receive'), async (req, res) => {
   res.json(await tx((db) => withdrawCustody(db, req, req.params.id, req.body)));
+});
+
+/** استلام جزء من عهدة العامل (الباقي يبقى لديه) */
+r.post('/custody/:id/partial-return', requirePerm('custody.receive'), async (req, res) => {
+  res.json(await tx((db) => partialReturn(db, req, req.params.id, req.body)));
 });
 
 /** تحويل الطلب من عامل لعامل المرحلة التالية (بانتظار قبول العامل الثاني) */

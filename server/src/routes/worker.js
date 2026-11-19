@@ -36,7 +36,7 @@ async function canSeeOrder(db, req, orderId) {
 
 r.get('/tasks', async (req, res) => {
   const custodies = await many(`
-    select c.id, c.custody_no, c.order_id, c.weight_issued::text, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
+    select c.id, c.custody_no, c.order_id, (c.weight_issued - c.weight_used)::numeric(16,4)::text as weight_issued, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
            c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text, c.issue_batch_id,
            coalesce(case when gc.n > 1 then o.cart_ref end, o.order_no, 'عهدة عامة') as order_no,
            coalesce(case when gc.n > 1 then 'الطلب كامل · ' || gc.n || ' أصناف' end, o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, coalesce(s.worker_closes, false) as worker_closes, c.gross_weight::text, m.name as material_name, c.kind, c.purpose,
