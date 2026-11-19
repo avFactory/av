@@ -11,6 +11,9 @@ import { buildStatement } from '../lib/statement.js';
 import { materialFor } from './orders.js';
 import { branchOf } from './finance.js';
 import { sendXlsx } from '../lib/xlsx.js';
+import multer from 'multer';
+import ExcelJS from 'exceljs';
+import { readTable, parseOpeningTable, planOpening } from '../lib/openingImport.js';
 import { dealerByMethod, dealerEntry, dealerBalanceSql } from '../lib/goldDealers.js';
 
 /** طرق السداد بالذهب */
@@ -97,6 +100,67 @@ staff.post('/customers/:id/entries', requirePerm('payments.manage'), upload.sing
       [id, isoDate(b.entry_date), kind, md, mc, gd, gc, karat, desc, doc?.path || null, ledgerMv?.id || null, req.user.id, branchId])).rows[0];
     await audit(db, req, `customer_entry.${kind}`, 'customer', id, { entry: e.entry_no, md, mc, gd, gc, karat });
     return e;
+  }));
+});
+
+// ------------------------------------------------------------------ رفع الأرصدة الافتتاحية من Excel
+const sheetUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, f, cb) => (/\.(xlsx|csv)$/i.test(f.originalname) ? cb(null, true) : cb(bad('ارفع ملف Excel (xlsx) أو CSV'))) });
+
+staff.get('/opening-import/template.xlsx', requirePerm('payments.manage'), async (_req, res) => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('الأرصدة الافتتاحية', { views: [{ rightToLeft: true }] });
+  ws.columns = [{ header: 'اسم العميل', width: 28 }, { header: 'الجوال', width: 15 }, { header: 'الفرع', width: 16 },
+    { header: 'الذهب عيار 24 (جم)', width: 20 }, { header: 'المبلغ (ر.س)', width: 16 }, { header: 'التاريخ', width: 13 }, { header: 'البيان', width: 26 }];
+  ws.getRow(1).font = { bold: true };
+  ws.addRow(['محل المثال للذهب', '0500000000', '', 125.5, 3200, '2026-11-01', 'رصيد من النظام السابق']);
+  ws.addRow(['محل آخر', '0555555555', '', -20, 0, '', 'له ذهب لدينا']);
+  ws.addRow([]);
+  ws.addRow(['ملاحظة: الموجب = على العميل (مدين)، والسالب = للعميل (دائن). الذهب صافي عيار 24. يُطابق العميل بالجوال ثم بالاسم. احذف هذه الأمثلة قبل الرفع.']);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="opening-balances-template.xlsx"');
+  res.end(Buffer.from(await wb.xlsx.writeBuffer()));
+});
+
+staff.post('/opening-import/parse', requirePerm('payments.manage'), sheetUpload.single('file'), async (req, res) => {
+  if (!req.file) throw bad('اختر الملف');
+  const rows = parseOpeningTable(await readTable(req.file));
+  res.json({ rows, plan: await planOpening(pool, rows) });
+});
+
+staff.post('/opening-import/preview', requirePerm('payments.manage'), async (req, res) => {
+  const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (!rows.length) throw bad('لا توجد بيانات');
+  res.json({ plan: await planOpening(pool, rows) });
+});
+
+/** اعتماد: إضافة الرصيد الافتتاحي (ذهب عيار 24 + مبلغ) لكل عميل/فرع. الموجود يُستبدل فقط عند الطلب (بإلغائه بقيد موثق). */
+staff.post('/opening-import/commit', requirePerm('payments.manage'), async (req, res) => {
+  const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (!rows.length) throw bad('لا توجد بيانات');
+  const replace = req.body.replace === true;
+  res.json(await tx(async (db) => {
+    await db.query("select pg_advisory_xact_lock(hashtext('opening_import'))");
+    const plan = await planOpening(db, rows);
+    const errs = plan.filter((p) => p.status === 'error');
+    if (errs.length && !req.body.skip_errors) throw bad(`يوجد ${errs.length} صف به أخطاء — صححها أو اختر تجاهلها`);
+    let added = 0, replaced = 0, skipped = 0;
+    for (const p of plan) {
+      if (p.status === 'error') continue;
+      if (p.status === 'exists') {
+        if (!replace) { skipped++; continue; }
+        await db.query('update customer_entries set reversed=true, reversed_by=$2, reversed_at=now(), reversal_reason=$3 where id=$1 and not reversed', [p.existing.id, req.user.id, 'استبدال برصيد افتتاحي من ملف Excel']);
+        replaced++;
+      }
+      const g = Math.round(p.gold * 10000) / 10000, m = Math.round(p.money * 100) / 100;
+      await db.query(`insert into customer_entries(entry_no, customer_id, entry_date, kind, money_debit, money_credit, gold_debit, gold_credit, karat, description, created_by, branch_id)
+        values (next_doc_no('CEN'),$1,coalesce($2::date, (now() at time zone 'Asia/Riyadh')::date),'opening',$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [p.customer_id, p.date, m > 0 ? m : 0, m < 0 ? -m : 0, g > 0 ? g : 0, g < 0 ? -g : 0, g ? 24 : null, p.note || 'رصيد افتتاحي (ملف Excel)', req.user.id, p.branch_id]);
+      added++;
+    }
+    await audit(db, req, 'customer_entry.opening_import', 'customer', null, { added, replaced, skipped, errors: errs.length,
+      gold: plan.filter((p) => p.status !== 'error').reduce((a, p) => a + p.gold, 0), money: plan.filter((p) => p.status !== 'error').reduce((a, p) => a + p.money, 0) });
+    return { added, replaced, skipped, errors: errs.length };
   }));
 });
 

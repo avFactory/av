@@ -307,3 +307,48 @@ test('تقارير المتجر: المؤشرات والمنتجات الأكث�
   assert.equal((await admin('GET', '/reports/store?from=2026-12-01&to=2026-01-01')).status, 400);
   assert.equal((await client()('GET', '/reports/store')).status, 401);
 });
+
+test('رفع الأرصدة الافتتاحية للعملاء من Excel: ذهب عيار 24 ومبالغ، مطابقة بالجوال والاسم والفرع، واستبدال الموجود', async () => {
+  const ExcelJS = (await import('exceljs')).default;
+  const c1 = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('محل الافتتاحي الأول','م','0501112233','approved') returning id")).rows[0].id;
+  const c2 = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('مؤسسة الوردة للذهب','م','0502223344','approved') returning id")).rows[0].id;
+  const c3 = (await pool.query("insert into customers(shop_name, owner_name, phone, status, branches_only) values ('شركة الفروع الافتتاحية','م','0503334455','approved',true) returning id")).rows[0].id;
+  const br = (await pool.query("insert into customer_branches(customer_id, name, phone) values ($1,'فرع العليا','0509998877') returning id", [c3])).rows[0].id;
+  // رصيد افتتاحي سابق لـ c2
+  await admin('POST', `/finance/customers/${c2}/entries`, null, form({ kind: 'opening', gold_debit: '1', karat: '24' }, false));
+  const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('S');
+  ws.addRow(['اسم العميل', 'الجوال', 'الفرع', 'الذهب عيار 24', 'المبلغ', 'التاريخ', 'البيان']);
+  ws.addRow(['اسم مختلف', '٠٥٠١١١٢٢٣٣', '', '١٢٥٫٥', '3,200', '2026-11-01', 'من النظام السابق']); // بالجوال
+  ws.addRow(['مؤسسه الورده للذهب', '', '', '(20)', '0', '', 'له ذهب']); // بالاسم (ة/ه) ورصيد سابق
+  ws.addRow(['شركة الفروع الافتتاحية', '', 'فرع العليا', 10, -500, '', '']);
+  ws.addRow(['شركة الفروع الافتتاحية', '', '', 5, 0, '', '']); // فروع فقط بدون فرع ← خطأ
+  ws.addRow(['محل غير موجود', '', '', 3, 0, '', '']);
+  ws.addRow(['ملاحظة: الموجب على العميل']);
+  const tpl = await admin('GET', '/finance/opening-import/template.xlsx');
+  assert.equal(tpl.status, 200, 'نموذج الملف');
+  const fd = new FormData(); fd.append('file', new Blob([await wb.xlsx.writeBuffer()]), 'opening.xlsx');
+  const p = await admin('POST', '/finance/opening-import/parse', null, fd);
+  assert.equal(p.status, 200, JSON.stringify(p.data));
+  const plan = p.data.plan;
+  assert.equal(plan.length, 5, 'سطر الملاحظة يُتجاهل');
+  assert.deepEqual(plan.map((x) => [x.customer_id, x.status]), [[c1, 'new'], [c2, 'exists'], [c3, 'new'], [c3, 'error'], [null, 'error']]);
+  assert.deepEqual([plan[0].gold, plan[0].money, plan[0].date], [125.5, 3200, '2026-11-01']);
+  assert.deepEqual([plan[1].gold, plan[2].branch_id, plan[2].money], [-20, br, -500]);
+  // الأخطاء تمنع الاعتماد إلا بالتجاهل
+  assert.equal((await admin('POST', '/finance/opening-import/commit', { rows: p.data.rows })).status, 400);
+  const r = await admin('POST', '/finance/opening-import/commit', { rows: p.data.rows, skip_errors: true });
+  assert.deepEqual(r.data, { added: 2, replaced: 0, skipped: 1, errors: 2 });
+  const bal = async (id, branch = '') => (await admin('GET', `/finance/customers/${id}/statement${branch ? `?branch=${branch}` : ''}`)).data.balance;
+  const b1 = await bal(c1);
+  assert.deepEqual([b1.pure, b1.money], [125.5, 3200]);
+  assert.equal((await bal(c2)).pure, 1, 'الموجود لم يُستبدل');
+  const b3 = await bal(c3, br);
+  assert.deepEqual([b3.pure, b3.money], [10, -500], 'على الفرع');
+  // الاستبدال
+  const r2 = await admin('POST', '/finance/opening-import/commit', { rows: p.data.rows, skip_errors: true, replace: true });
+  assert.deepEqual([r2.data.added, r2.data.replaced], [3, 3]);
+  assert.equal((await bal(c2)).pure, -20, 'استُبدل بقيمة الملف (له ذهب)');
+  assert.equal((await bal(c1)).pure, 125.5, 'لا تكرار');
+  // الرصيد الافتتاحي لا يحرّك ذهب الخزنة
+  assert.equal((await pool.query("select count(*)::int n from gold_ledger where reason like '%افتتاحي%'")).rows[0].n, 0);
+});

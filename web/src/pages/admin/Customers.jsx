@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtMoney } from '../../format.js';
+import OpeningImport from '../../components/OpeningImport.jsx';
 import { Btn, Field, Input, Loader, Modal, Page, Select, Table, Tabs, useAction, useFetch, Badge, TierBadge } from '../../ui.jsx';
 
 const ST = { pending: ['بانتظار الموافقة', 'warn'], approved: ['معتمد', 'ok'], rejected: ['مرفوض', 'bad'], suspended: ['موقوف', 'muted'] };
@@ -20,13 +21,16 @@ export default function Customers() {
   const [tierColor, setTierColor] = useState('other');
   const setCustTier = (c, tid) => run(async () => { await api.put(`/admin/customers/${c.id}`, { tier_id: tid }); reload(); reloadTiers(); }, 'تم تغيير التصنيف');
   const [run, busy] = useAction();
+  const [opening, setOpening] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   return (
     <Page title="العملاء - محلات الذهب" actions={<>
       <a className="btn btn-outline-secondary" href="/api/admin/customers.xlsx">تصدير Excel</a>
       {can('customers.manage') && <Btn kind="ghost" onClick={() => setImp({ step: 1 })}>استيراد من Excel</Btn>}
+      {can('payments.manage') && <Btn kind="ghost" onClick={() => setOpening(true)}>رفع الأرصدة الافتتاحية</Btn>}
       {can('customers.manage') && <Btn onClick={() => setF({})}>إضافة عميل</Btn>}
     </>}>
+      {opening && <OpeningImport onClose={() => setOpening(false)} onDone={reload} />}
       <Tabs value={tab} onChange={setTab} tabs={[['', 'الكل'], ['pending', 'بانتظار الموافقة'], ['approved', 'المعتمدون'], ['suspended', 'الموقوفون']]} />
       {tiers && (
         <div className="tier-cards mb">
