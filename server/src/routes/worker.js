@@ -276,13 +276,30 @@ r.get('/losses', async (req, res) => {
   res.json({ month: month.slice(0, 7), rows, totals: monthTotals(rows), advance, months: months.map((x) => x.m) });
 });
 
+/** حركات الذهب للعامل: كل ما دخل عهدته أو خرج منها (تسليم، استلام، استلام جزئي، تحويل، عجز، تعديل، تصحيح) مع الرصيد */
+r.get('/movements', async (req, res) => {
+  const rows = await many(`
+    select g.id, g.movement_no, g.kind, g.weight::text, g.created_at, g.reason, g.reverses_id, g.from_type, g.to_type,
+           case when g.to_type='worker' and g.to_ref=$1 then 1 else -1 end as dir,
+           coalesce(o.order_no, case when c.kind='general' then 'عهدة عامة' end) as order_no, m.name as material_name, m.karat,
+           exists (select 1 from gold_ledger r where r.reverses_id=g.id) as reversed, rv.kind as reverses_kind
+    from gold_ledger g join materials m on m.id=g.material_id left join orders o on o.id=g.order_id left join custodies c on c.id=g.custody_id
+    left join gold_ledger rv on rv.id=g.reverses_id
+    where (g.to_type='worker' and g.to_ref=$1) or (g.from_type='worker' and g.from_ref=$1)
+    order by g.id desc limit 300`, [req.user.id]);
+  res.json(rows);
+});
+
 r.get('/history', async (req, res) => {
   res.json(await many(`
-    select c.id, c.custody_no, c.status, c.weight_issued::text, c.issued_at, c.closed_at, coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name,
+    select c.id, c.custody_no, c.status, c.weight_issued::text, c.weight_used::text, c.issued_at, c.closed_at, c.kind,
+           (select coalesce(sum(g.weight),0)::text from gold_ledger g where g.custody_id=c.id and g.kind='partial_return'
+              and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)) as handed_partial,
+           (select count(*)::int from settlements x where x.custody_id=c.id and x.status='reversed') as corrections, coalesce(o.order_no, 'عهدة عامة') as order_no, coalesce(o.title, c.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name,
            st.returned_weight::text, st.scrap_weight::text, st.actual_loss::text, st.normal_loss::text, st.abnormal_loss::text, st.status as settlement_status
     from custodies c left join orders o on o.id=c.order_id left join stages s on s.id=c.stage_id
     left join settlements st on st.custody_id=c.id and st.status <> 'reversed'
-    where c.worker_id=$1 order by c.id desc limit 200`, [req.user.id]));
+    where c.worker_id=$1 and c.status <> 'reversed' order by c.id desc limit 300`, [req.user.id]));
 });
 
 export default r;
