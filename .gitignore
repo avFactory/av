@@ -4,3 +4,4 @@ uploads/
 .env
 *.log
 e2e/shots/
+.caddyfile.sha

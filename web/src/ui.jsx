@@ -17,19 +17,32 @@ export function LiveProvider({ children }) {
     if (!loggedIn) return undefined;
     let es;
     let stop = false;
+    let dropped = false;
+    // تحديث كل الشاشات المفتوحة (عند عودة الاتصال أو الجوال من السكون): ما فات أثناء الانقطاع لا يضيع
+    const refreshAll = () => subs.current.forEach((fn) => fn(['*']));
     const connect = () => {
       if (stop) return;
       es = new EventSource('/api/events');
+      es.onopen = () => { if (dropped) { dropped = false; refreshAll(); } };
       es.onmessage = (e) => {
         try {
           const { tables } = JSON.parse(e.data);
           subs.current.forEach((fn) => fn(tables));
         } catch { /* ignore */ }
       };
-      es.onerror = () => { es.close(); setTimeout(connect, 4000); };
+      es.onerror = () => { dropped = true; es.close(); setTimeout(connect, 4000); };
     };
     connect();
-    return () => { stop = true; es?.close(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshAll(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', refreshAll);
+    // شبكة أمان: تحديث كل دقيقة والصفحة ظاهرة (لو تأخر حدث فوري لأي سبب)
+    const safety = setInterval(() => { if (document.visibilityState === 'visible') refreshAll(); }, 60000);
+    return () => {
+      stop = true; es?.close(); clearInterval(safety);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', refreshAll);
+    };
   }, [loggedIn]);
   return <LiveCtx.Provider value={subs}>{children}</LiveCtx.Provider>;
 }
@@ -51,7 +64,7 @@ export function useFetch(url, { live = [], deps = [] } = {}) {
   useEffect(() => { setLoading(true); load(); }, [load]);
   useEffect(() => {
     if (!subs || !live.length) return undefined;
-    const fn = (tables) => { if (tables.some((t) => live.includes(t))) load(); };
+    const fn = (tables) => { if (tables.includes('*') || tables.some((t) => live.includes(t))) load(); };
     subs.current.add(fn);
     return () => subs.current.delete(fn);
     // eslint-disable-next-line react-hooks/exhaustive-deps

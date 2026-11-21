@@ -5,7 +5,9 @@
 }
 
 {$DOMAIN} {
-	encode zstd gzip
+	# الضغط لكل شيء ما عدا التحديثات الفورية (SSE): الضغط يحجز الرسائل الصغيرة حتى تتجمع فلا تصل الشاشات في وقتها
+	@compress not path /api/events
+	encode @compress zstd gzip
 
 	# ترويسات الحماية (التطبيق يضيف أيضاً سياسة المحتوى CSP)
 	header {
