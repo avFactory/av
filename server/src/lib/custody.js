@@ -14,7 +14,7 @@ async function sub(db, a, b) {
 }
 
 export async function getWorker(db, id) {
-  const r = await db.query("select id, full_name, employee_no, role_code, active from users where id=$1", [id]);
+  const r = await db.query("select id, full_name, employee_no, role_code, active, kind from users where id=$1", [id]);
   const w = r.rows[0];
   if (!w || w.role_code !== 'worker') throw bad('العامل غير موجود');
   if (!w.active) throw bad('حساب العامل غير نشط');

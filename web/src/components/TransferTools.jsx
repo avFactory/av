@@ -13,7 +13,8 @@ export function TransferModal({ custody, base = '/w', onClose, onDone }) {
   const [q, setQ] = useState('');
   const [run, busy] = useAction();
   const list = (Array.isArray(workers) ? workers : []).filter((w) => w.id !== custody.worker_id && (!q.trim() || `${w.full_name} ${w.employee_no || ''} ${w.specialty || ''}`.includes(q.trim())));
-  const submit = () => run(async () => { await api.post(`${base}/custody/${custody.id}/transfer`, f); onDone?.(); onClose(); }, 'أُرسل التحويل - بانتظار قبول العامل');
+  const toMachine = (Array.isArray(workers) ? workers : []).find((w) => String(w.id) === String(f.to_worker_id))?.kind === 'machine';
+  const submit = () => run(async () => { await api.post(`${base}/custody/${custody.id}/transfer`, f); onDone?.(); onClose(); }, toMachine ? 'تم التحويل — سُجّل الطلب على المكينة مباشرة' : 'أُرسل التحويل - بانتظار قبول العامل');
   return (
     <Modal open onClose={onClose} title="تحويل لعامل المرحلة التالية">
       <div className="d-grid gap-2">
@@ -31,7 +32,8 @@ export function TransferModal({ custody, base = '/w', onClose, onDone }) {
           </div>
         </Field>
         <Field label="ملاحظة"><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
-        <div className="hrow end"><Btn loading={busy} disabled={!f.to_worker_id || !(Number(f.weight) > 0)} onClick={submit}>إرسال التحويل</Btn></div>
+        {toMachine && <div className="alert alert-info small mb-0">⚙ المكينة لا تحتاج قبول: يُسجل الطلب عليها فوراً بوزنك هذا، والفرق عن عهدة العامل يُحسب عجزاً عليه. استلمه من المكينة عند الانتهاء.</div>}
+        <div className="hrow end"><Btn loading={busy} disabled={!f.to_worker_id || !(Number(f.weight) > 0)} onClick={submit}>{toMachine ? 'تحويل للمكينة' : 'إرسال التحويل'}</Btn></div>
       </div>
     </Modal>
   );

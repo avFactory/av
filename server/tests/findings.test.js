@@ -543,3 +543,45 @@ test('تعديل العهدة المفتوحة للمدير فقط: قبل وب�
   assert.equal(await bal('vault', null, mat), v1, 'الإلغاء يشمل التعديل');
   assert.equal(await bal('worker', w, mat), 0);
 });
+
+test('المكائن: التسليم والتحويل إليها يُسجل فوراً بدون قبول، والمشرف يستلم منها', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '100', note: 'رصيد' });
+  const m = (await pool.query("insert into users(username, password_hash, full_name, role_code, kind, employee_no) values ('mcpol',$1,'ماكينة البوليش','worker','machine','M1') returning id", [hashPassword('Mc#2026xx')])).rows[0].id;
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('mcw',$1,'عامل قبل المكينة','worker','MW1') returning id", [hashPassword('Mw#2026xx')])).rows[0].id;
+  let wk = '';
+  const W = async (mt, p, body) => { const r = await fetch(base + '/api' + p, { method: mt, headers: { cookie: wk, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) wk = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  await W('POST', '/auth/login', { username: 'mcw', password: 'Mw#2026xx' });
+  const mkOrder = async (t) => {
+    const o = (await call('POST', '/orders', { title: t, product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat })).data;
+    for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0].h; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
+    await call('POST', `/admin/stages/${(await pool.query('select current_stage_id s from orders where id=$1', [o.id])).rows[0].s}/rate`, { rate_percent: '0', note: 'x' });
+    return o;
+  };
+  // تسليم مباشر لمكينة: مسجل فوراً
+  const o1 = await mkOrder('خاتم مكينة');
+  const c1 = (await call('POST', '/sup/issue', { worker_id: m, items: [{ order_id: o1.id, weight: '10' }] })).data.custodies[0];
+  const r1 = (await pool.query('select worker_ack_at, work_state from custodies where id=$1', [c1.id])).rows[0];
+  assert.ok(r1.worker_ack_at, 'بدون قبول'); assert.equal(r1.work_state, 'in_progress');
+  // عهدة عامة لمكينة
+  await call('POST', '/inventory/gold/to-worker', { worker_id: m, material_id: mat, weight: '3', purpose: 'تشغيل', loss_rate_percent: '0' });
+  assert.ok((await pool.query("select worker_ack_at from custodies where worker_id=$1 and kind='general'", [m])).rows[0].worker_ack_at);
+  // تحويل من عامل لمكينة: العامل لا يحوّل، والمشرف يحوّل ويُسجل فوراً
+  const o2 = await mkOrder('خاتم تحويل لمكينة');
+  const c2 = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: o2.id, weight: '8' }] })).data.custodies[0];
+  await W('POST', `/w/custody/${c2.id}/ack`, {});
+  assert.ok(!(await W('GET', '/w/workers')).data.some((x) => x.id === m), 'المكائن لا تظهر للعامل');
+  assert.equal((await W('POST', `/w/custody/${c2.id}/transfer`, { to_worker_id: m, weight: '8' })).status, 400);
+  const tr = await call('POST', `/sup/custody/${c2.id}/transfer`, { to_worker_id: m, weight: '7.9' });
+  assert.equal(tr.status, 200, JSON.stringify(tr.data));
+  assert.ok(tr.data.auto?.ok, 'اكتمل فوراً');
+  const nc = (await pool.query("select id, worker_id, weight_issued::float w, worker_ack_at from custodies where worker_id=$1 and order_id=$2 and status='open'", [m, o2.id])).rows[0];
+  assert.deepEqual([nc.worker_id, nc.w, !!nc.worker_ack_at], [m, 7.9, true]);
+  assert.equal((await pool.query("select status from custody_transfers where id=$1", [tr.data.id])).rows[0].status, 'accepted');
+  assert.equal(await bal('worker', w, mat), 0);
+  assert.equal(Number((await pool.query('select actual_loss from settlements where custody_id=$1', [c2.id])).rows[0].actual_loss), 0.1, 'الفرق عجز على العامل');
+  // الاستلام من المكينة
+  const rc = await call('POST', '/sup/receive', { worker_id: m, items: [{ custody_id: nc.id, returned_weight: '7.9', advance: false }] });
+  assert.equal(rc.status, 200, JSON.stringify(rc.data));
+  assert.equal(await bal('worker', m, mat), 13, '10 + 3 باقية على المكينة');
+});
