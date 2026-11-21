@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { ScanInput, useToast } from '../../ui.jsx';
+import { t } from '../../i18n.js';
 
 /** العامل يمسح QR لرؤية مهمته (الخادم يرفض الطلبات غير المسندة إليه) */
 export default function WScan() {
@@ -18,5 +19,5 @@ export default function WScan() {
   };
   const [sp] = useSearchParams();
   useEffect(() => { if (sp.get('code')) scan(sp.get('code')); }, [sp]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <div className="wk-body"><h2>مسح QR الطلب</h2><ScanInput onScan={scan} /></div>;
+  return <div className="wk-body"><h2>{t('مسح QR الطلب')}</h2><ScanInput onScan={scan} /></div>;
 }

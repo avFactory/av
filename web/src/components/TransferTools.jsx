@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, fileUrl } from '../api.js';
 import { fmtW } from '../format.js';
 import { Btn, Field, Input, Modal, WeightInput, useAction, useFetch } from '../ui.jsx';
+import { t } from '../i18n.js';
 
 /**
  * نافذة تحويل الطلب لعامل المرحلة التالية: اختيار العامل ووزن القطع على الميزان.
@@ -17,25 +18,25 @@ export function TransferModal({ custody, base = '/w', onClose, onDone }) {
   const toMachine = (Array.isArray(workers) ? workers : []).find((w) => String(w.id) === String(f.to_worker_id))?.kind === 'machine';
   const submit = () => run(async () => { await api.post(`${base}/custody/${custody.id}/transfer`, f); onDone?.(); onClose(); }, toMachine ? 'تم التحويل — سُجّل الطلب على المكينة مباشرة' : 'أُرسل التحويل - بانتظار قبول العامل');
   return (
-    <Modal open onClose={onClose} title={general ? 'تحويل العهدة العامة لعامل آخر' : 'تحويل لعامل آخر'}>
+    <Modal open onClose={onClose} title={t(general ? 'تحويل العهدة العامة لعامل آخر' : 'تحويل لعامل آخر')}>
       <div className="d-grid gap-2">
-        {!general && <div className="chips">{[['next_stage', 'للمرحلة التالية'], ['same_stage', 'نفس المرحلة (إعادة إسناد)']].map(([k, l]) => <button key={k} type="button" className={`chip ${f.mode === k ? 'on' : ''}`} onClick={() => setF({ ...f, mode: k })}>{l}</button>)}</div>}
-        <div className="small text-body-secondary">العهدة <b dir="ltr">{custody.custody_no || custody.order_no}</b> · المسلَّم {fmtW(custody.weight_issued)} جم. العامل الثاني يزن ويؤكد الوزن ثم يقبل، والفرق يُحسب عجزاً على صاحب العهدة.{!general && (f.mode === 'same_stage' ? ' يبقى الطلب في مرحلته الحالية.' : ' ينتقل الطلب للمرحلة التالية.')}</div>
-        <Field label="الوزن على الميزان (جم) *"><WeightInput big value={f.weight} onChange={(v) => setF({ ...f, weight: v })} autoFocus /></Field>
-        <Field label="العامل الذي يستلم *">
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث بالاسم أو الرقم أو المهنة…" />
+        {!general && <div className="chips">{[['next_stage', t('للمرحلة التالية')], ['same_stage', t('نفس المرحلة (إعادة إسناد)')]].map(([k, l]) => <button key={k} type="button" className={`chip ${f.mode === k ? 'on' : ''}`} onClick={() => setF({ ...f, mode: k })}>{l}</button>)}</div>}
+        <div className="small text-body-secondary">{t('العهدة {no} · المسلَّم {w} جم. العامل الثاني يزن ويؤكد الوزن ثم يقبل، والفرق يُحسب عجزاً على صاحب العهدة.', { no: custody.custody_no || custody.order_no, w: fmtW(custody.weight_issued) })}{!general && t(f.mode === 'same_stage' ? ' يبقى الطلب في مرحلته الحالية.' : ' ينتقل الطلب للمرحلة التالية.')}</div>
+        <Field label={t('الوزن على الميزان (جم) *')}><WeightInput big value={f.weight} onChange={(v) => setF({ ...f, weight: v })} autoFocus /></Field>
+        <Field label={t('العامل الذي يستلم *')}>
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ابحث بالاسم أو الرقم أو المهنة…')} />
           <div className="tr-workers mt-1">
             {list.slice(0, 40).map((w) => (
               <button key={w.id} type="button" className={`chip ${String(f.to_worker_id) === String(w.id) ? 'on' : ''}`} onClick={() => setF({ ...f, to_worker_id: w.id })}>
                 {w.kind === 'machine' ? '⚙ ' : ''}{w.full_name} <small className="opacity-75">{w.employee_no}{w.specialty ? ` · ${w.specialty}` : ''}</small>
               </button>
             ))}
-            {workers && !list.length && <span className="small text-body-secondary">لا يوجد عمال مطابقون</span>}
+            {workers && !list.length && <span className="small text-body-secondary">{t('لا يوجد عمال مطابقون')}</span>}
           </div>
         </Field>
-        <Field label="ملاحظة"><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
+        <Field label={t('ملاحظة')}><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
         {toMachine && <div className="alert alert-info small mb-0">⚙ المكينة لا تحتاج قبول: يُسجل الطلب عليها فوراً بوزنك هذا، والفرق عن عهدة العامل يُحسب عجزاً عليه. استلمه من المكينة عند الانتهاء.</div>}
-        <div className="hrow end"><Btn loading={busy} disabled={!f.to_worker_id || !(Number(f.weight) > 0)} onClick={submit}>{toMachine ? 'تحويل للمكينة' : 'إرسال التحويل'}</Btn></div>
+        <div className="hrow end"><Btn loading={busy} disabled={!f.to_worker_id || !(Number(f.weight) > 0)} onClick={submit}>{toMachine ? 'تحويل للمكينة' : t('إرسال التحويل')}</Btn></div>
       </div>
     </Modal>
   );
@@ -46,28 +47,29 @@ export function IncomingTransfers({ items, onChange }) {
   const [w, setW] = useState({});
   const [run, busy] = useAction();
   if (!items?.length) return null;
-  const accept = (t) => run(async () => { await api.post(`/w/transfers/${t.id}/accept`, { weight: w[t.id] }); onChange?.(); }, 'تم قبول التحويل - العهدة الآن لديك');
-  const reject = (t) => {
-    const reason = window.prompt('سبب الرفض (مثلاً: الوزن غير مطابق)');
+  const tr = t;
+  const accept = (x) => run(async () => { await api.post(`/w/transfers/${x.id}/accept`, { weight: w[x.id] }); onChange?.(); }, 'تم قبول التحويل - العهدة الآن لديك');
+  const reject = (x) => {
+    const reason = window.prompt(tr('سبب الرفض (مثلاً: الوزن غير مطابق)'));
     if (!reason) return;
-    run(async () => { await api.post(`/w/transfers/${t.id}/reject`, { reason }); onChange?.(); }, 'تم رفض التحويل');
+    run(async () => { await api.post(`/w/transfers/${x.id}/reject`, { reason }); onChange?.(); }, 'تم رفض التحويل');
   };
   return (
     <div className="d-grid gap-2">
-      {items.map((t) => {
-        const diff = w[t.id] ? Number(w[t.id]) - Number(t.weight) : null;
+      {items.map((x) => {
+        const diff = w[x.id] ? Number(w[x.id]) - Number(x.weight) : null;
         return (
-          <div key={t.id} className="card card-body tr-in">
+          <div key={x.id} className="card card-body tr-in">
             <div className="hrow gap">
-              {t.thumb ? <img src={fileUrl(t.thumb, 400)} alt="" /> : null}
-              <div className="grow"><b>↩ تحويل من {t.from_name}</b><div className="small"><span dir="ltr">{t.order_no}</span> · {t.title}{t.mode === 'same_stage' && t.order_id ? ' · نفس المرحلة' : ''}</div>
-                <div className="small text-body-secondary">الوزن المرسل: <b>{fmtW(t.weight)}</b> جم{t.note ? ` · ${t.note}` : ''}</div></div>
+              {x.thumb ? <img src={fileUrl(x.thumb, 400)} alt="" /> : null}
+              <div className="grow"><b>↩ {tr('تحويل من {name}', { name: x.from_name })}</b><div className="small"><span dir="ltr">{tr(x.order_no)}</span> · {tr(x.title)}{x.mode === 'same_stage' && x.order_id ? ` · ${tr('نفس المرحلة')}` : ''}</div>
+                <div className="small text-body-secondary">{tr('الوزن المرسل')}: <b>{fmtW(x.weight)}</b> {tr('جم')}{x.note ? ` · ${x.note}` : ''}</div></div>
             </div>
-            <Field label="زِن القطع وأدخل الوزن على ميزانك (جم)">
-              <WeightInput big value={w[t.id] || ''} onChange={(v) => setW({ ...w, [t.id]: v })} />
+            <Field label={tr('زِن القطع وأدخل الوزن على ميزانك (جم)')}>
+              <WeightInput big value={w[x.id] || ''} onChange={(v) => setW({ ...w, [x.id]: v })} />
             </Field>
-            {diff !== null && Math.abs(diff) > 0.0001 && <div className={`small ${diff < 0 ? 'text-danger' : 'text-warning'}`}>{diff < 0 ? `أقل من المرسل بـ ${fmtW(-diff)} جم (يُحسب عجزاً على ${t.from_name})` : `أكبر من المرسل بـ ${fmtW(diff)} جم (تُخصم الزيادة من العهدة العامة لـ${t.from_name})`}</div>}
-            <div className="hrow gap"><Btn kind="ok" loading={busy} disabled={!(Number(w[t.id]) > 0)} onClick={() => accept(t)}>✓ تأكيد الوزن وقبول العهدة</Btn><Btn kind="ghost" onClick={() => reject(t)}>رفض</Btn></div>
+            {diff !== null && Math.abs(diff) > 0.0001 && <div className={`small ${diff < 0 ? 'text-danger' : 'text-warning'}`}>{diff < 0 ? tr('أقل من المرسل بـ {d} جم (يُحسب عجزاً على {name})', { d: fmtW(-diff), name: x.from_name }) : tr('أكبر من المرسل بـ {d} جم (تُخصم الزيادة من العهدة العامة لـ{name})', { d: fmtW(diff), name: x.from_name })}</div>}
+            <div className="hrow gap"><Btn kind="ok" loading={busy} disabled={!(Number(w[x.id]) > 0)} onClick={() => accept(x)}>{tr('✓ تأكيد الوزن وقبول العهدة')}</Btn><Btn kind="ghost" onClick={() => reject(x)}>{tr('رفض')}</Btn></div>
           </div>
         );
       })}

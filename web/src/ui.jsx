@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import jsQR from 'jsqr';
 import { api } from './api.js';
 import { useAuth } from './auth.jsx';
+import { t } from './i18n.js';
 
 // ------------------------------------------------------------- بيانات من الخادم + تحديث فوري
 const LiveCtx = createContext(null);
@@ -91,8 +92,8 @@ function DialogHost() {
   }, [d, close]);
   if (!d) return null;
   const danger = d.danger ?? (d.kind === 'confirm' && /حذف|إلغاء|إيقاف|رفض/.test(d.message));
-  const title = d.title || (d.kind === 'alert' ? 'تنبيه' : danger ? 'تأكيد الحذف' : 'تأكيد');
-  const okLabel = d.ok || (d.kind === 'alert' ? 'حسناً' : danger && /حذف/.test(d.message) ? 'نعم، احذف' : 'تأكيد');
+  const title = d.title || t(d.kind === 'alert' ? 'تنبيه' : danger ? 'تأكيد الحذف' : 'تأكيد');
+  const okLabel = d.ok || t(d.kind === 'alert' ? 'حسناً' : danger && /حذف/.test(d.message) ? 'نعم، احذف' : 'تأكيد');
   return (
     <div className="cdlg" role="alertdialog" aria-modal="true" aria-labelledby="cdlg-t" onMouseDown={(e) => e.target === e.currentTarget && close(false)}>
       <div className={`cdlg-card${danger ? ' danger' : ''}`}>
@@ -101,7 +102,7 @@ function DialogHost() {
         <div className="cdlg-m">{d.message}</div>
         <div className={`cdlg-b${d.kind === 'alert' ? ' one' : ''}`}>
           <button ref={okRef} type="button" className={`btn btn-lg ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={() => close(true)}>{okLabel}</button>
-          {d.kind === 'confirm' && <button type="button" className="btn btn-lg btn-outline-secondary" onClick={() => close(false)}>{d.cancel || 'إلغاء'}</button>}
+          {d.kind === 'confirm' && <button type="button" className="btn btn-lg btn-outline-secondary" onClick={() => close(false)}>{d.cancel || t('إلغاء')}</button>}
         </div>
       </div>
     </div>
@@ -140,10 +141,10 @@ export function useAction() {
     setBusy(true);
     try {
       const r = await fn();
-      if (success) toast(success, 'ok');
+      if (success) toast(t(success), 'ok');
       return r;
     } catch (e) {
-      toast(e.message || 'حدث خطأ', 'bad');
+      toast(t(e.message || 'حدث خطأ'), 'bad');
       throw e;
     } finally { setBusy(false); }
   }, [busy, toast]);
@@ -208,7 +209,7 @@ const BADGE = { ok: 'bg-success-subtle text-success-emphasis', warn: 'bg-warning
 export const Badge = ({ tone = 'muted', children }) => <span className={`badge rounded-pill fw-semibold ${BADGE[tone] || BADGE.muted}`}>{children}</span>;
 export function StatusBadge({ map, value }) {
   const [label, tone] = map[value] || [value, 'muted'];
-  return <Badge tone={tone}>{label}</Badge>;
+  return <Badge tone={tone}>{t(label)}</Badge>;
 }
 /** شارة تصنيف العميل: ذهبي / فضي / عادي */
 export function TierBadge({ name, color }) {
@@ -352,7 +353,7 @@ export function SignaturePad({ onChange, height = 180 }) {
 }
 
 // ------------------------------------------------------------- مسح QR (كاميرا أو قارئ باركود USB)
-export function ScanInput({ onScan, placeholder = 'امسح QR أو اكتب رقم الطلب', autoFocus = true }) {
+export function ScanInput({ onScan, placeholder = t('امسح QR أو اكتب رقم الطلب'), autoFocus = true }) {
   const [v, setV] = useState('');
   const [cam, setCam] = useState(false);
   const submit = (e) => { e?.preventDefault(); const s = v.trim(); if (s) { onScan(s); setV(''); } };
@@ -361,8 +362,8 @@ export function ScanInput({ onScan, placeholder = 'امسح QR أو اكتب ر�
       <form className="input-group input-group-lg scan" onSubmit={submit}>
         <span className="input-group-text scan-ic" aria-hidden>⌁</span>
         <input className="form-control" value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} autoFocus={autoFocus} dir="auto" />
-        <Btn type="submit" kind="dark">بحث</Btn>
-        <Btn type="button" kind="ghost" onClick={() => setCam(true)}>الكاميرا</Btn>
+        <Btn type="submit" kind="dark">{t('بحث')}</Btn>
+        <Btn type="button" kind="ghost" onClick={() => setCam(true)}>{t('الكاميرا')}</Btn>
       </form>
       {cam && <CameraScanner onClose={() => setCam(false)} onScan={(s) => { setCam(false); onScan(s); }} />}
     </div>
@@ -403,7 +404,7 @@ function CameraScanner({ onScan, onClose }) {
           raf = requestAnimationFrame(tick);
         };
         tick();
-      } catch { setErr('تعذر فتح الكاميرا - اسمح بالوصول أو استخدم قارئ الباركود'); }
+      } catch { setErr(t('تعذر فتح الكاميرا - اسمح بالوصول أو استخدم قارئ الباركود')); }
     })();
     return () => { stopped = true; cancelAnimationFrame(raf); stream?.getTracks().forEach((t) => t.stop()); };
   }, [onScan]);

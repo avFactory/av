@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fmtW, fmtDate, fmtMoney } from '../../format.js';
 import { Loader, useFetch } from '../../ui.jsx';
+import { locale, t } from '../../i18n.js';
 
-const monthName = (m) => new Date(`${m}-01T12:00:00`).toLocaleDateString('ar-SA-u-ca-gregory', { month: 'long', year: 'numeric' });
+const monthName = (m) => new Date(`${m}-01T12:00:00`).toLocaleDateString(locale(), { month: 'long', year: 'numeric' });
 
 /** شاشة العجز للعامل: لكل طلب العجز، وما يُحمَّل على حسابه بعد النسبة المسموحة للمرحلة */
 export default function WLosses() {
@@ -17,28 +18,28 @@ export default function WLosses() {
         {months.map((m) => <button key={m} type="button" className={`chip ${m === data.month ? 'on' : ''}`} onClick={() => setMonth(m)}>{monthName(m)}</button>)}
       </div>
       <div className="card card-body loss-sum">
-        <div><span>العجز على حسابي</span><b dir="ltr" className={data.totals.charged > 0 ? 'text-danger' : ''}>{fmtW(data.totals.charged)} <small>جم</small></b></div>
-        <div><span>إجمالي العجز</span><b dir="ltr">{fmtW(data.totals.actual)} <small>جم</small></b></div>
-        <div><span>المسموح (حسب نسبة مهنتك)</span><b dir="ltr">{fmtW(data.totals.allowed)} <small>جم</small></b></div>
+        <div><span>{t('العجز على حسابي')}</span><b dir="ltr" className={data.totals.charged > 0 ? 'text-danger' : ''}>{fmtW(data.totals.charged)} <small>{t('جم')}</small></b></div>
+        <div><span>{t('إجمالي العجز')}</span><b dir="ltr">{fmtW(data.totals.actual)} <small>{t('جم')}</small></b></div>
+        <div><span>{t('المسموح (حسب نسبة مهنتك)')}</span><b dir="ltr">{fmtW(data.totals.allowed)} <small>{t('جم')}</small></b></div>
       </div>
       {data.advance
-        ? <div className="alert alert-warning py-2 small mb-2">سُجّل عجز هذا الشهر سلفة بقيمة <b>{fmtMoney(data.advance.amount)}</b> تُخصم من الراتب.</div>
-        : data.totals.charged > 0 && <div className="small text-body-secondary mb-2">إجمالي العجز ناقص المسموح على مجموع شغل الشهر يبقى على حسابك حتى نهاية الشهر، ثم يُسجَّل سلفة تُخصم من الراتب.</div>}
-      {!data.rows.length && <div className="text-center text-body-secondary py-5">لا يوجد عجز في هذا الشهر</div>}
+        ? <div className="alert alert-warning py-2 small mb-2">{t('سُجّل عجز هذا الشهر سلفة بقيمة {a} تُخصم من الراتب.', { a: fmtMoney(data.advance.amount) })}</div>
+        : data.totals.charged > 0 && <div className="small text-body-secondary mb-2">{t('إجمالي العجز ناقص المسموح على مجموع شغل الشهر يبقى على حسابك حتى نهاية الشهر، ثم يُسجَّل سلفة تُخصم من الراتب.')}</div>}
+      {!data.rows.length && <div className="text-center text-body-secondary py-5">{t('لا يوجد عجز في هذا الشهر')}</div>}
       <div className="loss-list">
         {data.rows.map((r) => {
           const body = (
             <>
               <div className="loss-main">
-                <b dir="ltr">{r.order_no}</b>
-                <span className="small text-body-secondary">{r.stage_name} · {fmtDate(r.received_at)}</span>
+                <b dir="ltr">{t(r.order_no)}</b>
+                <span className="small text-body-secondary">{t(r.stage_name)} · {fmtDate(r.received_at)}</span>
               </div>
               <div className="loss-val">
-                <span className="small text-body-secondary">العجز</span>
+                <span className="small text-body-secondary">{t('العجز')}</span>
                 <b dir="ltr">{fmtW(r.actual_loss)}</b>
               </div>
               <div className="loss-val ok">
-                <span className="small">المسموح</span>
+                <span className="small">{t('المسموح')}</span>
                 <b dir="ltr">{fmtW(r.allowed)}</b>
               </div>
             </>

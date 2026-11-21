@@ -56,8 +56,16 @@ r.get('/me', requireAuth, async (req, res) => {
   res.json({
     id: u.id, username: u.username, full_name: u.full_name, role_code: u.role_code, employee_no: u.employee_no,
     customer_id: u.customer_id, customer_status: u.customer_status, shop_name: u.shop_name, branch_id: u.branch_id, branch_name: u.branch_name,
-    perms: [...u.perms], unread, must_change_password: u.must_change_password, is_3d: is3D(u),
+    perms: [...u.perms], unread, must_change_password: u.must_change_password, is_3d: is3D(u), lang: u.lang || null,
   });
+});
+
+/** لغة الواجهة: تُحفظ على الحساب فتتبع المستخدم على أي جهاز */
+r.post('/lang', requireAuth, async (req, res) => {
+  const lang = String(req.body.lang || '');
+  if (!['ar', 'en', 'bn', 'hi', 'ur'].includes(lang)) throw bad('لغة غير مدعومة');
+  await pool.query('update users set lang=$2 where id=$1', [req.user.id, lang]);
+  res.json({ ok: true, lang });
 });
 
 r.post('/change-password', requireAuth, async (req, res) => {

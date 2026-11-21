@@ -964,3 +964,14 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .cat-tab.excl { border-color: var(--gold, #b08d57); color: var(--gold-ink, #8a6a35); font-weight: 700; }
 .cat-tab.excl.on { background: var(--gold, #b08d57); color: #fff; }
 .badge-excl { background: linear-gradient(135deg, #c9a24a, #9c7a35); color: #fff; font-weight: 700 !important; }
+
+/* اختيار اللغة */
+.lang-pick { position: fixed; inset: 0; z-index: 2200; display: grid; place-items: center; padding: 16px; background: rgba(12, 11, 9, .82); backdrop-filter: blur(4px); }
+.lang-card { width: min(440px, 100%); background: var(--card); color: var(--ink); border-radius: 22px; padding: 26px 20px; text-align: center; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+.lang-card h2 { font-size: 1.35rem; font-weight: 800; margin: 10px 0 4px; }
+.lang-sub { font-size: .9rem; opacity: .75; margin-bottom: 18px; line-height: 1.6; }
+.lang-grid { display: grid; gap: 10px; }
+.lang-btn { font-size: 1.35rem; font-weight: 700; padding: 14px; border-radius: 14px; border: 2px solid var(--line); background: var(--bg); color: inherit; cursor: pointer; }
+.lang-btn:hover, .lang-btn.on { border-color: var(--gold, #b08d57); background: rgba(176,141,87,.12); }
+.lang-note { font-size: .85rem; opacity: .7; margin-top: 14px; }
+.wk-lang { font-size: .85rem; }

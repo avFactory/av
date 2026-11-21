@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from './api.js';
 import { setDecimals } from './format.js';
+import { applyLang } from './i18n.js';
 
 const AuthCtx = createContext(null);
 
@@ -10,6 +11,8 @@ export function AuthProvider({ children }) {
   const refresh = useCallback(async () => {
     try {
       const m = await api.get('/auth/me');
+      // الترجمة لشاشات العمال؛ واجهة الموظفين والعملاء بالعربية
+      applyLang(m.role_code === 'worker' ? (m.lang || 'ar') : 'ar');
       setMe(m);
       const l = await api.get('/lookups').catch(() => null);
       if (l?.settings?.weight_decimals) setDecimals(l.settings.weight_decimals);

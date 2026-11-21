@@ -1,9 +1,11 @@
+import { locale, t } from './i18n.js';
+
 let decimals = 3;
 export const setDecimals = (d) => { decimals = Number(d) || 3; };
 export const fmtW = (v, d = decimals) => (v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
-export const fmtMoney = (v) => (v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ر.س');
-export const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('ar-SA-u-nu-latn-ca-gregory', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—');
-export const fmtDT = (v) => (v ? new Date(v).toLocaleString('ar-SA-u-nu-latn-ca-gregory', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+export const fmtMoney = (v) => (v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + t('ر.س'));
+export const fmtDate = (v) => (v ? new Date(v).toLocaleDateString(locale(), { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—');
+export const fmtDT = (v) => (v ? new Date(v).toLocaleString(locale(), { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 export const fmtPct = (v) => (v === null || v === undefined ? '—' : `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 5 })}%`);
 
 /** حساب العجز بالأعداد الصحيحة (1/10000 جم) - مطابق لدالة قاعدة البيانات، والخادم هو المرجع النهائي */
@@ -45,10 +47,10 @@ export const LOCS = {
 
 /** عناصر عرض أحجار الطلب/المنتج (الألماس واللؤلؤ والحجر والزركون) لمكوّن Kv */
 export function stoneItems(o) {
-  const out = (o.diamond_details || []).map((d, i, a) => [`الألماس المخبري${a.length > 1 ? ` ${i + 1}` : ''}`, `${[d.shape, d.size, d.color, d.clarity].filter(Boolean).join(' ')} · ${Number(d.carats)} قيراط${d.count ? ` · ${d.count} حبة` : ''}`]);
-  if (Number(o.pearl_weight) > 0) out.push(['وزن اللؤلؤ', `${Number(o.pearl_weight)} جم`]);
-  if (Number(o.stone_weight) > 0) out.push(['وزن الحجر', `${Number(o.stone_weight)} جم`]);
-  if (Number(o.zircon_weight) > 0) out.push(['وزن الزركون', `${Number(o.zircon_weight)} جم`]);
+  const out = (o.diamond_details || []).map((d, i, a) => [`${t('الألماس المخبري')}${a.length > 1 ? ` ${i + 1}` : ''}`, `${[d.shape, d.size, d.color, d.clarity].filter(Boolean).join(' ')} · ${Number(d.carats)} ${t('قيراط')}${d.count ? ` · ${d.count} ${t('حبة')}` : ''}`]);
+  if (Number(o.pearl_weight) > 0) out.push([t('وزن اللؤلؤ'), `${Number(o.pearl_weight)} ${t('جم')}`]);
+  if (Number(o.stone_weight) > 0) out.push([t('وزن الحجر'), `${Number(o.stone_weight)} ${t('جم')}`]);
+  if (Number(o.zircon_weight) > 0) out.push([t('وزن الزركون'), `${Number(o.zircon_weight)} ${t('جم')}`]);
   if (o.bullion_type) out.push([o.bullion_type === 'coin' ? 'جنيهات' : 'سبائك', o.bullion_weight ? `${Number(o.bullion_weight)} جم ${o.bullion_type === 'coin' ? 'للجنيه' : 'للسبيكة'} (للقطعة الواحدة)` : '—']);
   return out;
 }

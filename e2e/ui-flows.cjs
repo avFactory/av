@@ -18,6 +18,8 @@ async function login(page, u, p) {
   await page.fill('input[type=password]', p);
   await page.click('button[type=submit]');
   await page.waitForLoadState('networkidle');
+  // أول دخول للعامل: اختيار اللغة (العربية) ثم المتابعة
+  if (await page.locator('.lang-pick').count()) { await page.click('.lang-btn:has-text("العربية")'); await page.waitForLoadState('networkidle'); await page.waitForTimeout(500); }
 }
 async function sign(page) {
   const c = page.locator('canvas').last();

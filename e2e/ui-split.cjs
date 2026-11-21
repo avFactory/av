@@ -10,7 +10,9 @@ async function newPage(browser, viewport) {
   page.on('response', (r) => { if (r.url().includes('/api/') && r.status() >= 500) problems.push(`[5xx] ${r.url()}`); });
   return page;
 }
-async function login(page, u, p) { await page.goto(BASE + '/login'); await page.fill('input[autocomplete=username]', u); await page.fill('input[type=password]', p); await page.click('button[type=submit]'); await page.waitForLoadState('networkidle'); }
+async function login(page, u, p) { await page.goto(BASE + '/login'); await page.fill('input[autocomplete=username]', u); await page.fill('input[type=password]', p); await page.click('button[type=submit]'); await page.waitForLoadState('networkidle');
+  if (await page.locator('.lang-pick').count()) { await page.click('.lang-btn:has-text("العربية")'); await page.waitForLoadState('networkidle'); await page.waitForTimeout(500); }
+}
 (async () => {
   const browser = await chromium.launch();
   const s = await newPage(browser, { width: 1280, height: 900 });

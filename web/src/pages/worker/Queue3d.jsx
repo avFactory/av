@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtDate, COLORS, stoneItems } from '../../format.js';
 import { Btn, Loader, useAction, useFetch, showAlert } from '../../ui.jsx';
+import { t } from '../../i18n.js';
 
 /**
  * طابور مرحلة 3D (لفريق 3D): كل طلب بمنتجاته، ولكل قطعة: تحتاج تصميم / طباعة / لا تحتاج،
@@ -25,18 +26,18 @@ export default function Queue3d() {
   }, 'انتقل الطلب للمرحلة التالية');
   return (
     <div className="d-grid gap-2">
-      <h3 className="h6 m-0 mt-2">🖨 مرحلة التصميم 3D <span className="small text-body-secondary">({groups.length} طلب)</span></h3>
-      {!groups.length && <div className="small text-body-secondary">لا توجد طلبات في مرحلة 3D</div>}
+      <h3 className="h6 m-0 mt-2">{t('🖨 مرحلة التصميم 3D')} <span className="small text-body-secondary">{t('({n} طلب)', { n: groups.length })}</span></h3>
+      {!groups.length && <div className="small text-body-secondary">{t('لا توجد طلبات في مرحلة 3D')}</div>}
       {groups.map((g) => {
         const unchecked = g.items.filter((x) => !x.d3_checked_at).length;
         return (
           <div key={g.key} className="d3-group">
             <div className="hrow between wrap gap">
-              <div><b dir="ltr">{g.key}</b><div className="small text-body-secondary">{g.shop || 'طلب داخلي'}{g.due ? ` · التسليم ${fmtDate(g.due)}` : ''}</div></div>
-              <span className="small">{g.items.length} أصناف</span>
+              <div><b dir="ltr">{g.key}</b><div className="small text-body-secondary">{g.shop || t('طلب داخلي')}{g.due ? ` · ${t('التسليم')} ${fmtDate(g.due)}` : ''}</div></div>
+              <span className="small">{t('{n} أصناف', { n: g.items.length })}</span>
             </div>
             {g.items.map((x) => {
-              const extra = [x.size && `مقاس ${x.size}`, x.color && (COLORS[x.color] || x.color), ...stoneItems(x).map(([k, v]) => `${k} ${v}`)].filter(Boolean);
+              const extra = [x.size && `${t('مقاس')} ${x.size}`, x.color && t(COLORS[x.color] || x.color), ...stoneItems(x).map(([k, v]) => `${k} ${v}`)].filter(Boolean);
               const none = x.d3_checked_at && !x.needs_3d_design && !x.needs_3d_print;
               return (
                 <div key={x.id} className="oi-row" style={{ cursor: 'default' }}>
@@ -49,16 +50,16 @@ export default function Queue3d() {
                   </div>
                   <div className="oi-side">
                     <div className="d-flex gap-1 flex-wrap justify-content-end">
-                      <button type="button" disabled={busy} className={`chip chip-sm ${x.needs_3d_design ? 'on' : ''}`} onClick={() => mark(x, { needs_design: !x.needs_3d_design, needs_print: !!x.needs_3d_print })}>✏️ تصميم</button>
-                      <button type="button" disabled={busy} className={`chip chip-sm ${x.needs_3d_print ? 'on' : ''}`} onClick={() => mark(x, { needs_design: !!x.needs_3d_design, needs_print: !x.needs_3d_print })}>🖨 طباعة</button>
-                      <button type="button" disabled={busy} className={`chip chip-sm ${none ? 'on' : ''}`} onClick={() => mark(x, { needs_design: false, needs_print: false })}>لا يحتاج</button>
+                      <button type="button" disabled={busy} className={`chip chip-sm ${x.needs_3d_design ? 'on' : ''}`} onClick={() => mark(x, { needs_design: !x.needs_3d_design, needs_print: !!x.needs_3d_print })}>{t('✏️ تصميم')}</button>
+                      <button type="button" disabled={busy} className={`chip chip-sm ${x.needs_3d_print ? 'on' : ''}`} onClick={() => mark(x, { needs_design: !!x.needs_3d_design, needs_print: !x.needs_3d_print })}>{t('🖨 طباعة')}</button>
+                      <button type="button" disabled={busy} className={`chip chip-sm ${none ? 'on' : ''}`} onClick={() => mark(x, { needs_design: false, needs_print: false })}>{t('لا يحتاج')}</button>
                     </div>
                   </div>
                 </div>
               );
             })}
-            {unchecked > 0 && <div className="small text-body-secondary">{unchecked} قطعة لم تُحدد بعد</div>}
-            <Btn kind="dark" loading={busy} onClick={() => move(g)}>نقل الطلب كاملاً للمرحلة التالية</Btn>
+            {unchecked > 0 && <div className="small text-body-secondary">{t('{n} قطعة لم تُحدد بعد', { n: unchecked })}</div>}
+            <Btn kind="dark" loading={busy} onClick={() => move(g)}>{t('نقل الطلب كاملاً للمرحلة التالية')}</Btn>
           </div>
         );
       })}
