@@ -9,6 +9,7 @@ import { receive, issue, issueGeneral, getWorker, preview } from './custody.js';
 import { advance, lockOrder, logStage } from './production.js';
 import { groupInfo } from './orderGroups.js';
 import { has } from './auth.js';
+import { partialReturn } from './partialReturn.js';
 
 const label = async (db, orderId) => (await db.query(`select coalesce(case when (select count(*) from orders x where x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) > 1 then o.cart_ref end, o.order_no) n from orders o where o.id=$1`, [orderId])).rows[0]?.n || 'عهدة عامة';
 
@@ -21,7 +22,9 @@ export async function createTransfer(db, req, custodyId, body) {
   if (c.status !== 'open') throw conflict('العهدة ليست مفتوحة');
   if (c.finding_id) throw bad('عهدة الخامات لا تُحوّل — أرجعها للمشرف ثم تُصرف للعامل الآخر');
   // نفس المرحلة = إعادة إسناد لعامل آخر بدون نقل الطلب؛ العهدة العامة دائماً بنفس الحال
-  const mode = !c.order_id ? 'same_stage' : body.mode === 'same_stage' ? 'same_stage' : 'next_stage';
+  // جزء من العهدة: ينتقل الجزء فقط ويبقى الباقي لدى المرسل (بلا عجز)، وللطلب يكون في نفس المرحلة
+  const portion = body.portion === 'part' ? 'part' : 'full';
+  const mode = !c.order_id || portion === 'part' ? 'same_stage' : body.mode === 'same_stage' ? 'same_stage' : 'next_stage';
   if (isOwner && !c.worker_ack_at) throw conflict('اقبل العهدة أولاً');
   const toId = int(body.to_worker_id, 'العامل');
   if (toId === c.worker_id) throw bad('اختر عاملاً آخر');
@@ -31,11 +34,14 @@ export async function createTransfer(db, req, custodyId, body) {
   const weight = W(body.weight, 'الوزن');
   const remaining = Number(c.weight_issued) - Number(c.weight_used);
   if (Number(weight) > remaining * 1.5 + 5) throw bad('الوزن غير منطقي مقارنة بالعهدة');
+  if (portion === 'part' && Number(weight) >= remaining - 1e-9) throw bad(`جزء العهدة يجب أن يكون أقل مما لديك (${remaining.toFixed(3)} جم) — لتحويل الكل اختر «كل العهدة»`);
+  // تحويل الكل بوزن أقل بكثير من العهدة: غالباً المقصود تحويل جزء — يُمنع حتى لا يُحسب الباقي عجزاً بالخطأ
+  if (portion === 'full' && remaining - Number(weight) > Math.max(1, remaining * 0.1)) throw bad(`الوزن ${Number(weight).toFixed(3)} أقل بكثير من العهدة (${remaining.toFixed(3)} جم) — إذا تحوّل جزءاً فقط اختر «جزء من العهدة» فيبقى الباقي لديك بدون عجز`);
   const pend = (await db.query("select 1 from custody_transfers where custody_id=$1 and status='pending'", [c.id])).rowCount;
   if (pend) throw conflict('يوجد تحويل بانتظار القبول لهذه العهدة');
   const t = (await db.query(`insert into custody_transfers(custody_id, order_id, from_worker, to_worker, weight, note, created_by) values ($1,$2,$3,$4,$5,$6,$7) returning *`,
     [c.id, c.order_id, c.worker_id, to.id, weight, str(body.note, 'ملاحظة'), req.user.id])).rows[0];
-  await db.query('update custody_transfers set mode=$2 where id=$1', [t.id, mode]); t.mode = mode;
+  await db.query('update custody_transfers set mode=$2, portion=$3 where id=$1', [t.id, mode, portion]); t.mode = mode; t.portion = portion;
   const no = await label(db, c.order_id);
   const from = (await db.query('select full_name from users where id=$1', [c.worker_id])).rows[0].full_name;
   await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `تحويل ${weight} جم من ${from} إلى ${to.full_name} - بانتظار قبوله`, false, c.worker_id);
@@ -58,6 +64,28 @@ export async function acceptTransfer(db, req, transferId, body, opts = {}) {
   const no = await label(db, c.order_id);
 
   const same = t.mode === 'same_stage' || !c.order_id;
+  // تحويل جزء: ينتقل الوزن المؤكد فقط من المرسل للمستلم، وتبقى عهدة المرسل مفتوحة بالباقي (بلا تسوية ولا عجز)
+  if (t.portion === 'part') {
+    const remaining = Number(c.weight_issued) - Number(c.weight_used);
+    if (Number(confirmed) >= remaining - 1e-9) throw conflict(`الوزن المؤكد (${Number(confirmed)} جم) لا يقل عن كل ما لدى ${fromName} (${remaining.toFixed(3)} جم) — يجب تحويل كامل العهدة بدلاً من الجزء`);
+    await partialReturn(db, req, c.id, { weight: confirmed, note: `تحويل جزء إلى ${toName} (التحويل #${t.id})` }, { forTransfer: true });
+    let ncId;
+    if (c.order_id) {
+      const is2 = await issue(db, req, { worker_id: t.to_worker, note: `تحويل جزء من ${fromName}`, silent: true,
+        items: [{ order_id: c.order_id, weight: confirmed, stones_weight: '0', from_vault: false, notes: `جزء محوّل من ${fromName}` }] });
+      ncId = is2.custodies[0].id;
+    } else {
+      ncId = (await issueGeneral(db, req, { worker_id: t.to_worker, material_id: c.material_id, weight: confirmed, purpose: c.purpose || `محوّلة من ${fromName}`, loss_rate_percent: String(Number(c.loss_rate_snapshot)), silent: true })).custody_id;
+    }
+    await db.query('update custodies set worker_ack_at=now(), ack_ip=$2 where id=$1', [ncId, req.ip]);
+    await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'ack',$2,'قبول جزء محوّل بعد التأكد من الوزن')", [ncId, req.user.id]);
+    await db.query("update custody_transfers set status='accepted', confirmed_weight=$2, decided_at=now(), new_custody_id=$3 where id=$1", [t.id, confirmed, ncId]);
+    const left = (remaining - Number(confirmed)).toFixed(3);
+    await notifyUsers(db, [t.from_worker], { kind: 'custody', title: `قبل ${toName} الجزء المحوّل: ${no}`, body: `استلم ${Number(confirmed)} جم — يبقى لديك ${left} جم`, link: '/w' });
+    await notifyPerm(db, 'custody.receive', { kind: 'custody', title: `تحويل جزء ${no}: ${fromName} ← ${toName}`, body: `${Number(confirmed)} جم · بقي لدى ${fromName} ${left} جم`, link: c.order_id ? `/orders/${c.order_id}` : `/sup/workers/${t.from_worker}` });
+    await audit(db, req, 'custody.transfer_accept', 'custody', ncId, { transfer: t.id, portion: 'part', from: fromName, declared: t.weight, confirmed, left });
+    return { ok: true, custody_id: ncId, portion: 'part', left };
+  }
   // الوزن أكبر مما سُلّم للأول: الزيادة ذهب أضافه من عهدته العامة (أو عهد الخامات) فتُخصم منها تلقائياً
   const pv = await preview(db, c.id, confirmed, '0');
   const additions = [];
@@ -145,4 +173,4 @@ export async function cancelTransfer(db, req, transferId) {
   return { ok: true };
 }
 
-export const transferCols = `t.id, t.custody_id, t.order_id, t.weight::text, t.status, t.note, t.mode, t.created_at, fw.full_name as from_name, tw.full_name as to_name, tw.employee_no as to_no`;
+export const transferCols = `t.id, t.custody_id, t.order_id, t.weight::text, t.status, t.note, t.mode, t.portion, t.created_at, fw.full_name as from_name, tw.full_name as to_name, tw.employee_no as to_no`;

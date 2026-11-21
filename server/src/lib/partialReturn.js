@@ -6,11 +6,11 @@ import { audit } from './audit.js';
 import { notifyPerm, notifyUsers, resolveNotifs } from './notify.js';
 import { logStage } from './production.js';
 
-export async function partialReturn(db, req, custodyId, body) {
+export async function partialReturn(db, req, custodyId, body, opts = {}) {
   const c = (await db.query('select c.*, f.name as finding_name from custodies c left join findings f on f.id=c.finding_id where c.id=$1 for update of c', [int(custodyId)])).rows[0];
   if (!c) throw notFound('العهدة غير موجودة');
   if (c.status !== 'open') throw conflict('العهدة ليست مفتوحة');
-  if ((await db.query("select 1 from custody_transfers where custody_id=$1 and status='pending'", [c.id])).rowCount) throw conflict('على العهدة تحويل معلق لعامل آخر — ألغه أولاً');
+  if (!opts.forTransfer && (await db.query("select 1 from custody_transfers where custody_id=$1 and status='pending'", [c.id])).rowCount) throw conflict('على العهدة تحويل معلق لعامل آخر — ألغه أولاً');
   const w = W(body.weight, 'الوزن المستلم');
   const avail = Number(c.weight_issued) - Number(c.weight_used);
   if (Number(w) >= avail - 1e-9) throw bad(`الوزن يجب أن يكون أقل من المتبقي في العهدة (${avail.toFixed(3)} جم) — للاستلام الكامل استخدم «استلام ذهب»`);
@@ -30,7 +30,7 @@ export async function partialReturn(db, req, custodyId, body) {
   await db.query("insert into custody_work_log(custody_id, event, reason, user_id) values ($1,'note',$2,$3)", [c.id, `استلم المشرف ${w} جم${pieces ? ` (${pieces} قطعة)` : ''}${note ? ` — ${note}` : ''}`, req.user.id]);
   if (c.order_id) await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `استلام جزئي ${w} جم من العامل (${c.custody_no})${note ? ` — ${note}` : ''}`, false, c.worker_id);
   const left = (avail - Number(w)).toFixed(4);
-  await notifyUsers(db, [c.worker_id], { kind: 'custody', title: `استلم المشرف ${Number(w).toFixed(3)} جم من عهدتك`, body: `${label} — المتبقي لديك ${Number(left).toFixed(3)} جم`, link: '/w' });
+  if (!opts.forTransfer) await notifyUsers(db, [c.worker_id], { kind: 'custody', title: `استلم المشرف ${Number(w).toFixed(3)} جم من عهدتك`, body: `${label} — المتبقي لديك ${Number(left).toFixed(3)} جم`, link: '/w' });
   await audit(db, req, 'custody.partial_return', 'custody', c.id, { weight: w, pieces, left, note, movement: mv.movement_no });
   return { ok: true, weight: w, left, movement_no: mv.movement_no };
 }
