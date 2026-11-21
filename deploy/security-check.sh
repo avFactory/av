@@ -26,7 +26,10 @@ stat -c '%a %U %n' .env /var/backups/goldfactory /root/.av-backup.key 2>/dev/nul
 
 B "SSH"
 sshd -T 2>/dev/null | grep -Ei '^(port|passwordauthentication|permitrootlogin|maxauthtries|kbdinteractiveauthentication) '
-sshd -T 2>/dev/null | grep -qi '^passwordauthentication no' && ok "الدخول بكلمة المرور مغلق" || warn "الدخول بكلمة المرور مفتوح"
+if sshd -T 2>/dev/null | grep -qi '^passwordauthentication no'; then
+  if [ -f /etc/ssh/sshd_config.d/01-av-password-from-console-only.conf ]; then ok "كلمة المرور مغلقة على الإنترنت — مسموحة فقط من طرفية Hostinger: $(grep -m1 '^Match Address' /etc/ssh/sshd_config.d/01-av-password-from-console-only.conf | cut -d' ' -f3)"
+  else ok "الدخول بكلمة المرور مغلق"; fi
+else warn "الدخول بكلمة المرور مفتوح لكل الإنترنت — شغّل: bash /opt/av/deploy/ssh-lockdown.sh"; fi
 
 B "جدار الحماية و Fail2ban"
 ufw status 2>/dev/null | head -12 || warn "ufw غير مثبت"
@@ -45,7 +48,8 @@ echo | timeout 10 openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" 
 curl -sI "http://$DOMAIN" | grep -iE '^(HTTP|location)' | head -2
 
 B "النسخ الاحتياطي"
-ls -lh /var/backups/goldfactory 2>/dev/null | tail -4
+ls -lht /var/backups/goldfactory/uploads-* 2>/dev/null | head -4
+echo "المساحة المستخدمة للنسخ: $(du -sh /var/backups/goldfactory 2>/dev/null | cut -f1) — المتاح على القرص: $(df -h / | awk 'NR==2{print $4}')"
 [ -n "$(find /var/backups/goldfactory -name 'db-*.dump' -mtime -1 2>/dev/null)" ] && ok "نسخة قاعدة بيانات خلال آخر 24 ساعة" || bad "لا توجد نسخة حديثة لقاعدة البيانات"
 grep -q '^OFFSITE_REMOTE=' .env && { tail -2 /var/log/goldfactory-offsite.log 2>/dev/null; } || warn "النسخ خارج السيرفر غير مفعّل (انظر deploy/SECURITY.md)"
 
