@@ -2,7 +2,11 @@
 # تحديث النظام لآخر نسخة من الفرع الرئيسي: bash /opt/av/deploy/update.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-git pull --ff-only origin main
+# بعد السحب نعيد تشغيل السكربت بنسخته الجديدة (bash يقرأ الملف أثناء التنفيذ، فتغييره أثناء العمل يُفقد الخطوات الجديدة)
+if [ "${1:-}" != "--after-pull" ]; then
+  git pull --ff-only origin main
+  exec bash deploy/update.sh --after-pull
+fi
 docker compose up -d --build
 # إعدادات بوابة HTTPS (Caddyfile): تُطبق عند تغيّرها بعد التحقق من صحتها (لا يُعاد تشغيل Caddy بإعدادات خاطئة)
 SUM=$(sha256sum Caddyfile | cut -d' ' -f1)
