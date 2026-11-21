@@ -388,7 +388,7 @@ export async function reverseIssue(db, req, id, reasonIn) {
   if (c.status !== 'open') throw conflict('لا يمكن إلغاء عهدة تم استلامها - صحّح التسوية أولاً');
   if (c.order_id) await lockOrder(db, c.order_id);
   if (Number(c.weight_used) > 0) throw conflict('أُضيف جزء من هذه الخامات على طلبات - صحّح تلك التسويات أولاً');
-  const mvs = (await db.query("select * from gold_ledger g where custody_id=$1 and settlement_id is null and kind in ('issue','general_issue','findings_issue') and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)", [id])).rows;
+  const mvs = (await db.query("select * from gold_ledger g where custody_id=$1 and settlement_id is null and kind in ('issue','general_issue','findings_issue','custody_adjust') and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)", [id])).rows;
   if (c.finding_id) await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, note, created_by) values ($1,'reversal',$2,$3,$4,$5,$6)`,
     [c.finding_id, c.pieces || 0, c.weight_issued, c.id, `إلغاء صرف ${c.custody_no}`, req.user.id]);
   for (const mv of mvs) await ledger.reverse(db, mv, `إلغاء تسليم ${c.custody_no}: ${reason}`, req.user.id);

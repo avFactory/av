@@ -5,17 +5,19 @@ import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtDT, fmtPct, CUSTODY_STATUS, SETTLEMENT_STATUS, WORK_STATE, KINDS } from '../../format.js';
 import { Card, LinkBtn, Loader, Page, Stat, StatusBadge, Table, Tabs, useFetch, Badge, ReasonModal, useAction } from '../../ui.jsx';
 import PartialReturnModal from '../../components/PartialReturn.jsx';
+import CustodyEditModal from '../../components/CustodyEdit.jsx';
 import ReturnRequests from '../../components/ReturnRequests.jsx';
 
 /** ملف العامل: كل بياناته وعهده وإدارتها من صفحة واحدة */
 export default function WorkerProfile() {
   const { id } = useParams();
-  const { can } = useAuth();
+  const { can, me } = useAuth();
   const { data, reload } = useFetch(`/sup/workers/${id}`, { live: ['custodies', 'settlements', 'gold_ledger'] });
   const { data: perf } = useFetch(`/admin/employees/${id}/performance`);
   const [tab, setTab] = useState('open');
   const [rev, setRev] = useState(null);
   const [part, setPart] = useState(null);
+  const [edit, setEdit] = useState(null);
   const [run, busy] = useAction();
   if (!data) return <Loader />;
   const { worker: w, custodies, totals, balances, assigned, recent, stones } = data;
@@ -60,6 +62,7 @@ export default function WorkerProfile() {
         ['review', `تحت المراجعة (${review.length})`], ['closed', `منتهية ومسلمة (${closed.length})`], ['stones', 'الأحجار لديه'], ['recent', 'آخر الحركات'],
       ]} />
       {can('custody.receive') && <ReturnRequests worker={w.id} />}
+      {edit && <CustodyEditModal custody={edit} onClose={() => setEdit(null)} onDone={reload} />}
       {part && <PartialReturnModal custody={part} onClose={() => setPart(null)} onDone={reload} />}
       {tab === 'open' && (
         <div className="grid">
@@ -67,6 +70,7 @@ export default function WorkerProfile() {
             ['', (c) => <div className="hrow gap">
               {can('custody.receive') && <LinkBtn size="sm" kind="dark" to={`/sup/receive?worker=${w.id}`}>استلام</LinkBtn>}
               {can('custody.receive') && <button className="btn btn-outline-dark btn-sm" onClick={() => setPart({ ...c, worker_name: w.full_name })}>استلام جزء</button>}
+              {me?.role_code === 'admin' && <button className="btn btn-outline-secondary btn-sm" onClick={() => setEdit({ ...c, worker_name: w.full_name })}>تعديل</button>}
               {can('custody.reverse') && <button className="btn btn-outline-secondary btn-sm" onClick={() => setRev(c.id)}>إلغاء تسليم خاطئ</button>}
             </div>]]} /></div>
           {assigned.length > 0 && <Card title="مسندة إليه بدون ذهب بعد" pad={false}><Table rows={assigned} columns={[['الطلب', (o) => <Link className="link" to={`/orders/${o.id}`}>{o.order_no}</Link>], ['الوصف', 'title'], ['المرحلة', 'stage_name'],

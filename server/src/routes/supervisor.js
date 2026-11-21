@@ -7,6 +7,7 @@ import * as custody from '../lib/custody.js';
 import { embeddedStonesGrams, goldStonesGrams } from '../lib/production.js';
 import { groupInfo } from '../lib/orderGroups.js';
 import { withdrawCustody, SHORTAGE_KINDS } from '../lib/shortage.js';
+import { editCustody } from '../lib/custodyEdit.js';
 import { partialReturn, acceptReturnRequest, rejectReturnRequest, requestCols, requestFrom } from '../lib/partialReturn.js';
 import { createTransfer, cancelTransfer, transferCols } from '../lib/transfer.js';
 import * as ledger from '../lib/ledger.js';
@@ -300,6 +301,11 @@ r.post('/reviews/:id/investigation', requirePerm('loss.investigate'), async (req
 r.post('/settlements/:id/reverse', requirePerm('custody.reverse'), async (req, res) => {
   res.json(await tx((db) => custody.reverseSettlement(db, req, int(req.params.id), req.body.reason)));
 });
+/** تعديل عهدة مفتوحة (قبل أو بعد قبول العامل) — للمدير فقط */
+r.put('/custodies/:id', requirePerm('custody.issue'), async (req, res) => {
+  res.json(await tx((db) => editCustody(db, req, req.params.id, req.body)));
+});
+
 r.post('/custodies/:id/reverse', requirePerm('custody.reverse'), async (req, res) => {
   res.json(await tx((db) => custody.reverseIssue(db, req, int(req.params.id), req.body.reason)));
 });
