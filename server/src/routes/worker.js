@@ -4,7 +4,7 @@ import { workerLossRows, monthTotals, monthStart } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm } from '../lib/auth.js';
 import { bad, conflict, forbidden, notFound, int, str, weight as W } from '../lib/http.js';
-import { notifyPerm } from '../lib/notify.js';
+import { notifyPerm, resolveNotifs } from '../lib/notify.js';
 import { saveSignature, upload, registerFiles } from '../lib/uploads.js';
 import { advance, lockOrder, logStage } from '../lib/production.js';
 import { audit } from '../lib/audit.js';
@@ -97,6 +97,7 @@ r.post('/custody/:id/ack', async (req, res) => {
     const ackStage = c.stage_id ? (await db.query('select * from stages where id=$1', [c.stage_id])).rows[0] : null;
     const ackW = checkAckWeight(c, ackStage, req.body);
     await db.query('update custodies set worker_ack_at=now(), ack_ip=$2, worker_rejected_at=null, worker_reject_reason=null, ack_weight=$3 where id=$1', [c.id, req.ip, ackW]);
+    await resolveNotifs(db, `custody_reject:${c.id}`, `✓ قبلها ${req.user.full_name} بعد التصحيح`);
     await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'ack',$2,'قبول إلكتروني')", [c.id, req.user.id]);
     await audit(db, req, 'custody.accept', 'custody', c.id, { weight: c.weight_issued, at: new Date().toISOString() });
     return { ok: true };
@@ -113,7 +114,7 @@ r.post('/custody/:id/reject', async (req, res) => {
     await db.query('update custodies set worker_rejected_at=now(), worker_reject_reason=$2 where id=$1', [c.id, reason]);
     await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'reject',$2,$3)", [c.id, req.user.id, reason]);
     const o = (await db.query('select order_no from orders where id=$1', [c.order_id])).rows[0];
-    await notifyPerm(db, 'custody.issue', { kind: 'reject', title: `${req.user.full_name} رفض استلام ${o?.order_no || 'عهدة عامة'}`, body: reason, link: `/sup/workers/${req.user.id}` });
+    await notifyPerm(db, 'custody.issue', { ref: `custody_reject:${c.id}`, kind: 'reject', title: `${req.user.full_name} رفض استلام ${o?.order_no || 'عهدة عامة'}`, body: reason, link: `/sup/workers/${req.user.id}` });
     await audit(db, req, 'custody.reject', 'custody', c.id, { reason });
     return { ok: true };
   }));
@@ -205,7 +206,7 @@ r.post('/custody/:id/finish', async (req, res) => {
     await db.query("insert into custody_work_log(custody_id, event, reason, user_id) values ($1,'finish',$2,$3)", [c.id, str(req.body.note, 'ملاحظة'), req.user.id]);
     const o = (await db.query('select order_no from orders where id=$1', [c.order_id])).rows[0];
     await logStage(db, c.order_id, c.stage_id, 'completed', req.user.id, 'أنهى العامل المرحلة - بانتظار الاستلام', false, req.user.id);
-    await notifyPerm(db, 'custody.receive', { kind: 'receive', title: `${req.user.full_name} أنهى ${stage?.name || 'العهدة العامة'} - ${o?.order_no || c.purpose || 'عهدة عامة'}`, body: 'بانتظار الاستلام', link: `/sup/receive?worker=${req.user.id}` });
+    await notifyPerm(db, 'custody.receive', { kind: 'receive', title: `${req.user.full_name} أنهى ${stage?.name || 'العهدة العامة'} - ${o?.order_no || c.purpose || 'عهدة عامة'}`, body: 'بانتظار الاستلام', link: `/sup/receive?worker=${req.user.id}`, ref: `custody_finish:${c.id}` });
     return { ok: true };
   }));
 });

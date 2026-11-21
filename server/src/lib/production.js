@@ -108,7 +108,7 @@ async function enterStage(db, order, stage, userId) {
     await notifyPerm(db, 'orders.manage', { kind: 'ready', title: `الطلب ${order.order_no} جاهز للتسليم`, link: `/orders/${order.id}` });
   }
   if (stage.handles_gold) {
-    await notifyPerm(db, 'custody.issue', { kind: 'issue', title: `الطلب ${order.order_no} بانتظار تسليم الذهب`, body: stage.name, link: `/sup/issue?order=${order.id}` });
+    await notifyPerm(db, 'custody.issue', { kind: 'issue', title: `الطلب ${order.order_no} بانتظار تسليم الذهب`, body: stage.name, link: `/sup/issue?order=${order.id}`, ref: `awaiting_issue:${order.id}` });
     const w = await db.query('select user_id from stage_workers where stage_id=$1', [stage.id]);
     if (w.rows.length === 1) await db.query('update orders set assigned_worker_id=$2 where id=$1', [order.id, w.rows[0].user_id]);
     // مرحلة يديرها عاملها (الجودة): تُسلَّم له تلقائياً بوزن الطلب الحالي

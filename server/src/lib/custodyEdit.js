@@ -2,7 +2,7 @@
 import { bad, conflict, forbidden, notFound, int, str, weight as W } from './http.js';
 import * as ledger from './ledger.js';
 import { audit } from './audit.js';
-import { notifyUsers } from './notify.js';
+import { notifyUsers, resolveNotifs } from './notify.js';
 import { lockOrder, logStage } from './production.js';
 
 export async function editCustody(db, req, id, body) {
@@ -56,6 +56,7 @@ export async function editCustody(db, req, id, body) {
   const was = `${Number(c.weight_issued).toFixed(3)} جم`, now = `${net.toFixed(3)} جم`;
   await db.query("insert into custody_work_log(custody_id, event, reason, user_id) values ($1,'note',$2,$3)", [c.id, `عدّل المدير العهدة من ${was} إلى ${now}: ${reason}`, req.user.id]);
   if (c.order_id) await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `تعديل العهدة ${c.custody_no} من ${was} إلى ${now}: ${reason}`, false, c.worker_id);
+  await resolveNotifs(db, `custody_reject:${c.id}`, `✓ صحّحه ${req.user.full_name} إلى ${now}`);
   await notifyUsers(db, [c.worker_id], { kind: 'custody', title: `عُدّلت عهدتك ${c.custody_no}`, body: `من ${was} إلى ${now} — ${reason}`, link: '/w' });
   await audit(db, req, 'custody.edit', 'custody', c.id, { before: { weight: c.weight_issued, gross: c.gross_weight, stones: c.stones_weight, pieces: c.pieces }, after: { weight: net.toFixed(4), gross, stones, pieces }, accepted: !!c.worker_ack_at, reason });
   return { ok: true, weight: net.toFixed(4), diff };

@@ -660,3 +660,35 @@ test('تحويل العهدة لعامل آخر: نفس المرحلة (إعاد
   const fc = (await pool.query('select id from custodies where finding_id=$1 and worker_id=$2', [f.id, A.id])).rows[0].id;
   assert.equal((await call('POST', `/sup/custody/${fc}/transfer`, { to_worker_id: B.id, weight: '1' })).status, 400);
 });
+
+test('قبول أحد المشرفين يُعمَّم على باقي المشرفين: الإشعار يُعلَّم بمن عالجه عند الجميع', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '50', note: 'رصيد' });
+  const mk = async (u, role, kind = null) => {
+    const id = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, must_change_password) values ($1,$2,$1,$3,$1,false) returning id", [u, hashPassword('Nt#2026xx'), role])).rows[0].id;
+    let ck = ''; const go = async (m, p, body) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+    await go('POST', '/auth/login', { username: u, password: 'Nt#2026xx' }); void kind; return { id, go };
+  };
+  const S1 = await mk('ntsup1', 'supervisor'), S2 = await mk('ntsup2', 'supervisor'), Wk = await mk('ntwrk', 'worker');
+  await call('POST', '/inventory/gold/to-worker', { worker_id: Wk.id, material_id: mat, weight: '10', purpose: 'لحام', loss_rate_percent: '0' });
+  const c = (await Wk.go('GET', '/w/tasks')).data.custodies[0];
+  await Wk.go('POST', `/w/custody/${c.id}/ack`, {});
+  const rq = (await Wk.go('POST', `/w/custody/${c.id}/return-request`, { weight: '2' })).data;
+  const notif = async (S) => (await S.go('GET', '/notifications')).data.find((n) => n.ref === `return_request:${rq.id}`);
+  const n1 = await notif(S1), n2 = await notif(S2);
+  assert.ok(n1 && n2 && !n2.read_at && !n2.resolved_at, 'وصل للمشرفَين');
+  // المشرف الأول يؤكد ← يُعلَّم عند الثاني
+  assert.equal((await S1.go('POST', `/sup/return-requests/${rq.id}/accept`, { weight: '2' })).status, 200);
+  const n2b = await notif(S2);
+  assert.ok(n2b.resolved_at && n2b.read_at, 'عولج ومقروء عند الثاني');
+  assert.match(n2b.resolved_note, /ntsup1/);
+  assert.equal((await S2.go('GET', '/sup/return-requests')).data.filter((x) => x.id === rq.id).length, 0, 'اختفى من قائمة الثاني');
+  assert.equal((await S2.go('POST', `/sup/return-requests/${rq.id}/accept`, {})).status, 409);
+  // إنهاء المرحلة ← الاستلام يعالج الإشعار عند الجميع
+  await Wk.go('POST', `/w/custody/${c.id}/start`, {});
+  await Wk.go('POST', `/w/custody/${c.id}/finish`, {});
+  assert.ok(!(await S2.go('GET', '/notifications')).data.find((n) => n.ref === `custody_finish:${c.id}`).resolved_at);
+  assert.equal((await S1.go('POST', '/sup/receive', { worker_id: Wk.id, items: [{ custody_id: c.id, returned_weight: '8' }] })).status, 200);
+  const fin = (await S2.go('GET', '/notifications')).data.find((n) => n.ref === `custody_finish:${c.id}`);
+  assert.ok(fin.resolved_at); assert.match(fin.resolved_note, /استلمه ntsup1/);
+});

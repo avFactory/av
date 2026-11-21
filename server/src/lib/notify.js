@@ -1,14 +1,20 @@
 import { pool } from '../db.js';
 
 /** إشعار داخلي لمستخدمين محددين */
-export async function notifyUsers(db, userIds, { kind, title, body = null, link = null }) {
+export async function notifyUsers(db, userIds, { kind, title, body = null, link = null, ref = null }) {
   const ids = [...new Set(userIds.filter(Boolean))];
   if (!ids.length) return;
   await db.query(
-    `insert into notifications(user_id, kind, title, body, link)
-     select u, $2, $3, $4, $5 from unnest($1::int[]) u`,
-    [ids, kind, title, body, link]
+    `insert into notifications(user_id, kind, title, body, link, ref)
+     select u, $2, $3, $4, $5, $6 from unnest($1::int[]) u`,
+    [ids, kind, title, body, link, ref]
   );
+}
+
+/** معالجة إشعار مشترك: يُعلَّم عند كل من وصله بأنه عولج ومن عالجه (مثلاً «✓ أكّده بسام») */
+export async function resolveNotifs(db, ref, note) {
+  if (!ref) return;
+  await db.query('update notifications set resolved_at=now(), resolved_note=$2, read_at=coalesce(read_at, now()) where ref=$1 and resolved_at is null', [ref, note]);
 }
 
 /** إشعار لكل من يملك صلاحية معينة */

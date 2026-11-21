@@ -6,7 +6,7 @@ import { Btn, Card, Field, Input, Modal, WeightInput, useAction, useFetch } from
 
 /** طلبات العمال تسليم جزء من العهدة للمشرف: يزن المشرف ويؤكد أو يرفض */
 export default function ReturnRequests({ worker }) {
-  const { data, reload } = useFetch(`/sup/return-requests${worker ? `?worker=${worker}` : ''}`, { live: ['custodies'] });
+  const { data, reload } = useFetch(`/sup/return-requests${worker ? `?worker=${worker}` : ''}`, { live: ['custodies', 'custody_return_requests'] });
   const [m, setM] = useState(null);
   const [run, busy] = useAction();
   if (!data?.length) return null;

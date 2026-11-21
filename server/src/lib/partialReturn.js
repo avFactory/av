@@ -3,7 +3,7 @@
 import { bad, conflict, notFound, int, str, weight as W } from './http.js';
 import * as ledger from './ledger.js';
 import { audit } from './audit.js';
-import { notifyPerm, notifyUsers } from './notify.js';
+import { notifyPerm, notifyUsers, resolveNotifs } from './notify.js';
 import { logStage } from './production.js';
 
 export async function partialReturn(db, req, custodyId, body) {
@@ -54,7 +54,7 @@ export async function createReturnRequest(db, req, custodyId, body) {
   const pieces = body.pieces != null && body.pieces !== '' ? int(body.pieces, 'عدد القطع', { min: 0 }) : 0;
   const note = str(body.note, 'البيان', { max: 300 });
   const q = (await db.query('insert into custody_return_requests(custody_id, worker_id, weight, pieces, note) values ($1,$2,$3,$4,$5) returning *', [c.id, req.user.id, w, pieces, note])).rows[0];
-  await notifyPerm(db, 'custody.receive', { kind: 'receive', title: `${req.user.full_name} يحوّل ${Number(w).toFixed(3)} جم من عهدته للمشرف`, body: `${c.custody_no}${note ? ` — ${note}` : ''} — زِن وأكّد الاستلام`, link: '/sup' });
+  await notifyPerm(db, 'custody.receive', { kind: 'receive', title: `${req.user.full_name} يحوّل ${Number(w).toFixed(3)} جم من عهدته للمشرف`, body: `${c.custody_no}${note ? ` — ${note}` : ''} — زِن وأكّد الاستلام`, link: '/sup', ref: `return_request:${q.id}` });
   await audit(db, req, 'custody.return_request', 'custody', c.id, { weight: w, pieces, note });
   return q;
 }
@@ -64,6 +64,7 @@ export async function cancelReturnRequest(db, req, id) {
   if (!q || q.worker_id !== req.user.id) throw notFound('الطلب غير موجود');
   if (q.status !== 'pending') throw conflict('الطلب لم يعد معلقاً');
   await db.query("update custody_return_requests set status='cancelled', decided_at=now() where id=$1", [q.id]);
+  await resolveNotifs(db, `return_request:${q.id}`, 'أُلغي من العامل');
   return { ok: true };
 }
 
@@ -75,6 +76,7 @@ export async function acceptReturnRequest(db, req, id, body) {
   const weight = body.weight != null && body.weight !== '' ? body.weight : q.weight;
   const r = await partialReturn(db, req, q.custody_id, { weight, pieces: body.pieces ?? q.pieces, note: [q.note, body.note].filter(Boolean).join(' — ') || 'تحويل من العامل للمشرف' });
   await db.query("update custody_return_requests set status='accepted', confirmed_weight=$2, decided_by=$3, decided_at=now() where id=$1", [q.id, r.weight, req.user.id]);
+  await resolveNotifs(db, `return_request:${q.id}`, `✓ أكّده ${req.user.full_name} (${Number(r.weight).toFixed(3)} جم)`);
   return r;
 }
 
@@ -84,6 +86,7 @@ export async function rejectReturnRequest(db, req, id, body) {
   if (q.status !== 'pending') throw conflict('الطلب لم يعد معلقاً');
   const reason = str(body.reason, 'سبب الرفض', { required: true, max: 300 });
   await db.query("update custody_return_requests set status='rejected', decided_by=$2, decided_at=now(), decision_note=$3 where id=$1", [q.id, req.user.id, reason]);
+  await resolveNotifs(db, `return_request:${q.id}`, `✗ رفضه ${req.user.full_name}: ${reason}`);
   await notifyUsers(db, [q.worker_id], { kind: 'custody', title: 'رفض المشرف طلب التحويل', body: reason, link: '/w' });
   await audit(db, req, 'custody.return_request_reject', 'custody', q.custody_id, { reason });
   return { ok: true };

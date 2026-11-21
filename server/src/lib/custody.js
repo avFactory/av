@@ -3,7 +3,7 @@ import { bad, conflict, forbidden, notFound, weight as W, int, str } from './htt
 import { specialtyRate } from './workerLoss.js';
 import * as ledger from './ledger.js';
 import { audit } from './audit.js';
-import { notifyPerm, notifyUsers } from './notify.js';
+import { notifyPerm, notifyUsers, resolveNotifs } from './notify.js';
 import { saveSignature } from './uploads.js';
 import { lockOrder, advance, goldStonesGrams, logStage } from './production.js';
 import { groupInfo } from './orderGroups.js';
@@ -118,6 +118,7 @@ export async function issue(db, req, body) {
     if (stage.kind === 'final_weight') await db.query('update orders set final_weight=null, final_gold_weight=null where id = any($1::int[]) and final_weight is not null', [grp ? grp.ids : [order.id]]);
     await logStage(db, order.id, stage.id, 'assigned', req.user.id, `تسليم ${net} جم - ${c.custody_no}`, false, workerId);
     if (sig) await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'ack',$2,'توقيع العامل عند التسليم')", [c.id, req.user.id]);
+    await resolveNotifs(db, `awaiting_issue:${order.id}`, `✓ سلّمه ${req.user.full_name || 'النظام'} لـ${worker.full_name}`);
     created.push({ ...c, order_no: order.order_no });
   }
 
@@ -253,6 +254,7 @@ export async function receive(db, req, body) {
     } else if (it.advance !== false && c.order_id) {
       advanced = await tryAdvance(db, req, c.order_id);
     }
+    await resolveNotifs(db, `custody_finish:${c.id}`, `✓ استلمه ${req.user.full_name}`);
     results.push({ settlement: st, order_no: label, advanced });
   }
   await audit(db, req, 'custody.receive', 'custody_batch', batch.id, { worker_id: workerId, settlements: results.map((r) => r.settlement.settlement_no) });
@@ -395,6 +397,7 @@ export async function reverseIssue(db, req, id, reasonIn) {
     [c.finding_id, c.pieces || 0, c.weight_issued, c.id, `إلغاء صرف ${c.custody_no}`, req.user.id]);
   for (const mv of mvs) await ledger.reverse(db, mv, `إلغاء تسليم ${c.custody_no}: ${reason}`, req.user.id);
   await db.query("update custodies set status='reversed', reversed_by=$2, reversed_at=now(), reversal_reason=$3 where id=$1", [id, req.user.id, reason]);
+  await resolveNotifs(db, `custody_reject:${id}`, `✓ ألغى ${req.user.full_name} التسليم`);
   await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `إلغاء التسليم ${c.custody_no}: ${reason}`);
   await audit(db, req, 'custody.reverse', 'custody', id, { reason });
   return { reversed: mvs.length };

@@ -18,6 +18,7 @@ export default function Notifications() {
           <button key={n.id} onClick={() => open(n)} className="card card-body" style={{ textAlign: 'start', cursor: 'pointer', font: 'inherit', color: 'inherit', borderInlineStart: n.read_at ? undefined : '4px solid var(--gold)' }}>
             <div className="hrow between"><b>{n.title}</b><span className="small muted">{fmtDT(n.created_at)}</span></div>
             {n.body && <div className="small muted">{n.body}</div>}
+            {n.resolved_note && <div className="small mt-1"><span className="badge text-bg-success fw-normal">{n.resolved_note}</span></div>}
           </button>
         ))}
       </div>
