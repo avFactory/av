@@ -10,7 +10,7 @@ export default function WorkerPicker({ onPick, mode, searchInHeader }) {
     const s = q.trim();
     let l = data || [];
     if (s) l = l.filter((w) => w.full_name.includes(s) || (w.employee_no || '').toLowerCase().includes(s.toLowerCase()));
-    if (mode === 'receive') l = [...l].sort((a, b) => b.finished_count - a.finished_count || b.open_count - a.open_count);
+    // الترتيب ثابت حسب رقم العامل/المكينة (من الخادم) حتى لا تتغير الأماكن
     return l;
   }, [data, q, mode]);
   if (!data) return <Loader />;

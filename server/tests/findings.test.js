@@ -739,3 +739,16 @@ test('قبول أحد المشرفين يُعمَّم على باقي المشر
   const fin = (await S2.go('GET', '/notifications')).data.find((n) => n.ref === `custody_finish:${c.id}`);
   assert.ok(fin.resolved_at); assert.match(fin.resolved_note, /استلمه ntsup1/);
 });
+
+test('ترتيب العمال والمكائن ثابت حسب الرقم في التسليم والاستلام والمتابعة (لا يتغير مع العهد)', async () => {
+  const mk = (u, no, kind = 'person') => pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, kind) values ($1,$2,$1,'worker',$3,$4) returning id", [u, hashPassword('Ss#2026xx'), no, kind]);
+  await mk('ord10', '9010'); await mk('ord2', '9002'); await mk('ordM', 'M9005', 'machine');
+  const nos = (await call('GET', '/sup/workers')).data.map((w) => w.employee_no).filter((n) => ['9010', '9002', 'M9005'].includes(n));
+  assert.deepEqual(nos, ['9002', 'M9005', '9010'], 'ترتيب رقمي (2 قبل 10) والمكينة في مكان رقمها');
+  const all = (await call('GET', '/sup/workers')).data.map((w) => w.id);
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=18 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '5', note: 'رصيد' });
+  const last = all[all.length - 1];
+  await call('POST', '/inventory/gold/to-worker', { worker_id: last, material_id: mat, weight: '1', purpose: 'x', loss_rate_percent: '0' });
+  assert.deepEqual((await call('GET', '/sup/workers')).data.map((w) => w.id), all, 'العهدة لا تغير مكان العامل');
+});

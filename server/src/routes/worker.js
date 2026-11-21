@@ -130,7 +130,7 @@ r.post('/return-requests/:id/cancel', async (req, res) => {
 
 /** تحويل الطلب لعامل المرحلة التالية */
 r.get('/workers', async (req, res) => {
-  res.json(await many(`select u.id, u.full_name, u.employee_no, u.specialty, u.kind from users u where u.role_code='worker' and u.active and u.kind <> 'machine' and u.id <> $1 order by u.employee_no nulls last, u.full_name`, [req.user.id]));
+  res.json(await many(`select u.id, u.full_name, u.employee_no, u.specialty, u.kind from users u where u.role_code='worker' and u.active and u.kind <> 'machine' and u.id <> $1 order by nullif(regexp_replace(coalesce(u.employee_no,''),'[^0-9]','','g'),'')::numeric nulls last, u.employee_no nulls last, u.full_name`, [req.user.id]));
 });
 r.get('/transfers', async (req, res) => {
   const q = `select ${transferCols}, coalesce(o.title, sc.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name,

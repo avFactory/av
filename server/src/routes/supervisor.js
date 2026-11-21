@@ -68,7 +68,8 @@ r.get('/workers', requirePerm('workers.view', 'custody.issue', 'custody.receive'
     from users u left join departments d on d.id=u.department_id
     where u.role_code='worker' and u.active
       and ($1::text is null or u.full_name ilike $1 or u.employee_no ilike $1 or u.username ilike $1)
-    order by open_count desc, u.kind, u.full_name`, [qs]));
+    -- ترتيب ثابت حسب رقم العامل/المكينة (لا يتغير مكانه مع تغير عهده)
+    order by nullif(regexp_replace(coalesce(u.employee_no,''),'[^0-9]','','g'),'')::numeric nulls last, u.employee_no nulls last, u.full_name`, [qs]));
 });
 
 /** ملف العامل الكامل */
