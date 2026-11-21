@@ -585,3 +585,27 @@ test('المكائن: التسليم والتحويل إليها يُسجل فو
   assert.equal(rc.status, 200, JSON.stringify(rc.data));
   assert.equal(await bal('worker', m, mat), 13, '10 + 3 باقية على المكينة');
 });
+
+test('تصحيح تسوية خاطئة: يلغي العجز غير الطبيعي ويعيد الذهب لعهدة العامل، ثم استلام صحيح', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '400', note: 'رصيد' });
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('fixw',$1,'عامل تصحيح','worker','FX1') returning id", [hashPassword('Fx#2026xx')])).rows[0].id;
+  const o = (await call('POST', '/orders', { title: 'طقم تصحيح', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat })).data;
+  for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0].h; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
+  const c = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: o.id, weight: '300' }] })).data.custodies[0];
+  // خطأ إدخال: 0.91 بدل 299.91
+  const bad = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c.id, returned_weight: '0.91' }] });
+  assert.equal(bad.status, 200, JSON.stringify(bad.data));
+  const prof = async () => (await call('GET', `/sup/workers/${w}`)).data;
+  assert.ok(Number((await prof()).totals.abnormal_loss_total) > 290);
+  const stId = (await prof()).custodies.find((x) => x.id === c.id).settlement_id;
+  const rv = await call('POST', `/sup/settlements/${stId}/reverse`, { reason: 'خطأ في إدخال الوزن' });
+  assert.equal(rv.status, 200, JSON.stringify(rv.data));
+  const p2 = await prof();
+  assert.equal(Number(p2.totals.abnormal_loss_total), 0, 'أُلغي العجز');
+  assert.equal(await bal('worker', w, mat), 300, 'الذهب عاد للعامل');
+  assert.equal(p2.custodies.find((x) => x.id === c.id).status, 'open');
+  const ok = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c.id, returned_weight: '299.91', advance: false }] });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.ok(Number((await prof()).totals.abnormal_loss_total) < 0.1);
+});
