@@ -41,7 +41,7 @@ export default function WorkerProfile() {
     ...cols.slice(0, 5), ['المرتجع', (c) => <span className="n">{fmtW(c.returned_weight)}</span>], ['البقايا', (c) => <span className="n">{fmtW(c.scrap_weight)}</span>],
     ['العجز الطبيعي', (c) => <span className="n">{fmtW(c.normal_loss)}</span>], ['غير الطبيعي', (c) => <span className="n">{fmtW(c.abnormal_loss)}</span>],
     ['التسوية', (c) => <StatusBadge map={SETTLEMENT_STATUS} value={c.settlement_status} />], ['الاستلام', (c) => fmtDT(c.received_at)],
-    ['', (c) => can('custody.reverse') && c.settlement_id && <button className="btn btn-outline-danger btn-sm" title="يلغي الاستلام والعجز بحركات عكسية ويعيد الذهب لعهدة العامل" onClick={() => setStRev(c)}>تصحيح التسوية</button>],
+    ['', (c) => can('custody.reverse') && c.settlement_id && <button className="btn btn-outline-danger btn-sm" title="يلغي الاستلام والعجز بحركات عكسية ويعيد الذهب لعهدة العامل" onClick={() => setStRev(c)}>↩ إرجاع العهدة للعامل</button>],
   ];
   return (
     <Page title={w.full_name} subtitle={`${w.kind === 'machine' ? '⚙ مكينة · ' : ''}${w.employee_no || ''} · ${[w.department, w.specialty].filter(Boolean).join(' · ') || 'عامل'}`} back="/sup/workers"
@@ -85,7 +85,7 @@ export default function WorkerProfile() {
       {tab === 'closed' && <div className="card"><Table rows={closed} columns={closedCols} empty="لا يوجد" /></div>}
       {tab === 'stones' && <div className="card"><Table rows={stones} empty="لا توجد أحجار في عهدته" columns={[['الدفعة', 'lot_no'], ['النوع', 'stone_type'], ['الطلب', 'order_no'], ['قيراط', (s) => <span className="n">{s.carats}</span>], ['العدد', 'count']]} /></div>}
       {tab === 'recent' && <div className="card"><Table rows={recent} columns={[['رقم الحركة', 'movement_no'], ['النوع', (m) => KINDS[m.kind] || m.kind], ['الطلب', 'order_no'], ['المرحلة', 'stage_name'], ['الوزن', (m) => <span className="n">{fmtW(m.weight)}</span>], ['التاريخ', (m) => fmtDT(m.created_at)]]} /></div>}
-      <ReasonModal open={!!stRev} title={`تصحيح التسوية ${stRev?.settlement_no || ''} — يُلغى الاستلام والعجز ويعود ${fmtW(stRev?.returned_weight || 0)} + العجز لعهدة العامل`} label="سبب التصحيح (مثال: خطأ في إدخال الوزن)" danger busy={busy} onClose={() => setStRev(null)}
+      <ReasonModal open={!!stRev} title={`إرجاع العهدة للعامل (تصحيح التسوية ${stRev?.settlement_no || ''}) — يُلغى الاستلام والعجز ويعود الذهب كاملاً لعهدته`} label="سبب التصحيح (مثال: خطأ في إدخال الوزن)" danger busy={busy} onClose={() => setStRev(null)}
         onSubmit={(reason) => run(async () => { await api.post(`/sup/settlements/${stRev.settlement_id}/reverse`, { reason }); setStRev(null); setTab('open'); reload(); }, 'تم التصحيح — الذهب عاد لعهدة العامل، استلمه من جديد بالوزن الصحيح')} />
       <ReasonModal open={!!rev} title="إلغاء تسليم خاطئ (حركة عكسية)" label="سبب الإلغاء" danger busy={busy} onClose={() => setRev(null)} onSubmit={doReverse} />
     </Page>
