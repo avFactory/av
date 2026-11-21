@@ -3,6 +3,7 @@ import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtDT, fmtMoney } from '../../format.js';
 import { Btn, Field, Input, Loader, Modal, Page, Select, Table, useAction, useFetch, Textarea, Search, Badge, Empty, Kv, askConfirm } from '../../ui.jsx';
+import StoneIssueEdit from '../../components/StoneIssueEdit.jsx';
 
 const MK = { in: 'إضافة', issue: 'تسليم لعامل', return: 'مرتجع من عامل', used: 'مستخدم (مركب)', lost: 'مفقود', adjust_in: 'تسوية زيادة', adjust_out: 'تسوية نقص', reversal: 'عكس حركة' };
 const ICONS = [['round', 'دائري'], ['oval', 'بيضاوي'], ['pear', 'دمعة'], ['heart', 'قلب'], ['marquise', 'ماركيز'], ['square', 'مربع'], ['emerald', 'زمردي'], ['baguette', 'باجيت'], ['other', 'آخر']];
@@ -36,6 +37,7 @@ export default function Stones() {
   const isOpen = (id) => opened.has(id) || !!q.trim() || shapeF === String(id);
   const toggle = (id) => setOpened((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [lot, setLot] = useState(null);
+  const [editMv, setEditMv] = useState(null);
   const [newItem, setNewItem] = useState(null);
   const [mv, setMv] = useState(null);
   const [edit, setEdit] = useState(null);
@@ -140,8 +142,10 @@ export default function Stones() {
         })}
       </div>
 
+      {editMv && <StoneIssueEdit mv={editMv} onClose={() => setEditMv(null)} onDone={async () => { setLot(await api.get(`/stones/${lot.lot.id}`)); reload(); }} />}
       <LotModal lot={lot} onClose={() => setLot(null)} can={can} busy={busy} run={run}
         onMove={(l) => setMv({ lot: l, kind: 'in' })} onEdit={(l) => setEdit({ ...l })}
+        onEditIssue={(m) => setEditMv({ ...m, shape_name: lot.lot.shape_name, size_label: lot.lot.size_label })}
         onReverse={(m) => { const reason = window.prompt('سبب عكس الحركة'); if (reason) run(async () => { await api.post(`/stones/movements/${m.id}/reverse`, { reason }); setLot(await api.get(`/stones/${lot.lot.id}`)); reload(); }, 'تم العكس'); }} />
       <MoveModal mv={mv} setMv={setMv} busy={busy} onSave={() => run(async () => { await api.post(`/stones/${mv.lot.id}/move`, mv); setMv(null); reload(); if (lot) setLot(await api.get(`/stones/${lot.lot.id}`)); }, 'تم تسجيل الحركة')} />
       <ItemModal title="صنف جديد" item={newItem} setItem={setNewItem} shapes={shapes} busy={busy} isNew
@@ -154,7 +158,7 @@ export default function Stones() {
   );
 }
 
-function LotModal({ lot, onClose, can, onMove, onEdit, onReverse }) {
+function LotModal({ lot, onClose, can, onMove, onEdit, onReverse, onEditIssue }) {
   if (!lot) return null;
   const l = lot.lot;
   return (
@@ -169,7 +173,7 @@ function LotModal({ lot, onClose, can, onMove, onEdit, onReverse }) {
       {can('stones.manage') && <div className="hrow gap"><Btn onClick={() => onMove(l)}>تسجيل حركة</Btn><Btn kind="ghost" onClick={() => onEdit(l)}>تعديل البيانات</Btn></div>}
       {lot.media.length > 0 && <div className="files">{lot.media.map((m) => <a key={m.id} href={fileUrl(m.path)} target="_blank" rel="noreferrer"><img src={fileUrl(m.path, 400)} alt="" /></a>)}</div>}
       <Table rows={lot.movements} empty="لا توجد حركات" rowClass={(m) => (m.reversed ? 'row-warn' : '')} columns={[['الحركة', (m) => MK[m.kind]], ['قيراط', (m) => <span className="n">{ct(m.carats)}</span>], ['العدد', 'count'], ['الطلب', 'order_no'], ['العامل', 'worker_name'], ['ملاحظة', 'note'], ['بواسطة', 'user_name'], ['التاريخ', (m) => fmtDT(m.created_at)],
-        ['', (m) => can('stones.manage') && m.kind !== 'reversal' && !m.reversed && <Btn size="sm" kind="ghost" onClick={() => onReverse(m)}>عكس</Btn>]]} />
+        ['', (m) => can('stones.manage') && m.kind !== 'reversal' && !m.reversed && <span className="d-flex gap-1">{m.kind === 'issue' && <Btn size="sm" kind="ghost" onClick={() => onEditIssue(m)}>تعديل</Btn>}<Btn size="sm" kind="ghost" onClick={() => onReverse(m)}>عكس</Btn></span>]]} />
     </Modal>
   );
 }

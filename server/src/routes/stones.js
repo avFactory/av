@@ -10,6 +10,7 @@ import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { upload, registerFiles } from '../lib/uploads.js';
 import { sendXlsx } from '../lib/xlsx.js';
+import { notifyUsers } from '../lib/notify.js';
 
 const r = Router();
 const CT = (v, name = 'القيراط') => {
@@ -42,6 +43,16 @@ r.post('/share/rotate', requirePerm('links.stones'), async (req, res) => {
 
 // ------------------------------------------------------------------ تصنيفات القصّة
 const ICONS = ['round', 'oval', 'pear', 'heart', 'marquise', 'square', 'emerald', 'baguette', 'other'];
+/** آخر عمليات صرف الألماس للعمال (لشاشة الصرف: مراجعة وتعديل) */
+r.get('/issues', requirePerm('stones.view'), async (req, res) => {
+  res.json(await many(`select m.id, m.lot_id, m.carats::text, m.count, m.order_id, m.worker_id, m.note, m.created_at,
+      l.lot_no, l.size_label, s.name as shape_name, s.icon as shape_icon, o.order_no, w.full_name as worker_name, u.full_name as user_name
+    from stone_movements m join stone_lots l on l.id=m.lot_id left join stone_shapes s on s.id=l.shape_id
+    left join orders o on o.id=m.order_id left join users w on w.id=m.worker_id left join users u on u.id=m.created_by
+    where m.kind='issue' and not exists (select 1 from stone_movements r where r.reverses_id=m.id)
+    order by m.id desc limit 40`));
+});
+
 r.get('/shapes', requirePerm('stones.view'), async (_req, res) => {
   res.json(await many(`select s.*, count(l.id)::int as items from stone_shapes s left join stone_lots l on l.shape_id=s.id and l.active
                        group by s.id order by s.sort_order, s.name`));
@@ -326,6 +337,41 @@ r.post('/:id/move', requirePerm('stones.manage'), async (req, res) => {
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`, [id, kind, carats, count, orderId, workerId, stageId, note, req.user.id])).rows[0];
     await audit(db, req, `stone.${kind}`, 'stone_lot', id, { carats, count, orderId, workerId, note });
     return mv;
+  }));
+});
+
+/**
+ * تعديل صرف ألماس (القيراط والعدد): يُسجَّل تصحيحاً موثقاً — عكس الصرف الأصلي وصرف جديد بالقيم الصحيحة.
+ * الزيادة تتطلب رصيداً في المخزن، والنقص لا يتجاوز ما بقي لدى العامل من هذه الدفعة لهذا الطلب.
+ */
+r.post('/movements/:id/edit', requirePerm('stones.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const mv = (await db.query('select * from stone_movements where id=$1', [int(req.params.id)])).rows[0];
+    if (!mv) throw notFound('الحركة غير موجودة');
+    if (mv.kind !== 'issue') throw bad('التعديل لحركات الصرف للعمال فقط');
+    if ((await db.query('select 1 from stone_movements where reverses_id=$1', [mv.id])).rowCount) throw conflict('هذا الصرف مُلغى أو مُعدّل مسبقاً');
+    const carats = CT(req.body.carats);
+    const count = int(req.body.count ?? mv.count, 'العدد', { min: 0 });
+    const reason = str(req.body.reason, 'سبب التعديل', { required: true, max: 300 });
+    const dC = Number(carats) - Number(mv.carats), dN = count - Number(mv.count);
+    if (Math.abs(dC) < 1e-9 && dN === 0) throw bad('لم تتغير القيم');
+    await db.query('select pg_advisory_xact_lock(hashtext($1))', [`stone:${mv.lot_id}`]);
+    const bal = (await db.query('select * from stone_lot_balances where lot_id=$1', [mv.lot_id])).rows[0];
+    if (dC > 1e-9 && Number(bal.stock_carats) < dC) throw bad(`الزيادة أكبر من رصيد المخزن (${Number(bal.stock_carats).toFixed(3)} قيراط)`);
+    if (dN > 0 && Number(bal.stock_count) < dN) throw bad(`الزيادة في العدد أكبر من المخزن (${bal.stock_count} حبة)`);
+    // ما لدى العامل الآن من هذه الدفعة لهذا الطلب (بعد ما أرجعه/استخدمه)
+    const w = (await db.query(`select coalesce(sum(case kind when 'issue' then carats else -carats end),0) c, coalesce(sum(case kind when 'issue' then count else -count end),0) n
+      from stone_movements m where lot_id=$1 and worker_id=$2 and order_id=$3 and kind in ('issue','return','used','lost')
+      and not exists (select 1 from stone_movements r where r.reverses_id=m.id)`, [mv.lot_id, mv.worker_id, mv.order_id])).rows[0];
+    if (Number(w.c) + dC < -1e-9 || Number(w.n) + dN < 0) throw bad('القيمة الجديدة أقل مما أرجعه العامل أو استخدمه من هذا الصرف — صحّح الإرجاع أولاً');
+    await db.query(`insert into stone_movements(lot_id, kind, carats, count, order_id, worker_id, stage_id, reverses_id, note, created_by)
+      values ($1,'reversal',$2,$3,$4,$5,$6,$7,$8,$9)`, [mv.lot_id, mv.carats, mv.count, mv.order_id, mv.worker_id, mv.stage_id, mv.id, `تعديل الصرف: ${reason}`, req.user.id]);
+    const nv = (await db.query(`insert into stone_movements(lot_id, kind, carats, count, order_id, worker_id, stage_id, note, created_by)
+      values ($1,'issue',$2,$3,$4,$5,$6,$7,$8) returning *`, [mv.lot_id, carats, count, mv.order_id, mv.worker_id, mv.stage_id,
+      `${mv.note ? `${mv.note} — ` : ''}معدّل من ${Number(mv.carats)} ق/${mv.count} حبة: ${reason}`, req.user.id])).rows[0];
+    await audit(db, req, 'stone.issue_edit', 'stone_movement', mv.id, { before: { carats: mv.carats, count: mv.count }, after: { carats, count }, reason, new_id: nv.id });
+    if (mv.worker_id) await notifyUsers(db, [mv.worker_id], { kind: 'custody', title: 'عُدّل صرف الألماس لك', body: `من ${Number(mv.carats)} إلى ${Number(carats)} قيراط${count !== Number(mv.count) ? ` · ${count} حبة` : ''} — ${reason}`, link: '/w' });
+    return nv;
   }));
 });
 

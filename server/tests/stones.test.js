@@ -123,3 +123,32 @@ test('استيراد الألماس مع عمود العدد: إنشاء بال�
   const back = (await call('POST', '/stones/import/parse', null, fd2)).rows;
   assert.deepEqual(back.map((r) => [r.name, r.carats, r.count]), [['راوند 1.3 mm', '2.5000', '250'], ['اوفال 0.25', '1.7500', '7']]);
 });
+
+test('تعديل صرف الألماس: زيادة ونقص بتصحيح موثق، وحدود المخزن وما لدى العامل', async () => {
+  const raw = async (m, p, b) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie, 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); return { status: r.status, data: await r.json() }; };
+  const shape = (await pool.query("select id from stone_shapes where name='راوند'")).rows[0].id;
+  const lot = await call('POST', '/stones', { shape_id: String(shape), size_label: '3.3', carats: '10', count: '100' });
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('dw1','x','عامل ألماس','worker','D1') returning id")).rows[0].id;
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active order by id limit 1")).rows[0].id;
+  const o = await call('POST', '/orders', { title: 'خاتم ألماس', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat });
+  const mv = await call('POST', `/stones/${lot.id}/move`, { kind: 'issue', carats: '2', count: '20', worker_id: w, order_id: o.id });
+  const bal = async () => (await pool.query('select stock_carats::float c, stock_count n, with_workers_carats::float wc from stone_lot_balances where lot_id=$1', [lot.id])).rows[0];
+  assert.deepEqual([(await bal()).c, (await bal()).n], [8, 80]);
+  assert.equal((await raw('POST', `/stones/movements/${mv.id}/edit`, { carats: '2.5' })).status, 400, 'السبب إلزامي');
+  assert.equal((await raw('POST', `/stones/movements/${mv.id}/edit`, { carats: '20', reason: 'x' })).status, 400, 'أكبر من المخزن');
+  // زيادة إلى 2.5 ق / 25 حبة
+  const e1 = await raw('POST', `/stones/movements/${mv.id}/edit`, { carats: '2.5', count: '25', reason: 'خطأ وزن' });
+  assert.equal(e1.status, 200, JSON.stringify(e1.data));
+  let b = await bal(); assert.deepEqual([b.c, b.n, b.wc], [7.5, 75, 2.5]);
+  assert.equal((await raw('POST', `/stones/movements/${mv.id}/edit`, { carats: '1', reason: 'x' })).status, 409, 'الصرف الأصلي عُدّل مسبقاً');
+  // العامل أرجع 1 ق ← لا يُخفض الصرف تحت ما أرجعه
+  await call('POST', `/stones/${lot.id}/move`, { kind: 'return', carats: '1', count: '10', worker_id: w, order_id: o.id });
+  assert.equal((await raw('POST', `/stones/movements/${e1.data.id}/edit`, { carats: '0.5', count: '5', reason: 'x' })).status, 400);
+  const e2 = await raw('POST', `/stones/movements/${e1.data.id}/edit`, { carats: '1.5', count: '15', reason: 'تصحيح' });
+  assert.equal(e2.status, 200, JSON.stringify(e2.data));
+  b = await bal(); assert.deepEqual([b.c, b.n, b.wc], [9.5, 95, 0.5], '10 − 2.5 + 1 (إرجاع) + 1 (تخفيض الصرف)');
+  // السجل: حركات عكسية موثقة، وقائمة آخر الصرف تُظهر الصرف الحالي فقط
+  assert.equal((await pool.query("select count(*)::int n from stone_movements where lot_id=$1 and kind='reversal' and note like 'تعديل الصرف%'", [lot.id])).rows[0].n, 2);
+  const issues = (await call('GET', '/stones/issues')).filter((x) => x.lot_id === lot.id);
+  assert.deepEqual(issues.map((x) => [x.id, Number(x.carats)]), [[e2.data.id, 1.5]]);
+});

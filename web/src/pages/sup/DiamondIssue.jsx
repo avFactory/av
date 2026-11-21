@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api.js';
-import { Btn, Card, Field, Input, Loader, ScanInput, Select, Empty, useAction, useToast } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Loader, ScanInput, Select, Empty, Table, useAction, useToast } from '../../ui.jsx';
+import { fmtDT } from '../../format.js';
 import { ShapeIcon } from '../admin/Stones.jsx';
 import { useAuth } from '../../auth.jsx';
+import StoneIssueEdit from '../../components/StoneIssueEdit.jsx';
 
 const ct = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const toNum = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
@@ -13,10 +15,13 @@ const toNum = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦�
  */
 export default function DiamondIssue() {
   const toast = useToast();
+  const { can } = useAuth();
   const [lots, setLots] = useState(null);
   const [shapeId, setShapeId] = useState(null);
   const [lot, setLot] = useState(null);
-  const load = () => api.get('/stones').then(setLots).catch((e) => toast(e.message, 'bad'));
+  const [issues, setIssues] = useState(null);
+  const [editMv, setEditMv] = useState(null);
+  const load = () => { api.get('/stones').then(setLots).catch((e) => toast(e.message, 'bad')); api.get('/stones/issues').then(setIssues).catch(() => setIssues([])); };
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shapes = useMemo(() => {
@@ -65,6 +70,17 @@ export default function DiamondIssue() {
       ) : (
         <IssueForm lot={current} onBack={() => setLot(null)} onDone={load} />
       )}
+      {issues?.length > 0 && (
+        <Card title="آخر صرف الألماس للعمال" pad={false}>
+          <Table rows={issues} columns={[
+            ['الصنف', (m) => <span className="d-inline-flex align-items-center gap-1"><ShapeIcon icon={m.shape_icon} size={18} />{m.shape_name} <span dir="ltr">{m.size_label}</span></span>],
+            ['قيراط', (m) => <b dir="ltr">{ct(m.carats)}</b>], ['العدد', (m) => m.count || '—'], ['الطلب', (m) => <span dir="ltr">{m.order_no || '—'}</span>], ['العامل', (m) => m.worker_name || '—'],
+            ['التاريخ', (m) => <span className="small">{fmtDT(m.created_at)}</span>],
+            ['', (m) => can('stones.manage') && <Btn size="sm" kind="ghost" onClick={() => setEditMv(m)}>تعديل</Btn>],
+          ]} />
+        </Card>
+      )}
+      {editMv && <StoneIssueEdit mv={editMv} onClose={() => setEditMv(null)} onDone={load} />}
     </div>
   );
 }
