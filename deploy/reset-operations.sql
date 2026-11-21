@@ -14,9 +14,11 @@ truncate table
   stone_movements, gold_supplier_entries,
   expenses, worker_advances,
   inventory_movements, stock_counts,
-  notifications, outbound_messages,
-  doc_counters
+  notifications, outbound_messages
 restart identity;
+
+-- الترقيم يبدأ من جديد للطلبات والعهد والحركات، ويبقى ترقيم أصناف الألماس (STN) لأن الأصناف نفسها باقية
+delete from doc_counters where prefix <> 'STN';
 
 insert into audit_log(action, entity, details)
 values ('system.reset_operations', 'system', '{"note":"تصفير الطلبات والعهد وحركات الذهب والفواتير للبدء الفعلي"}');
