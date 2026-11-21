@@ -258,7 +258,8 @@ r.post('/preview', requirePerm('custody.receive'), async (req, res) => {
 });
 
 r.post('/receive', requirePerm('custody.receive'), async (req, res) => {
-  res.json(await tx((db) => custody.receive(db, req, req.body)));
+  const body = { ...req.body, items: (Array.isArray(req.body.items) ? req.body.items : []).map((it) => ({ ...it, guard_big_loss: true })) };
+  res.json(await tx((db) => custody.receive(db, req, body)));
 });
 
 /** العهد المفتوحة لعامل (لشاشة الاستلام) */

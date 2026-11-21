@@ -29,7 +29,8 @@ export default function Receive() {
       setOpen(rows);
       // تحديد تلقائي للطلبات التي أنهاها العامل مع تعبئة ما صرّح به كاقتراح
       const init = {};
-      for (const c of rows) if (c.work_state === 'finished') init[c.id] = lineFrom(c);
+      // عهد الطلبات فقط — العهدة العامة وعهدة الخامات لا تُحدد تلقائياً (تُستلم عن قصد فقط)
+      for (const c of rows) if (c.work_state === 'finished' && c.order_id) init[c.id] = lineFrom(c);
       setLines(init);
     });
   }, [worker]);
@@ -75,7 +76,9 @@ export default function Receive() {
     return out;
   }, [open, lines]);
   const selected = (open || []).filter((c) => lines[c.id]);
-  const problems = selected.filter((c) => calc[c.id] && calc[c.id].gain > 0);
+  // زيادة وزن، أو عجز كبير (أكثر من 10% أو 1 جم): سبب إلزامي وتُحال لمراجعة العجز
+  const bigLoss = (c) => { const k = calc[c.id]; if (!k) return false; const iss = Number(c.weight_issued) + (k.added || 0); return iss - k.ret > Math.max(1, iss * 0.1); };
+  const problems = selected.filter((c) => calc[c.id] && (calc[c.id].gain > 0 || bigLoss(c)));
   // مجموع ما يُضاف من كل عهدة خامات لا يتجاوز المتبقي فيها
   const usedBySrc = {};
   for (const c of selected) for (const a of lines[c.id].adds || []) if (a.source_custody_id) usedBySrc[a.source_custody_id] = (usedBySrc[a.source_custody_id] || 0) + (Number(a.weight) || 0);
@@ -146,7 +149,7 @@ export default function Receive() {
               {open.map((c) => {
                 const l = lines[c.id];
                 const k = calc[c.id];
-                const alarm = k && k.gain > 0;
+                const alarm = k && (k.gain > 0 || bigLoss(c));
                 return (
                   <div key={c.id} id={`c-${c.id}`} className={`line-item ${l ? 'sel' : ''} ${alarm ? 'alarm' : ''}`}>
                     <label className="line-head check" style={{ cursor: 'pointer' }}>
@@ -210,7 +213,7 @@ export default function Receive() {
                         )}
                         {alarm && (
                           <>
-                            <div className="alert alert-danger">الوزن المرتجع أكبر من المسلَّم للعامل — سجّل ملاحظة وستحال الحالة للاعتماد.</div>
+                            <div className="alert alert-danger">{k.gain > 0 ? 'الوزن المرتجع أكبر من المسلَّم للعامل' : `عجز كبير ${fmtW(Number(c.weight_issued) + (k.added || 0) - k.ret, 3)} جم — تأكد من الوزن المكتوب (خطأ إدخال؟)`} — سجّل ملاحظة وستحال الحالة لمراجعة العجز.</div>
                             <Field label="الملاحظة *"><Textarea value={l.reason} onChange={(e) => upd(c.id, 'reason', e.target.value)} /></Field>
                           </>
                         )}

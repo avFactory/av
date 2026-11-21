@@ -202,9 +202,11 @@ export async function receive(db, req, body) {
     // العجز يُسجَّل تلقائياً ويبقى الزائد على حساب العامل (يُحسب على إجمالي شغل الشهر).
     // المراجعة فقط عند زيادة الوزن عن المسلَّم (حالة غير طبيعية تحتاج ملاحظة).
     // أو إذا طلب المشرف صراحةً إحالة الحالة للمراجعة (review: true)
-    const needsReview = Number(p.gain_weight) > 0 || it.review === true;
+    // عجز كبير عند الاستلام من شاشة المشرف (أكثر من 10% أو 1 جم): غالباً خطأ إدخال ← ملاحظة إلزامية وإحالة للمراجعة
+    const bigLoss = it.guard_big_loss === true && Number(p.actual_loss) > Math.max(1, Number(p.issued) * 0.1);
+    const needsReview = Number(p.gain_weight) > 0 || it.review === true || bigLoss;
     const reason = str(it.reason, 'سبب العجز');
-    if (needsReview && !reason) throw bad(`العهدة ${c.custody_no}: ${Number(p.gain_weight) > 0 ? 'الوزن المستلم أكبر من المسلَّم' : 'الإحالة للمراجعة'} - سجّل ملاحظة`, { custody_id: c.id, calc: p });
+    if (needsReview && !reason) throw bad(`العهدة ${c.custody_no}: ${Number(p.gain_weight) > 0 ? 'الوزن المستلم أكبر من المسلَّم' : bigLoss ? `عجز كبير ${Number(p.actual_loss).toFixed(3)} جم من ${Number(p.issued).toFixed(3)} — تأكد من الوزن` : 'الإحالة للمراجعة'} - سجّل ملاحظة`, { custody_id: c.id, calc: p });
 
     const st = (await db.query(
       `insert into settlements(settlement_no, custody_id, receive_batch_id, weight_issued, returned_weight, gross_returned, stones_weight, scrap_weight,

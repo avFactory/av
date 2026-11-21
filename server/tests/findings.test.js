@@ -594,10 +594,13 @@ test('تصحيح تسوية خاطئة: يلغي العجز غير الطبيع�
   for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0].h; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
   const c = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: o.id, weight: '300' }] })).data.custodies[0];
   // خطأ إدخال: 0.91 بدل 299.91
-  const bad = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c.id, returned_weight: '0.91' }] });
+  const noNote = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c.id, returned_weight: '0.91' }] });
+  assert.equal(noNote.status, 400, 'عجز كبير بدون ملاحظة يُرفض');
+  assert.match(noNote.data.error, /عجز كبير/);
+  const bad = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c.id, returned_weight: '0.91', reason: 'كتبتها خطأ' }] });
   assert.equal(bad.status, 200, JSON.stringify(bad.data));
+  assert.equal(bad.data.results[0].settlement.status, 'pending_review', 'يُحال لمراجعة العجز بدل الاعتماد');
   const prof = async () => (await call('GET', `/sup/workers/${w}`)).data;
-  assert.ok(Number((await prof()).totals.abnormal_loss_total) > 290);
   const stId = (await prof()).custodies.find((x) => x.id === c.id).settlement_id;
   const rv = await call('POST', `/sup/settlements/${stId}/reverse`, { reason: 'خطأ في إدخال الوزن' });
   assert.equal(rv.status, 200, JSON.stringify(rv.data));
