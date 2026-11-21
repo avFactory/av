@@ -5,12 +5,12 @@
 import { bad, conflict, forbidden, notFound, int, str, weight as W } from './http.js';
 import { audit } from './audit.js';
 import { notifyPerm, notifyUsers } from './notify.js';
-import { receive, issue, getWorker, preview } from './custody.js';
+import { receive, issue, issueGeneral, getWorker, preview } from './custody.js';
 import { advance, lockOrder, logStage } from './production.js';
 import { groupInfo } from './orderGroups.js';
 import { has } from './auth.js';
 
-const label = async (db, orderId) => (await db.query(`select coalesce(case when (select count(*) from orders x where x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) > 1 then o.cart_ref end, o.order_no) n from orders o where o.id=$1`, [orderId])).rows[0]?.n || '';
+const label = async (db, orderId) => (await db.query(`select coalesce(case when (select count(*) from orders x where x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) > 1 then o.cart_ref end, o.order_no) n from orders o where o.id=$1`, [orderId])).rows[0]?.n || 'عهدة عامة';
 
 /** إنشاء تحويل: العامل صاحب العهدة أو المشرف */
 export async function createTransfer(db, req, custodyId, body) {
@@ -19,7 +19,9 @@ export async function createTransfer(db, req, custodyId, body) {
   const isOwner = c.worker_id === req.user.id;
   if (!isOwner && !(has(req, 'custody.issue') && has(req, 'custody.receive'))) throw forbidden();
   if (c.status !== 'open') throw conflict('العهدة ليست مفتوحة');
-  if (!c.order_id) throw bad('التحويل لعهد الطلبات فقط');
+  if (c.finding_id) throw bad('عهدة الخامات لا تُحوّل — أرجعها للمشرف ثم تُصرف للعامل الآخر');
+  // نفس المرحلة = إعادة إسناد لعامل آخر بدون نقل الطلب؛ العهدة العامة دائماً بنفس الحال
+  const mode = !c.order_id ? 'same_stage' : body.mode === 'same_stage' ? 'same_stage' : 'next_stage';
   if (isOwner && !c.worker_ack_at) throw conflict('اقبل العهدة أولاً');
   const toId = int(body.to_worker_id, 'العامل');
   if (toId === c.worker_id) throw bad('اختر عاملاً آخر');
@@ -33,6 +35,7 @@ export async function createTransfer(db, req, custodyId, body) {
   if (pend) throw conflict('يوجد تحويل بانتظار القبول لهذه العهدة');
   const t = (await db.query(`insert into custody_transfers(custody_id, order_id, from_worker, to_worker, weight, note, created_by) values ($1,$2,$3,$4,$5,$6,$7) returning *`,
     [c.id, c.order_id, c.worker_id, to.id, weight, str(body.note, 'ملاحظة'), req.user.id])).rows[0];
+  await db.query('update custody_transfers set mode=$2 where id=$1', [t.id, mode]); t.mode = mode;
   const no = await label(db, c.order_id);
   const from = (await db.query('select full_name from users where id=$1', [c.worker_id])).rows[0].full_name;
   await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `تحويل ${weight} جم من ${from} إلى ${to.full_name} - بانتظار قبوله`, false, c.worker_id);
@@ -54,10 +57,12 @@ export async function acceptTransfer(db, req, transferId, body, opts = {}) {
   const fromName = (await db.query('select full_name from users where id=$1', [t.from_worker])).rows[0].full_name;
   const no = await label(db, c.order_id);
 
+  const same = t.mode === 'same_stage' || !c.order_id;
   // الوزن أكبر مما سُلّم للأول: الزيادة ذهب أضافه من عهدته العامة (أو عهد الخامات) فتُخصم منها تلقائياً
   const pv = await preview(db, c.id, confirmed, '0');
   const additions = [];
   let gain = Number(pv.gain_weight);
+  if (gain > 0 && !c.order_id) throw conflict(`الوزن أكبر من العهدة العامة لدى ${fromName} — تواصل مع المشرف`);
   if (gain > 0) {
     const srcs = (await db.query(`select id, (weight_issued - weight_used)::numeric(16,4) as avail from custodies
       where worker_id=$1 and status='open' and material_id=$2 and id<>$3 and (kind='general' or finding_id is not null) and weight_issued > weight_used
@@ -78,32 +83,41 @@ export async function acceptTransfer(db, req, transferId, body, opts = {}) {
   const settlement = rc.results?.[0]?.settlement;
   if (settlement?.status === 'pending_review') throw conflict('الوزن أكبر من المسلَّم للعامل الأول - يجب مراجعة المشرف (لم يتم التحويل)');
 
-  // 2) نقل الطلب (وبقية بنوده في نفس المرحلة) للمرحلة التالية
-  const o = await lockOrder(db, c.order_id);
-  const stageBefore = o.current_stage_id;
-  await advance(db, o, req.user.id);
-  const g = await groupInfo(db, o.id);
-  if (g?.isGroup && g.lead === o.id) {
-    for (const sid of g.ids.filter((x) => x !== o.id)) {
-      const so = await lockOrder(db, sid);
-      if (so.status === 'in_production' && so.current_stage_id === stageBefore) await advance(db, so, req.user.id).catch((e) => { if (e.status !== 409) throw e; });
+  let next, is;
+  if (!c.order_id) {
+    // عهدة عامة: تُسجل للعامل الثاني بنفس الغرض ونسبة العجز
+    const g = await issueGeneral(db, req, { worker_id: t.to_worker, material_id: c.material_id, weight: confirmed, purpose: c.purpose || `محوّلة من ${fromName}`, loss_rate_percent: String(Number(c.loss_rate_snapshot)), silent: true });
+    is = { custodies: [{ id: g.custody_id }] };
+    next = { name: 'عهدة عامة' };
+  } else {
+    const o = await lockOrder(db, c.order_id);
+    if (!same) {
+      // 2) نقل الطلب (وبقية بنوده في نفس المرحلة) للمرحلة التالية
+      const stageBefore = o.current_stage_id;
+      await advance(db, o, req.user.id);
+      const g = await groupInfo(db, o.id);
+      if (g?.isGroup && g.lead === o.id) {
+        for (const sid of g.ids.filter((x) => x !== o.id)) {
+          const so = await lockOrder(db, sid);
+          if (so.status === 'in_production' && so.current_stage_id === stageBefore) await advance(db, so, req.user.id).catch((e) => { if (e.status !== 409) throw e; });
+        }
+      }
     }
+    next = (await db.query('select s.id, s.name, s.handles_gold from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0];
+    if (!next?.handles_gold) throw conflict(`المرحلة التالية "${next?.name || ''}" لا تتضمن تسليم ذهب - سلّم الطلب للمشرف`);
+    // 3) تسليم للعامل الثاني بنفس الوزن (نفس المرحلة أو التالية)، وقبوله الآن توقيعه الإلكتروني
+    is = await issue(db, req, {
+      worker_id: t.to_worker, note: `تحويل من ${fromName}`, silent: true,
+      items: [{ order_id: o.id, weight: confirmed, from_vault: false, notes: `محوّل من ${fromName}${same ? ' (نفس المرحلة)' : ''}` }],
+    });
   }
-  const next = (await db.query('select s.id, s.name, s.handles_gold from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0];
-  if (!next?.handles_gold) throw conflict(`المرحلة التالية "${next?.name || ''}" لا تتضمن تسليم ذهب - سلّم الطلب للمشرف`);
-
-  // 3) تسليم للعامل الثاني بنفس الوزن، وقبوله الآن توقيعه الإلكتروني
-  const is = await issue(db, req, {
-    worker_id: t.to_worker, note: `تحويل من ${fromName}`,
-    items: [{ order_id: o.id, weight: confirmed, from_vault: false, notes: `محوّل من ${fromName}` }],
-  });
   const nc = is.custodies[0];
   await db.query('update custodies set worker_ack_at=now(), ack_ip=$2 where id=$1', [nc.id, req.ip]);
   await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'ack',$2,'قبول التحويل بعد التأكد من الوزن')", [nc.id, req.user.id]);
   await db.query("update custody_transfers set status='accepted', confirmed_weight=$2, decided_at=now(), new_custody_id=$3, settlement_id=$4 where id=$1", [t.id, confirmed, nc.id, settlement?.id || null]);
   const loss = settlement ? Number(settlement.actual_loss) : 0;
   await notifyUsers(db, [t.from_worker], { kind: 'custody', title: `قبل ${toName} التحويل: ${no}`, body: `استلم ${Number(confirmed)} جم${loss > 0 ? ` — عجز ${loss} جم على حسابك` : ''}`, link: '/w' });
-  await notifyPerm(db, 'custody.receive', { kind: 'custody', title: `تحويل ${no}: ${fromName} ← ${toName}`, body: `${Number(confirmed)} جم${loss > 0 ? ` · عجز ${loss} جم` : ''} · ${next.name}`, link: `/orders/${o.id}` });
+  await notifyPerm(db, 'custody.receive', { kind: 'custody', title: `تحويل ${no}: ${fromName} ← ${toName}`, body: `${Number(confirmed)} جم${loss > 0 ? ` · عجز ${loss} جم` : ''} · ${next.name}`, link: c.order_id ? `/orders/${c.order_id}` : `/sup/workers/${t.to_worker}` });
   await audit(db, req, 'custody.transfer_accept', 'custody', nc.id, { transfer: t.id, from: fromName, declared: t.weight, confirmed, loss });
   return { ok: true, custody_id: nc.id, settlement, stage: next.name };
 }
@@ -131,4 +145,4 @@ export async function cancelTransfer(db, req, transferId) {
   return { ok: true };
 }
 
-export const transferCols = `t.id, t.custody_id, t.order_id, t.weight::text, t.status, t.note, t.created_at, fw.full_name as from_name, tw.full_name as to_name, tw.employee_no as to_no`;
+export const transferCols = `t.id, t.custody_id, t.order_id, t.weight::text, t.status, t.note, t.mode, t.created_at, fw.full_name as from_name, tw.full_name as to_name, tw.employee_no as to_no`;

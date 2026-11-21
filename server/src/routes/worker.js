@@ -37,7 +37,7 @@ async function canSeeOrder(db, req, orderId) {
 
 r.get('/tasks', async (req, res) => {
   const custodies = await many(`
-    select c.id, c.custody_no, c.order_id, (c.weight_issued - c.weight_used)::numeric(16,4)::text as weight_issued, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
+    select c.id, c.custody_no, c.order_id, c.finding_id, (c.weight_issued - c.weight_used)::numeric(16,4)::text as weight_issued, c.pieces, c.status, c.work_state, c.worker_ack_at, c.worker_rejected_at, c.worker_reject_reason, c.issued_at, c.started_at,
            c.worker_declared_returned::text, c.worker_declared_scrap::text, c.worker_declared_used::text, c.issue_batch_id,
            coalesce(case when gc.n > 1 then o.cart_ref end, o.order_no, 'عهدة عامة') as order_no,
            coalesce(case when gc.n > 1 then 'الطلب كامل · ' || gc.n || ' أصناف' end, o.title, c.purpose, 'عهدة عامة') as title, o.due_date, o.size, o.notes as order_notes, coalesce(s.name, 'عهدة عامة') as stage_name, s.required_fields, coalesce(s.worker_closes, false) as worker_closes, c.gross_weight::text,
@@ -132,10 +132,10 @@ r.get('/workers', async (req, res) => {
   res.json(await many(`select u.id, u.full_name, u.employee_no, u.specialty, u.kind from users u where u.role_code='worker' and u.active and u.kind <> 'machine' and u.id <> $1 order by u.employee_no nulls last, u.full_name`, [req.user.id]));
 });
 r.get('/transfers', async (req, res) => {
-  const q = `select ${transferCols}, o.title, s.name as stage_name,
-      coalesce(case when (select count(*) from orders x where x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) > 1 then o.cart_ref end, o.order_no) as order_no,
+  const q = `select ${transferCols}, coalesce(o.title, sc.purpose, 'عهدة عامة') as title, coalesce(s.name, 'عهدة عامة') as stage_name,
+      coalesce(case when (select count(*) from orders x where x.cart_ref=o.cart_ref and x.status not in ('cancelled','rejected')) > 1 then o.cart_ref end, o.order_no, 'عهدة عامة') as order_no,
       ${orderThumb()} as thumb
-    from custody_transfers t join users fw on fw.id=t.from_worker join users tw on tw.id=t.to_worker join orders o on o.id=t.order_id
+    from custody_transfers t join users fw on fw.id=t.from_worker join users tw on tw.id=t.to_worker join custodies sc on sc.id=t.custody_id left join orders o on o.id=t.order_id
     left join stages s on s.id=o.current_stage_id where t.status='pending' and `;
   res.json({ incoming: await many(q + 't.to_worker=$1 order by t.id', [req.user.id]), outgoing: await many(q + 't.from_worker=$1 order by t.id', [req.user.id]) });
 });

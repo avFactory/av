@@ -9,18 +9,20 @@ import { Btn, Field, Input, Modal, WeightInput, useAction, useFetch } from '../u
  */
 export function TransferModal({ custody, base = '/w', onClose, onDone }) {
   const { data: workers } = useFetch(base === '/w' ? '/w/workers' : '/sup/workers');
-  const [f, setF] = useState({ to_worker_id: '', weight: '', note: '' });
+  const general = !custody.order_id;
+  const [f, setF] = useState({ to_worker_id: '', weight: '', note: '', mode: general ? 'same_stage' : 'next_stage' });
   const [q, setQ] = useState('');
   const [run, busy] = useAction();
   const list = (Array.isArray(workers) ? workers : []).filter((w) => w.id !== custody.worker_id && (!q.trim() || `${w.full_name} ${w.employee_no || ''} ${w.specialty || ''}`.includes(q.trim())));
   const toMachine = (Array.isArray(workers) ? workers : []).find((w) => String(w.id) === String(f.to_worker_id))?.kind === 'machine';
   const submit = () => run(async () => { await api.post(`${base}/custody/${custody.id}/transfer`, f); onDone?.(); onClose(); }, toMachine ? 'تم التحويل — سُجّل الطلب على المكينة مباشرة' : 'أُرسل التحويل - بانتظار قبول العامل');
   return (
-    <Modal open onClose={onClose} title="تحويل لعامل المرحلة التالية">
+    <Modal open onClose={onClose} title={general ? 'تحويل العهدة العامة لعامل آخر' : 'تحويل لعامل آخر'}>
       <div className="d-grid gap-2">
-        <div className="small text-body-secondary">العهدة <b dir="ltr">{custody.custody_no || custody.order_no}</b> · المسلَّم {fmtW(custody.weight_issued)} جم. العامل الثاني يزن القطع ويؤكد الوزن ثم يقبل، والفرق يُحسب عجزاً على صاحب العهدة.</div>
+        {!general && <div className="chips">{[['next_stage', 'للمرحلة التالية'], ['same_stage', 'نفس المرحلة (إعادة إسناد)']].map(([k, l]) => <button key={k} type="button" className={`chip ${f.mode === k ? 'on' : ''}`} onClick={() => setF({ ...f, mode: k })}>{l}</button>)}</div>}
+        <div className="small text-body-secondary">العهدة <b dir="ltr">{custody.custody_no || custody.order_no}</b> · المسلَّم {fmtW(custody.weight_issued)} جم. العامل الثاني يزن ويؤكد الوزن ثم يقبل، والفرق يُحسب عجزاً على صاحب العهدة.{!general && (f.mode === 'same_stage' ? ' يبقى الطلب في مرحلته الحالية.' : ' ينتقل الطلب للمرحلة التالية.')}</div>
         <Field label="الوزن على الميزان (جم) *"><WeightInput big value={f.weight} onChange={(v) => setF({ ...f, weight: v })} autoFocus /></Field>
-        <Field label="العامل التالي *">
+        <Field label="العامل الذي يستلم *">
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث بالاسم أو الرقم أو المهنة…" />
           <div className="tr-workers mt-1">
             {list.slice(0, 40).map((w) => (
@@ -58,7 +60,7 @@ export function IncomingTransfers({ items, onChange }) {
           <div key={t.id} className="card card-body tr-in">
             <div className="hrow gap">
               {t.thumb ? <img src={fileUrl(t.thumb, 400)} alt="" /> : null}
-              <div className="grow"><b>↩ تحويل من {t.from_name}</b><div className="small"><span dir="ltr">{t.order_no}</span> · {t.title}</div>
+              <div className="grow"><b>↩ تحويل من {t.from_name}</b><div className="small"><span dir="ltr">{t.order_no}</span> · {t.title}{t.mode === 'same_stage' && t.order_id ? ' · نفس المرحلة' : ''}</div>
                 <div className="small text-body-secondary">الوزن المرسل: <b>{fmtW(t.weight)}</b> جم{t.note ? ` · ${t.note}` : ''}</div></div>
             </div>
             <Field label="زِن القطع وأدخل الوزن على ميزانك (جم)">

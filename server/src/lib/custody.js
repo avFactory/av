@@ -121,7 +121,7 @@ export async function issue(db, req, body) {
     created.push({ ...c, order_no: order.order_no });
   }
 
-  await notifyUsers(db, [workerId], { kind: 'custody', title: `بانتظار قبولك: ${created.length} طلب`, body: created.map((c) => `${c.order_no}: ${c.weight_issued} جم`).join('، ') + ' — افتح مهامك واضغط قبول الاستلام', link: '/w' });
+  if (!body.silent) await notifyUsers(db, [workerId], { kind: 'custody', title: `بانتظار قبولك: ${created.length} طلب`, body: created.map((c) => `${c.order_no}: ${c.weight_issued} جم`).join('، ') + ' — افتح مهامك واضغط قبول الاستلام', link: '/w' });
   await audit(db, req, 'custody.issue', 'custody_batch', batch.id, { worker: worker.full_name, items: created.map((c) => ({ custody: c.custody_no, order: c.order_no, weight: c.weight_issued })) });
   return { batch_id: batch.id, batch_no: batch.batch_no, custodies: created };
 }
@@ -424,7 +424,7 @@ export async function issueGeneral(db, req, body) {
       loss_rate_snapshot, issue_batch_id, notes, idempotency_key) values (next_doc_no('CUS'),'general',$1,null,$2,$3,null,$4,$5,$5,0,$6,$7,$8,$9) returning *`,
     [purpose, workerId, req.user.id, materialId, weight, rate, batch.id, str(body.notes, 'ملاحظات'), key ? `${key}:g` : null])).rows[0];
   await ledger.post(db, { kind: 'general_issue', material_id: materialId, weight, from: ['vault', null], to: ['worker', workerId], custody_id: c.id, worker_id: workerId, batch_id: batch.id, reason: purpose, user_id: req.user.id });
-  await notifyUsers(db, [workerId], { kind: 'custody', title: `بانتظار قبولك: عهدة عامة ${weight} جم`, body: `${purpose} — افتح مهامك واضغط قبول الاستلام`, link: '/w' });
+  if (!body.silent) await notifyUsers(db, [workerId], { kind: 'custody', title: `بانتظار قبولك: عهدة عامة ${weight} جم`, body: `${purpose} — افتح مهامك واضغط قبول الاستلام`, link: '/w' });
   await audit(db, req, 'custody.general_issue', 'custody', c.id, { worker: worker.full_name, material_id: materialId, weight, purpose, rate });
   return { custody_id: c.id, custody_no: c.custody_no, batch_id: batch.id, batch_no: batch.batch_no };
 }

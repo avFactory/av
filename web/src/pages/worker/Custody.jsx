@@ -46,10 +46,10 @@ export default function WCustody() {
           c.kind !== 'general' && ['عدد القطع', c.pieces], ['المقاس', c.size], ['تاريخ التسليم', fmtDT(c.issued_at)], c.order_notes && ['ملاحظات الطلب', c.order_notes], od?.order?.color && ['اللون', COLORS[od.order.color] || od.order.color], ...(od?.order ? stoneItems(od.order) : [])]} />
       </Card>
       <OrderGroupItems items={od?.group} current={c.order_id} />
-      {c.status === 'open' && c.kind !== 'general' && c.worker_ack_at && (() => {
+      {c.status === 'open' && !c.finding_id && c.worker_ack_at && (() => {
         const pend = (trs?.outgoing || []).find((t) => t.custody_id === c.id);
         return (
-          <Card title="↪ تحويل لعامل المرحلة التالية">
+          <Card title="↪ تحويل لعامل آخر">
             {pend ? (
               <div className="hrow between wrap gap">
                 <span>بانتظار قبول <b>{pend.to_name}</b> — {fmtW(pend.weight)} جم</span>
@@ -57,7 +57,7 @@ export default function WCustody() {
               </div>
             ) : (
               <div className="d-grid gap-2">
-                <div className="small text-body-secondary">بعد إنهاء شغلك: زِن القطع وحوّلها مباشرة لعامل المرحلة التالية. يتأكد هو من الوزن ويقبل، والفرق يُحسب عجزاً عليك.</div>
+                <div className="small text-body-secondary">زِن وحوّل العهدة مباشرة لعامل آخر — للمرحلة التالية أو في نفس المرحلة. يتأكد هو من الوزن ويقبل، والفرق يُحسب عجزاً عليك.</div>
                 <Btn onClick={() => setTrOpen(true)}>تحويل لعامل آخر</Btn>
               </div>
             )}

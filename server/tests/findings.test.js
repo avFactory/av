@@ -612,3 +612,51 @@ test('تصحيح تسوية خاطئة: يلغي العجز غير الطبيع�
   assert.equal(ok.status, 200, JSON.stringify(ok.data));
   assert.ok(Number((await prof()).totals.abnormal_loss_total) < 0.1);
 });
+
+test('تحويل العهدة لعامل آخر: نفس المرحلة (إعادة إسناد) والعهدة العامة، والخامات لا تُحوّل', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '100', note: 'رصيد' });
+  const mkW = async (u) => { const id = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ($1,$2,$1,'worker',$1) returning id", [u, hashPassword('Ss#2026xx')])).rows[0].id; let ck = '';
+    const go = async (m, p, body) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+    await go('POST', '/auth/login', { username: u, password: 'Ss#2026xx' }); return { id, go }; };
+  const A = await mkW('ssA'), B = await mkW('ssB');
+  // طلب: نفس المرحلة
+  const o = (await call('POST', '/orders', { title: 'خاتم إعادة إسناد', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat })).data;
+  for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0].h; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
+  const st = (await pool.query('select current_stage_id s from orders where id=$1', [o.id])).rows[0].s;
+  await call('POST', `/admin/stages/${st}/rate`, { rate_percent: '0', note: 'x' });
+  const c = (await call('POST', '/sup/issue', { worker_id: A.id, items: [{ order_id: o.id, weight: '10' }] })).data.custodies[0];
+  await A.go('POST', `/w/custody/${c.id}/ack`, {});
+  const tr = await A.go('POST', `/w/custody/${c.id}/transfer`, { to_worker_id: B.id, weight: '10', mode: 'same_stage' });
+  assert.equal(tr.status, 200, JSON.stringify(tr.data));
+  const inc = (await B.go('GET', '/w/transfers')).data.incoming;
+  assert.equal(inc[0].mode, 'same_stage');
+  const ac = await B.go('POST', `/w/transfers/${tr.data.id}/accept`, { weight: '10' });
+  assert.equal(ac.status, 200, JSON.stringify(ac.data));
+  assert.equal((await pool.query('select current_stage_id s from orders where id=$1', [o.id])).rows[0].s, st, 'الطلب بقي في مرحلته');
+  const nc = (await pool.query("select stage_id, worker_ack_at from custodies where id=$1", [ac.data.custody_id])).rows[0];
+  assert.deepEqual([nc.stage_id, !!nc.worker_ack_at], [st, true]);
+  assert.equal(await bal('worker', B.id, mat), 10);
+  // عهدة عامة: تُحوّل وتظهر للمستلم، والفرق عجز على المرسل
+  await call('POST', '/inventory/gold/to-worker', { worker_id: A.id, material_id: mat, weight: '6', purpose: 'لحام', loss_rate_percent: '0' });
+  const gc = (await pool.query("select id from custodies where worker_id=$1 and kind='general' and status='open'", [A.id])).rows[0].id;
+  await A.go('POST', `/w/custody/${gc}/ack`, {});
+  const tg = await call('POST', `/sup/custody/${gc}/transfer`, { to_worker_id: B.id, weight: '5.9' });
+  assert.equal(tg.status, 200, JSON.stringify(tg.data));
+  const incG = (await B.go('GET', '/w/transfers')).data.incoming.find((x) => x.id === tg.data.id);
+  assert.ok(incG && incG.order_no === 'عهدة عامة', 'العهدة العامة تظهر للمستلم');
+  assert.equal((await B.go('POST', `/w/transfers/${tg.data.id}/accept`, { weight: '6.5' })).status, 409, 'لا يقبل أكثر من العهدة العامة');
+  const ag = await B.go('POST', `/w/transfers/${tg.data.id}/accept`, { weight: '5.9' });
+  assert.equal(ag.status, 200, JSON.stringify(ag.data));
+  const g2 = (await pool.query("select purpose, weight_issued::float w, worker_ack_at from custodies where id=$1", [ag.data.custody_id])).rows[0];
+  assert.deepEqual([g2.purpose, g2.w, !!g2.worker_ack_at], ['لحام', 5.9, true]);
+  assert.equal(await bal('worker', A.id, mat), 0);
+  assert.equal(await bal('worker', B.id, mat), 15.9);
+  assert.equal(Number((await pool.query('select actual_loss from settlements where custody_id=$1', [gc])).rows[0].actual_loss), 0.1);
+  // الخامات لا تُحوّل
+  const f = (await call('POST', '/findings', { name: 'قفل تحويل', category: 'قفل', material_id: mat })).data;
+  await call('POST', `/findings/${f.id}/in`, { source: 'vault', weight: '2', pieces: '2' });
+  await call('POST', '/findings/issue', { worker_id: A.id, items: [{ finding_id: f.id, pieces: 1, weight: '1' }] });
+  const fc = (await pool.query('select id from custodies where finding_id=$1 and worker_id=$2', [f.id, A.id])).rows[0].id;
+  assert.equal((await call('POST', `/sup/custody/${fc}/transfer`, { to_worker_id: B.id, weight: '1' })).status, 400);
+});
