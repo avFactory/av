@@ -6,12 +6,14 @@ import { useAuth } from '../../auth.jsx';
 import { Btn, Card, Field, Loader, Modal, Select, Stat, Table, WeightInput, useAction, useFetch } from '../../ui.jsx';
 
 export default function Dashboard() {
+  const { me, can } = useAuth();
+  // كل قسم حسب صلاحيته في «الأدوار والصلاحيات ← لوحة الإحصائيات»
+  const canGold = can('dashboard.gold'), canOrg = can('dashboard.org'), canFin = can('dashboard.finance');
   const { data: s } = useFetch('/admin/stats', { live: ['orders', 'gold_ledger', 'settlements'] });
-  const { data: cg } = useFetch('/admin/customer-gold', { live: ['gold_ledger'] });
-  const { data: dl } = useFetch('/inventory/dealers', { live: ['gold_ledger'] });
-  const { data: sp } = useFetch('/inventory/suppliers', { live: ['gold_ledger'] });
-  const { data: og, reload: reloadOg } = useFetch('/admin/org-gold', { live: ['gold_ledger', 'orders'] });
-  const { me } = useAuth();
+  const { data: cg } = useFetch(canGold ? '/admin/customer-gold' : null, { live: ['gold_ledger'] });
+  const { data: dl } = useFetch(canGold ? '/inventory/dealers' : null, { live: ['gold_ledger'] });
+  const { data: sp } = useFetch(canGold ? '/inventory/suppliers' : null, { live: ['gold_ledger'] });
+  const { data: og, reload: reloadOg } = useFetch(canOrg ? '/admin/org-gold' : null, { live: ['gold_ledger', 'orders'] });
   const isAdmin = me?.role_code === 'admin';
   const [bm, setBm] = useState(null); // تعديل مخزون فرع
   const [showOrg, setShowOrg] = useState(false);
@@ -19,7 +21,7 @@ export default function Dashboard() {
   if (!s) return <Loader />;
   const maxStage = Math.max(1, ...s.byStage.map((x) => x.n));
   const mats = {};
-  for (const r of s.byMaterial) { (mats[r.name] ||= {})[r.loc_type] = r.balance; }
+  for (const r of s.byMaterial || []) { (mats[r.name] ||= {})[r.loc_type] = r.balance; }
   return (
     <div className="page">
       <div className="page-h"><h1>لوحة الإدارة العامة</h1></div>
@@ -30,8 +32,8 @@ export default function Dashboard() {
         <Stat label="متأخرة" value={s.late_orders} to="/orders?late=1" tone={s.late_orders ? 'bad' : 'plain'} />
         <Stat label="مكتملة (جاهزة/مسلمة)" value={s.completed_orders} sub={`${s.ready_orders} بانتظار التسليم`} tone="ok" />
       </div>
-      <h3 className="mb">الذهب (جرام صافي عيار 24)</h3>
-      <div className="grid g4 mb">
+      {(canGold || canOrg) && <h3 className="mb">الذهب (جرام صافي عيار 24)</h3>}
+      {canGold && <div className="grid g4 mb">
         <Stat label="إجمالي الذهب في المصنع" value={fmtW(s.gold_in_factory)} unit="جم" tone="gold" sub="خزنة + طلبات + عمال + مكائن + خامات + بقايا + جاهز + معلق" />
         <Stat label="لدى العمال" value={fmtW(s.gold_with_people)} unit="جم" to="/sup/workers" />
         <Stat label="في المكائن" value={fmtW(s.gold_in_machines)} unit="جم" to="/sup/workers" />
@@ -40,8 +42,8 @@ export default function Dashboard() {
         <Stat label="الذهب لدى جمل الصافي" value={dl ? fmtW(dl.total) : '…'} unit="جم" to="/admin/gold-dealers" sub={dl ? dl.dealers.filter((d) => d.active).map((d) => `${d.name} ${fmtW(d.balance)}`).join(' · ') : ''} />
         <Stat label="الذهب لدى الجملة" value={cg ? fmtW(cg.total) : '…'} unit="جم" tone="gold" to="/admin/customer-gold" sub={cg ? `${cg.count} عميل` : ''} />
         <Stat label="رصيد مقدم للموردين" value={sp ? fmtW(sp.total) : '…'} unit="جم" to="/admin/suppliers" sub={sp ? sp.suppliers.filter((x) => x.active).map((x) => `${x.name} ${fmtW(x.balance)}`).join(' · ') : ''} />
-      </div>
-      <div className="grid g4 mb">
+      </div>}
+      {canOrg && <div className="grid g4 mb">
         <Stat label="الذهب الجاهز للتسليم" value={og ? fmtW(og.ready.pure) : '…'} unit="جم" tone="ok" to="/orders?status=ready" sub={og ? `${og.ready.count} طلب جاهز · الوزن الفعلي ${fmtW(og.ready.weight)}` : ''} />
         {['taiba', 'store'].map((k) => {
           const b = og?.branches[k];
@@ -50,7 +52,7 @@ export default function Dashboard() {
             onClick={isAdmin && b ? () => setBm({ key: k, name: b.name, weight: String(b.weight || ''), karat: String(b.karat) }) : undefined} />;
         })}
         <Stat label="ذهب المؤسسة" value={og ? fmtW(og.total) : '…'} unit="جم" tone="gold" sub="المصنع والفروع والعملاء والجمل والموردين" onClick={og ? () => setShowOrg(true) : undefined} />
-      </div>
+      </div>}
       <Modal open={!!bm} onClose={() => setBm(null)} title={`مخزون ${bm?.name || ''}`}>
         {bm && <>
           <Field label="الوزن (جم)"><WeightInput big value={bm.weight} onChange={(v) => setBm({ ...bm, weight: v })} /></Field>
@@ -71,6 +73,7 @@ export default function Dashboard() {
         ]} />}
         {og && <div className="d-flex justify-content-between fs-5 fw-bold border-top pt-2 mt-2"><span>الإجمالي</span><span className="n" dir="ltr">{fmtW(og.total)} جم</span></div>}
       </Modal>
+      {canFin && <>
       <h3 className="mb">المالية (أجور التصنيع فقط)</h3>
       <div className="grid g4 mb">
         <Stat label="إجمالي أجور التصنيع" value={fmtMoney(s.labor_revenue)} sub="قبل الضريبة" to="/admin/reports" />
@@ -78,6 +81,7 @@ export default function Dashboard() {
         <Stat label="المبالغ المحصلة" value={fmtMoney(s.collected)} tone="ok" to="/admin/payments" />
         <Stat label="الفواتير المستحقة" value={fmtMoney(s.receivables)} tone={Number(s.receivables) > 0 ? 'warn' : 'plain'} />
       </div>
+      </>}
       <div className="grid g2">
         <Card title="الطلبات حسب المرحلة">
           {s.byStage.map((x) => (
@@ -88,10 +92,10 @@ export default function Dashboard() {
             </div>
           ))}
         </Card>
-        <Card title="توزيع الذهب حسب المادة والموقع (صافي عيار 24)" pad={false}>
+        {canGold && <Card title="توزيع الذهب حسب المادة والموقع (صافي عيار 24)" pad={false}>
           <Table rows={Object.entries(mats).map(([name, v]) => ({ name, ...v }))} columns={[['المادة', 'name'], ...['vault', 'order', 'worker', 'scrap', 'finished', 'loss_suspense'].map((k) => [LOCS[k], (r) => <span className="n">{fmtW(r[k] || 0)}</span>])]} />
           <div className="card-body"><Link to="/admin/inventory?tab=rec" className="link">مطابقة الأرصدة ←</Link></div>
-        </Card>
+        </Card>}
       </div>
     </div>
   );

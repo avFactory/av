@@ -42,7 +42,7 @@ async function assertCanGrant(db, req, { role, extraPerms, target }) {
 }
 
 /** الإحصائيات - كلها محسوبة من قاعدة البيانات */
-r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
+r.get('/stats', requirePerm('dashboard.view'), async (req, res) => {
   const s = await one(`
     select
       (select count(*) from orders where status in ('pending_review','quoted'))::int as new_orders,
@@ -76,7 +76,11 @@ r.get('/stats', requirePerm('dashboard.view'), async (_req, res) => {
   const lossTrend = await many(`select to_char(date_trunc('day', created_at),'YYYY-MM-DD') d,
       sum(weight) filter (where kind='normal_loss')::text normal, sum(weight) filter (where kind in ('abnormal_pending','abnormal_loss'))::text abnormal
     from gold_ledger where created_at > now() - interval '30 days' and kind in ('normal_loss','abnormal_pending','abnormal_loss') group by 1 order by 1`);
-  res.json({ ...s, byStage, byMaterial, lossTrend });
+  // كل قسم لمن يملك صلاحيته
+  const out = { ...s, byStage, byMaterial, lossTrend };
+  if (!has(req, 'dashboard.gold')) { for (const k of Object.keys(out)) if (/^gold_|_loss$/.test(k)) delete out[k]; delete out.byMaterial; delete out.lossTrend; }
+  if (!has(req, 'dashboard.finance')) for (const k of ['labor_revenue', 'invoiced_total', 'collected', 'receivables']) delete out[k];
+  res.json(out);
 });
 
 /** الذهب لدى عملاء الجملة: رصيد الذهب الصافي (عيار 24) والمبالغ لكل عميل من كشف حسابه */
@@ -91,7 +95,7 @@ async function branchStock(db) {
   }));
 }
 
-r.put('/branch-stock/:key', requirePerm('dashboard.view'), async (req, res) => {
+r.put('/branch-stock/:key', requirePerm('dashboard.org'), async (req, res) => {
   if (req.user.role_code !== 'admin') throw forbidden('تعديل مخزون الفروع للمدير فقط');
   const key = oneOf(req.params.key, Object.keys(BRANCHES), 'الفرع');
   const weight = W(req.body.weight, 'الوزن', { allowZero: true });
@@ -107,7 +111,7 @@ r.put('/branch-stock/:key', requirePerm('dashboard.view'), async (req, res) => {
 });
 
 /** ذهب المؤسسة: كل الذهب الذي تملكه (المصنع + الفروع + لدى العملاء + جمل الصافي + الموردين) بالصافي عيار 24 */
-r.get('/org-gold', requirePerm('dashboard.view'), async (_req, res) => {
+r.get('/org-gold', requirePerm('dashboard.org'), async (_req, res) => {
   const factory = await one(`select coalesce(sum(b.balance * m.karat / 24.0),0)::numeric(16,4)::text as pure, coalesce(sum(b.balance),0)::text as weight
     from gold_balances b join materials m on m.id=b.material_id where b.loc_type in ('vault','order','worker','scrap','finished','loss_suspense','findings')`);
   const ready = await many(`select o.id, o.order_no, o.title, o.cart_ref, c.shop_name, m.karat, b.balance::text as weight

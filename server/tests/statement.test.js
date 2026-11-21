@@ -352,3 +352,30 @@ test('رفع الأرصدة الافتتاحية للعملاء من Excel: ذه
   // الرصيد الافتتاحي لا يحرّك ذهب الخزنة
   assert.equal((await pool.query("select count(*)::int n from gold_ledger where reason like '%افتتاحي%'")).rows[0].n, 0);
 });
+
+test('لوحة الإحصائيات في الأدوار والصلاحيات: مجموعة مستقلة وأقسام حسب الصلاحية', async () => {
+  const roles = (await admin('GET', '/admin/roles')).data;
+  const dash = roles.perms.filter((p) => p.grp === 'لوحة الإحصائيات').map((p) => p.code).sort();
+  assert.deepEqual(dash, ['dashboard.finance', 'dashboard.gold', 'dashboard.org', 'dashboard.view']);
+  const acc = roles.roles.find((r) => r.code === 'accountant');
+  assert.ok(['dashboard.gold', 'dashboard.org', 'dashboard.finance'].every((c) => acc.perms.includes(c)), 'من يملك اللوحة سابقاً يحتفظ بكل أقسامها');
+  // دور يرى قسم الطلبات فقط
+  assert.equal((await admin('PUT', '/admin/roles/dash_orders', { name: 'لوحة الطلبات فقط', perms: ['dashboard.view'] })).status, 200);
+  await pool.query("insert into users(username, password_hash, full_name, role_code, must_change_password) values ('dashonly',$1,'لوحة فقط','dash_orders',false)", [hashPassword('Dash#2026only')]);
+  const u = client();
+  await u('POST', '/auth/login', { username: 'dashonly', password: 'Dash#2026only' });
+  const st = (await u('GET', '/admin/stats')).data;
+  assert.ok(st.new_orders !== undefined && st.byStage, 'قسم الطلبات');
+  assert.equal(st.gold_in_factory, undefined, 'بدون الذهب');
+  assert.equal(st.invoiced_total, undefined, 'بدون المالية');
+  assert.equal(st.abnormal_loss, undefined);
+  assert.equal((await u('GET', '/admin/org-gold')).status, 403);
+  // إضافة قسم المالية
+  await admin('PUT', '/admin/roles/dash_orders', { perms: ['dashboard.view', 'dashboard.finance'] });
+  const u2 = client(); await u2('POST', '/auth/login', { username: 'dashonly', password: 'Dash#2026only' });
+  const st2 = (await u2('GET', '/admin/stats')).data;
+  assert.ok(st2.invoiced_total !== undefined && st2.gold_in_factory === undefined);
+  // المدير يرى الكل
+  const sa = (await admin('GET', '/admin/stats')).data;
+  assert.ok(sa.gold_in_factory !== undefined && sa.invoiced_total !== undefined);
+});
