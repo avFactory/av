@@ -13,7 +13,7 @@ import { upload, registerFiles } from '../lib/uploads.js';
 import * as ledger from '../lib/ledger.js';
 import * as prod from '../lib/production.js';
 import { resolveLabor, laborAmount } from '../lib/labor.js';
-import { nextItemNo, orderCopyColumns, groupInfo } from '../lib/orderGroups.js';
+import { nextItemNo, orderCopyColumns, groupInfo, newGroupNo } from '../lib/orderGroups.js';
 import { applyDueDate, capacity } from '../lib/leadTime.js';
 import { bullionVals } from './catalog.js';
 import { addInternalImages } from '../lib/internalImages.js';
@@ -33,39 +33,59 @@ const COLORS_OK = ['yellow', 'white', 'rose'];
 export const orderColor = (c) => (COLORS_OK.includes(c) ? c : null);
 
 /** إنشاء طلب تصنيع (داخلي أو نيابة عن عميل) */
+/** إنشاء طلب تصنيع من شاشة الموظفين (بند واحد، أو بند ضمن طلب متعدد المنتجات برقم مشترك) */
+async function createStaffOrder(db, req, b, opts = {}) {
+  const materialId = b.material_id ? int(b.material_id) : await materialFor(db, b.karat);
+  const customerId = b.customer_id ? int(b.customer_id) : null;
+  const productId = b.product_id ? int(b.product_id) : null;
+  const product = productId ? (await db.query('select * from products where id=$1', [productId])).rows[0] : null;
+  const productType = str(b.product_type, 'نوع القطعة') || product?.product_type || null;
+  const labor = b.labor_method
+    ? { method: oneOf(b.labor_method, ['per_gram', 'per_piece', 'fixed', 'manual'], 'طريقة الأجرة'), rate: money(b.labor_rate ?? 0, 'الأجرة', { allowZero: true }) }
+    : await resolveLabor(db, { customer_id: customerId, product_id: productId, product_type: productType });
+  const qty = int(b.quantity ?? 1, 'الكمية', { min: 1 });
+  const approx = b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : product?.approx_weight || null;
+  const o = (await db.query(
+    `insert into orders(order_no, cart_ref, customer_id, source, product_id, product_type, title, material_id, approx_weight, size, quantity, due_date, notes,
+     status, route_id, design_approval_required, labor_method, labor_rate, labor_estimate, created_by, color, diamonds, pearl_weight, stone_weight, zircon_weight, bullion_type, bullion_weight)
+     values (coalesce($24, next_doc_no('ORD')),$25,$1,'internal',$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) returning *`,
+    [customerId, productId, productType, str(b.title, 'وصف الطلب') || product?.name || productType || 'طلب تصنيع', materialId, approx,
+     str(b.size, 'المقاس'), qty, b.due_date || null, str(b.notes, 'ملاحظات'),
+     b.route_id ? int(b.route_id) : await prod.pickRoute(db, productType, product?.route_id), !!b.design_approval_required,
+     labor?.method || null, labor?.rate || null, labor && labor.method !== 'manual' ? laborAmount(labor.method, labor.rate, approx, qty) : (b.labor_rate || null), req.user.id, orderColor(b.color) || 'yellow',
+     JSON.stringify(b.diamonds !== undefined ? parseDiamonds(b.diamonds) : product?.diamonds || []), b.pearl_weight !== undefined ? optW(b.pearl_weight, 'وزن اللؤلؤ') : product?.pearl_weight ?? null,
+     b.stone_weight !== undefined ? optW(b.stone_weight, 'وزن الحجر') : product?.stone_weight ?? null, b.zircon_weight !== undefined ? optW(b.zircon_weight, 'وزن الزركون') : product?.zircon_weight ?? null,
+     ...(b.bullion_type !== undefined ? bullionVals(b) : [product?.bullion_type ?? null, product?.bullion_weight ?? null]), opts.orderNo || null, opts.cartRef || null]
+  )).rows[0];
+  await prod.logStage(db, o.id, null, 'created', req.user.id, opts.cartRef ? `إنشاء الطلب (${opts.cartRef})` : 'إنشاء الطلب', true);
+  // موعد التسليم التلقائي حسب الفئة وتصنيف العميل (إن لم يُحدد يدوياً)
+  await applyDueDate(db, o.id);
+  if (b.start !== false) await prod.startProduction(db, o, req.user.id);
+  await audit(db, req, 'order.create', 'order', o.id, { order_no: o.order_no });
+  return o;
+}
+
 r.post('/', requirePerm('orders.manage'), async (req, res) => {
-  const b = req.body;
-  const out = await tx(async (db) => {
-    const materialId = b.material_id ? int(b.material_id) : await materialFor(db, b.karat);
-    const customerId = b.customer_id ? int(b.customer_id) : null;
-    const productId = b.product_id ? int(b.product_id) : null;
-    const product = productId ? (await db.query('select * from products where id=$1', [productId])).rows[0] : null;
-    const productType = str(b.product_type, 'نوع القطعة') || product?.product_type || null;
-    const labor = b.labor_method
-      ? { method: oneOf(b.labor_method, ['per_gram', 'per_piece', 'fixed', 'manual'], 'طريقة الأجرة'), rate: money(b.labor_rate ?? 0, 'الأجرة', { allowZero: true }) }
-      : await resolveLabor(db, { customer_id: customerId, product_id: productId, product_type: productType });
-    const qty = int(b.quantity ?? 1, 'الكمية', { min: 1 });
-    const approx = b.approx_weight ? W(b.approx_weight, 'الوزن التقريبي') : product?.approx_weight || null;
-    const o = (await db.query(
-      `insert into orders(order_no, customer_id, source, product_id, product_type, title, material_id, approx_weight, size, quantity, due_date, notes,
-         status, route_id, design_approval_required, labor_method, labor_rate, labor_estimate, created_by, color, diamonds, pearl_weight, stone_weight, zircon_weight, bullion_type, bullion_weight)
-       values (next_doc_no('ORD'),$1,'internal',$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) returning *`,
-      [customerId, productId, productType, str(b.title, 'وصف الطلب') || product?.name || productType || 'طلب تصنيع', materialId, approx,
-       str(b.size, 'المقاس'), qty, b.due_date || null, str(b.notes, 'ملاحظات'),
-       b.route_id ? int(b.route_id) : await prod.pickRoute(db, productType, product?.route_id), !!b.design_approval_required,
-       labor?.method || null, labor?.rate || null, labor && labor.method !== 'manual' ? laborAmount(labor.method, labor.rate, approx, qty) : (b.labor_rate || null), req.user.id, orderColor(b.color) || 'yellow',
-       JSON.stringify(b.diamonds !== undefined ? parseDiamonds(b.diamonds) : product?.diamonds || []), b.pearl_weight !== undefined ? optW(b.pearl_weight, 'وزن اللؤلؤ') : product?.pearl_weight ?? null,
-       b.stone_weight !== undefined ? optW(b.stone_weight, 'وزن الحجر') : product?.stone_weight ?? null, b.zircon_weight !== undefined ? optW(b.zircon_weight, 'وزن الزركون') : product?.zircon_weight ?? null,
-       ...(b.bullion_type !== undefined ? bullionVals(b) : [product?.bullion_type ?? null, product?.bullion_weight ?? null])]
-    )).rows[0];
-    await prod.logStage(db, o.id, null, 'created', req.user.id, 'إنشاء الطلب', true);
-    // موعد التسليم التلقائي حسب الفئة وتصنيف العميل (إن لم يُحدد يدوياً)
-    await applyDueDate(db, o.id);
-    if (b.start !== false) await prod.startProduction(db, o, req.user.id);
-    await audit(db, req, 'order.create', 'order', o.id, { order_no: o.order_no });
-    return o;
-  });
-  res.json(out);
+  res.json(await tx((db) => createStaffOrder(db, req, req.body)));
+});
+
+/** طلب متعدد المنتجات من شاشتنا: بيانات مشتركة (العميل والموعد…) + بنود، برقم طلب واحد مثل سلة المتجر */
+r.post('/multi', requirePerm('orders.manage'), async (req, res) => {
+  const { items, ...common } = req.body || {};
+  if (!Array.isArray(items) || !items.length) throw bad('أضف منتجاً واحداً على الأقل');
+  if (items.length > 50) throw bad('عدد المنتجات كبير');
+  res.json(await tx(async (db) => {
+    if (items.length === 1) { const o = await createStaffOrder(db, req, { ...common, ...items[0] }); return { cart_ref: null, orders: [{ id: o.id, order_no: o.order_no }] }; }
+    const ref = await newGroupNo(db);
+    const created = [];
+    for (const [i, it] of items.entries()) {
+      try {
+        created.push(await createStaffOrder(db, req, { ...common, ...it }, { cartRef: ref, orderNo: `${ref}-${i + 1}` }));
+      } catch (e) { e.message = `المنتج ${i + 1}: ${e.message}`; throw e; }
+    }
+    await audit(db, req, 'order.create_multi', 'cart', ref, { orders: created.map((o) => o.order_no) });
+    return { cart_ref: ref, orders: created.map((o) => ({ id: o.id, order_no: o.order_no })) };
+  }));
 });
 
 /**

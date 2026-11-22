@@ -790,3 +790,25 @@ test('إلغاء ذهب مستلم من العميل سُجّل بالخطأ: ح
   assert.equal(await bal('order', o.id, mat), 5);
   assert.equal((await call('GET', `/orders/${o.id}`)).data.customerGold.length, 1);
 });
+
+test('طلب متعدد المنتجات من شاشتنا: رقم واحد وبنود، بيانات مشتركة، ومنتج واحد يبقى طلباً عادياً', async () => {
+  const r = await call('POST', '/orders/multi', { due_date: '2030-01-15', items: [
+    { title: 'خاتم متعدد', product_type: 'خاتم', karat: '18', quantity: '2', approx_weight: '4' },
+    { title: 'حلق متعدد', product_type: 'حلق', karat: '21', quantity: '1' }] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.orders.length, 2);
+  const rows = (await pool.query('select order_no, cart_ref, status, title, quantity, to_char(due_date, \'YYYY-MM-DD\') d from orders where id = any($1::int[]) order by id', [r.data.orders.map((o) => o.id)])).rows;
+  assert.deepEqual(rows.map((x) => x.order_no), [`${r.data.cart_ref}-1`, `${r.data.cart_ref}-2`]);
+  assert.ok(rows.every((x) => x.cart_ref === r.data.cart_ref && x.status === 'in_production' && x.d === '2030-01-15'));
+  assert.deepEqual(rows.map((x) => [x.title, x.quantity]), [['خاتم متعدد', 2], ['حلق متعدد', 1]]);
+  const d = (await call('GET', `/orders/${r.data.orders[1].id}`)).data;
+  assert.equal(d.siblings.length, 2, 'البنود تظهر معاً في صفحة الطلب');
+  const one = await call('POST', '/orders/multi', { items: [{ title: 'منتج واحد', product_type: 'خاتم', karat: '21' }] });
+  assert.equal(one.data.cart_ref, null);
+  assert.equal((await pool.query('select cart_ref from orders where id=$1', [one.data.orders[0].id])).rows[0].cart_ref, null);
+  const bad = await call('POST', '/orders/multi', { items: [{ title: 'سليم', karat: '21' }, { title: 'خطأ', karat: '21', quantity: '0' }] });
+  assert.equal(bad.status, 400);
+  assert.match(bad.data.error, /^المنتج 2:/);
+  assert.equal((await pool.query("select count(*)::int n from orders where title='سليم'")).rows[0].n, 0, 'لا يُنشأ شيء عند خطأ في أي منتج');
+  assert.equal((await call('POST', '/orders/multi', { items: [] })).status, 400);
+});

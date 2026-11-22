@@ -981,3 +981,7 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .ss-thumb-empty { display: inline-block; }
 .search-select.has-thumb .form-control { padding-inline-start: 48px; }
 .ss-sel-thumb { position: absolute; inset-inline-start: 6px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 6px; object-fit: cover; pointer-events: none; z-index: 1; }
+
+/* طلب جديد: إضافة منتج آخر لنفس الطلب */
+.add-item-btn { width: 100%; padding: 14px; border: 2px dashed var(--bs-border-color); border-radius: 14px; background: transparent; color: var(--bs-body-color); font-weight: 700; font-size: 1.05rem; }
+.add-item-btn:hover { border-color: var(--bs-primary); color: var(--bs-primary); background: var(--bs-tertiary-bg); }
