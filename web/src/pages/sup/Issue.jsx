@@ -322,7 +322,8 @@ function GeneralIssue({ sp }) {
     if (wid) api.get(`/sup/workers/${wid}`).then((p) => setWorker(p.worker)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const materialId = f.material_id || mats.find((m) => m.karat === 21)?.id || mats[0]?.id;
+  // عيار 18 هو التلقائي عند صرف الذهب
+  const materialId = f.material_id || mats.find((m) => Number(m.karat) === 18 && m.metal !== 'silver')?.id || mats[0]?.id;
   const valid = worker && (src === 'findings' ? fItems.length > 0 : materialId && Number(f.weight) > 0 && f.purpose.trim());
   const submit = () => run(async () => {
     if (src === 'findings') {

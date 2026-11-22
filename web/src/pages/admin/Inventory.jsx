@@ -25,7 +25,7 @@ export default function Inventory() {
   const locs = ['vault', 'order', 'worker', 'scrap', 'finished', 'loss_suspense', 'loss_normal', 'loss_abnormal', 'delivered'];
   return (
     <Page title="المخزون" subtitle="الذهب يُحاسب منفصلاً لكل عيار ولون" actions={tab === 'gold' && <>
-      {can('custody.issue', 'inventory.manage') && <Btn kind="dark" onClick={() => setM({ type: 'worker', material_id: mats[3]?.id, loss_rate_percent: '0' })}>تحويل لعامل (عهدة عامة)</Btn>}
+      {can('custody.issue', 'inventory.manage') && <Btn kind="dark" onClick={() => setM({ type: 'worker', material_id: (mats.find((x) => Number(x.karat) === 18 && x.metal !== 'silver') || mats[3])?.id, loss_rate_percent: '0' })}>تحويل لعامل (عهدة عامة)</Btn>}
       {can('inventory.manage') && <>
       <Btn onClick={() => setM({ type: 'in', source: 'customer', material_id: mats[3]?.id })}>إضافة ذهب للخزنة</Btn>
       <Btn kind="ghost" onClick={() => setM({ type: 'out', to: 'supplier', from: 'vault', material_id: mats.find((x) => Number(x.karat) === 24)?.id || mats[3]?.id })}>صرف</Btn>
