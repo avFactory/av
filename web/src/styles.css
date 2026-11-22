@@ -985,3 +985,26 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 /* طلب جديد: إضافة منتج آخر لنفس الطلب */
 .add-item-btn { width: 100%; padding: 14px; border: 2px dashed var(--bs-border-color); border-radius: 14px; background: transparent; color: var(--bs-body-color); font-weight: 700; font-size: 1.05rem; }
 .add-item-btn:hover { border-color: var(--bs-primary); color: var(--bs-primary); background: var(--bs-tertiary-bg); }
+
+/* السحب والإفلات واللصق للصور */
+.file-pick { border-radius: 14px; transition: background .15s, outline-color .15s; outline: 2px dashed transparent; outline-offset: 4px; }
+.file-pick.dragging { outline-color: var(--bs-primary, #a8864f); background: var(--bs-tertiary-bg); }
+.file-pick-drop { align-self: center; color: var(--bs-secondary-color); font-size: .8rem; padding-inline: 6px; }
+.file-pick-item img.zoomable { cursor: zoom-in; }
+
+/* تكبير الصورة */
+.lightbox { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.85); display: grid; place-items: center; padding: 24px; cursor: zoom-out; }
+.lightbox img { width: min(92vw, 1000px); height: min(86vh, 1000px); object-fit: contain; cursor: default; filter: drop-shadow(0 10px 40px rgba(0,0,0,.5)); }
+.lightbox-x { position: fixed; top: 14px; inset-inline-end: 14px; width: 42px; height: 42px; border-radius: 50%; border: 0; background: rgba(255,255,255,.15); color: #fff; font-size: 28px; line-height: 1; }
+.zoom-thumb { padding: 0; border: 1px solid var(--bs-border-color); border-radius: 10px; overflow: hidden; background: var(--bs-tertiary-bg); cursor: zoom-in; flex: 0 0 auto; }
+.zoom-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* منتجات الطلب المختصرة في سطر واحد */
+.item-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--bs-border-color); border-radius: 14px; background: var(--bs-body-bg); cursor: pointer; }
+.item-row:hover { border-color: var(--bs-primary, #a8864f); }
+.item-row .zoom-thumb { width: 52px; height: 52px; }
+.item-row .item-no { font-weight: 800; color: var(--bs-secondary-color); min-width: 1.5em; }
+.item-row .item-main { flex: 1; min-width: 0; }
+.item-row .item-main b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-row .item-thumb-empty { width: 52px; height: 52px; border-radius: 10px; border: 1px dashed var(--bs-border-color); flex: 0 0 auto; }
+.product-preview .zoom-thumb { width: 96px; height: 96px; }

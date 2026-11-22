@@ -491,26 +491,102 @@ export function ThemeToggle({ light = false, className = '' }) {
 }
 
 /** اختيار عدة ملفات بالتتابع (كل اختيار يُضاف للقائمة) مع معاينة وحذف */
-export function FilePicker({ label, value = [], onChange, accept = 'image/*', max = 20, hint, main = null, onMain }) {
+/** عرض الصورة مكبرة فوق الصفحة (للتأكد من تفاصيل المنتج) — إغلاق بالنقر أو Esc */
+export function Lightbox({ src, alt = '', onClose }) {
+  useEffect(() => {
+    if (!src) return undefined;
+    const h = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [src, onClose]);
+  if (!src) return null;
+  return createPortal(
+    <div className="lightbox" role="dialog" aria-label="عرض الصورة" onClick={onClose}>
+      <img src={src} alt={alt} onClick={(e) => e.stopPropagation()} />
+      <button type="button" className="lightbox-x" aria-label="إغلاق" onClick={onClose}>×</button>
+    </div>,
+    document.body,
+  );
+}
+
+/** صورة مصغرة تُكبَّر عند النقر */
+export function ZoomThumb({ src, full, className = '', alt = '' }) {
+  const [open, setOpen] = useState(false);
+  if (!src) return null;
+  return (
+    <>
+      <button type="button" className={`zoom-thumb ${className}`} title="اضغط لتكبير الصورة" onClick={(e) => { e.stopPropagation(); setOpen(true); }}><img src={src} alt={alt} /></button>
+      <Lightbox src={open ? full || src : null} alt={alt} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+
+const IMG_RE = /\.(jpe?g|png|webp|gif|heic|heif|bmp)(\?|$)/i;
+const okType = (f, accept) => !accept || accept === '*' || accept.split(',').some((a) => { a = a.trim(); return a.endsWith('/*') ? (f.type || '').startsWith(a.slice(0, -1)) : a.startsWith('.') ? f.name.toLowerCase().endsWith(a) : f.type === a; }) || (accept.includes('image/') && IMG_RE.test(f.name));
+
+/** ملفات من السحب والإفلات (من سطح المكتب أو واتساب ويب/ديسكتوب) أو من رابط صورة مسحوبة */
+async function filesFromTransfer(dt, accept) {
+  const files = [...(dt?.files || [])].filter((f) => okType(f, accept));
+  if (files.length) return files;
+  // بعض المتصفحات تسحب الصورة كرابط فقط: نحاول تحميلها
+  const html = dt?.getData?.('text/html') || '';
+  const url = (html.match(/<img[^>]+src=["']([^"']+)/i) || [])[1] || (dt?.getData?.('text/uri-list') || '').split('\n').find((x) => x && !x.startsWith('#'));
+  if (!url) return [];
+  try {
+    const r = await fetch(url);
+    const b = await r.blob();
+    if (!b.type.startsWith('image/')) return [];
+    return [new File([b], `whatsapp-${Date.now()}.${(b.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`, { type: b.type })];
+  } catch { return []; }
+}
+
+/**
+ * اختيار ملفات/صور مع معاينة: زر الإضافة، السحب والإفلات (من واتساب أو سطح المكتب)، واللصق Ctrl+V.
+ * globalPaste: يستقبل اللصق من أي مكان في الصفحة (لنموذج واحد نشط). النقر على الصورة يكبّرها.
+ */
+export function FilePicker({ label, value = [], onChange, accept = 'image/*', max = 20, hint, main = null, onMain, globalPaste = false }) {
   const ref = useRef(null);
   const [urls, setUrls] = useState([]);
+  const [drag, setDrag] = useState(false);
+  const [zoom, setZoom] = useState(null);
+  const latest = useRef({ value, onChange });
+  latest.current = { value, onChange };
   useEffect(() => {
     const u = value.map((f) => (f.type?.startsWith('image/') ? URL.createObjectURL(f) : null));
     setUrls(u);
     return () => u.forEach((x) => x && URL.revokeObjectURL(x));
   }, [value]);
-  const add = (list) => {
-    const next = [...value, ...list].slice(0, max);
-    onChange(next);
+  const add = useCallback((list) => {
+    if (!list.length) return;
+    const { value: v, onChange: oc } = latest.current;
+    oc([...v, ...list].slice(0, max));
     if (ref.current) ref.current.value = '';
+  }, [max]);
+  useEffect(() => {
+    if (!globalPaste) return undefined;
+    const h = (e) => {
+      const fs = [...(e.clipboardData?.files || [])].filter((f) => okType(f, accept));
+      if (!fs.length) return;
+      e.preventDefault();
+      add(fs.map((f, i) => (f.name && f.name !== 'image.png' ? f : new File([f], `paste-${Date.now()}-${i}.${(f.type.split('/')[1] || 'png')}`, { type: f.type }))));
+    };
+    window.addEventListener('paste', h);
+    return () => window.removeEventListener('paste', h);
+  }, [globalPaste, accept, add]);
+  const onDrop = async (e) => {
+    e.preventDefault(); setDrag(false);
+    add(await filesFromTransfer(e.dataTransfer, accept));
   };
   return (
-    <div className="field file-pick">
+    <div className={`field file-pick ${drag ? 'dragging' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (!drag) setDrag(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDrag(false); }}
+      onDrop={onDrop}>
       {label && <span className="form-label mb-0 field-l">{label}</span>}
       <div className="file-pick-grid">
         {value.map((f, i) => (
           <div key={`${f.name}-${i}`} className={`file-pick-item ${onMain && main === i ? 'main' : ''}`} title={f.name}>
-            {urls[i] ? <img src={urls[i]} alt="" /> : <span className="file-pick-name">{f.name.split('.').pop().toUpperCase()}<small>{f.name}</small></span>}
+            {urls[i] ? <img src={urls[i]} alt="" className="zoomable" onClick={() => setZoom(urls[i])} /> : <span className="file-pick-name">{f.name.split('.').pop().toUpperCase()}<small>{f.name}</small></span>}
             <button type="button" className="file-pick-x" aria-label="حذف" onClick={() => onChange(value.filter((_, j) => j !== i))}>×</button>
             {onMain && <button type="button" className="file-pick-star" title={main === i ? 'الصورة الرئيسية' : 'تعيين كصورة رئيسية'} onClick={() => onMain(i)}>{main === i ? '★ الرئيسية' : '☆'}</button>}
           </div>
@@ -520,9 +596,11 @@ export function FilePicker({ label, value = [], onChange, accept = 'image/*', ma
             <b>+</b><span>{value.length ? 'إضافة المزيد' : 'إضافة ملفات'}</span>
           </button>
         )}
+        {value.length < max && <div className="file-pick-drop">⇩ اسحب الصور هنا من واتساب أو جهازك{globalPaste ? ' — أو الصقها Ctrl+V' : ''}</div>}
       </div>
       <input ref={ref} type="file" hidden multiple accept={accept} onChange={(e) => add([...e.target.files])} />
       {hint && <span className="form-text mt-0">{hint}</span>}
+      <Lightbox src={zoom} onClose={() => setZoom(null)} />
     </div>
   );
 }
