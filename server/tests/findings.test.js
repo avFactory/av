@@ -752,3 +752,22 @@ test('ترتيب العمال والمكائن ثابت حسب الرقم في �
   await call('POST', '/inventory/gold/to-worker', { worker_id: last, material_id: mat, weight: '1', purpose: 'x', loss_rate_percent: '0' });
   assert.deepEqual((await call('GET', '/sup/workers')).data.map((w) => w.id), all, 'العهدة لا تغير مكان العامل');
 });
+
+test('نقل الطلب لمرحلة تتطلب تسليم واستلام: رسالة توضيحية ثم الموافقة تنقله بنفس وزن الذهب', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=18 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '50', note: 'رصيد' });
+  const o = (await call('POST', '/orders', { title: 'نقل بنفس الوزن', product_type: 'خاتم', karat: 18, quantity: 1, material_id: mat })).data;
+  for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0].h; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
+  const st = (await pool.query('select current_stage_id s from orders where id=$1', [o.id])).rows[0].s;
+  await pool.query('update stages set requires_weight=true where id=$1', [st]);
+  const before = await bal('order', o.id, mat);
+  const r1 = await call('POST', `/orders/${o.id}/advance`, {});
+  assert.equal(r1.status, 409);
+  assert.equal(r1.data.details?.needs_gold, true, 'الخادم يطلب التأكيد');
+  const r2 = await call('POST', `/orders/${o.id}/advance`, { skip_gold: true });
+  assert.equal(r2.status, 200, JSON.stringify(r2.data));
+  assert.notEqual((await pool.query('select current_stage_id s from orders where id=$1', [o.id])).rows[0].s, st, 'انتقل للمرحلة التالية');
+  assert.equal(await bal('order', o.id, mat), before, 'بنفس وزن الذهب');
+  const log = (await pool.query("select note as reason from order_stage_log where order_id=$1 and stage_id=$2 and event='completed' order by id desc limit 1", [o.id, st])).rows[0];
+  assert.match(log.reason, /بنفس وزن الذهب/);
+});

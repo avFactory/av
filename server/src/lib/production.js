@@ -1,4 +1,4 @@
-import { bad, conflict, notFound } from './http.js';
+import { bad, conflict, notFound, HttpError } from './http.js';
 import { reserveDiamonds } from './stoneReserve.js';
 import { notifyCustomer, notifyPerm, notifyUsers } from './notify.js';
 import * as ledger from './ledger.js';
@@ -177,9 +177,12 @@ export async function advance(db, order, userId, opts = {}) {
     throw conflict('لا يمكن المتابعة قبل اعتماد العميل للتصميم');
   if (cur.kind === 'design' && order.design_approval_required && !['sent', 'approved'].includes(order.design_status) && !opts.force)
     throw conflict('يجب رفع التصميم وإرساله للعميل قبل إنهاء مرحلة التصميم');
+  let skippedGold = false;
   if (cur.handles_gold && cur.requires_weight && !opts.force) {
     const c = await db.query("select count(*)::int n from custodies where order_id = any($1::int[]) and stage_id=$2 and status='closed'", [goldIds, cur.id]);
-    if (!c.rows[0].n) throw conflict(`مرحلة "${cur.name}" تتطلب تسليم واستلام ذهب موزون قبل الانتقال`);
+    // بدون تسليم واستلام: يُرفض ما لم يؤكد المشرف النقل بنفس وزن الذهب (الذهب يبقى على الطلب كما هو)
+    if (!c.rows[0].n && !opts.skipGold) throw new HttpError(409, `مرحلة "${cur.name}" تتطلب تسليم واستلام ذهب موزون قبل الانتقال`, { needs_gold: true, stage: cur.name });
+    if (!c.rows[0].n) skippedGold = true;
   }
   if (cur.kind === 'final_weight' && !order.final_weight) throw conflict('يجب تسجيل الوزن النهائي أولاً');
   if (cur.kind === 'invoicing' && order.customer_id) {
@@ -196,7 +199,7 @@ export async function advance(db, order, userId, opts = {}) {
     return { pending_approval: true };
   }
   const next = stages[idx + 1];
-  await logStage(db, order.id, cur.id, 'completed', userId, opts.force ? `تجاوز: ${opts.reason || ''}` : null, cur.customer_visible);
+  await logStage(db, order.id, cur.id, 'completed', userId, opts.force ? `تجاوز: ${opts.reason || ''}` : skippedGold ? 'نُقل بدون تسليم واستلام ذهب — بنفس وزن الذهب' : null, cur.customer_visible);
   if (!next) {
     await db.query("update orders set stage_state='done', updated_at=now() where id=$1", [order.id]);
     return { finished: true };

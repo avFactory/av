@@ -430,7 +430,7 @@ r.post('/:id/shortage/resume', requirePerm('orders.advance', 'custody.issue'), a
 
 /** نقل الطلب كاملاً (كل بنوده في نفس المرحلة) للمرحلة التالية */
 r.post('/:id/group-advance', requirePerm('orders.view'), async (req, res) => {
-  res.json(await tx((db) => advanceGroup(db, req, int(req.params.id))));
+  res.json(await tx((db) => advanceGroup(db, req, int(req.params.id), req.body || {})));
 });
 
 /** مرحلة 3D: هل تحتاج القطعة تصميم أو طباعة */
@@ -444,8 +444,9 @@ r.post('/:id/advance', requirePerm('orders.advance'), async (req, res) => {
     const force = !!req.body.force;
     if (force && !has(req, 'orders.manage')) throw bad('التجاوز يتطلب صلاحية إدارة الطلبات');
     if (force && !req.body.reason) throw bad('سبب التجاوز مطلوب');
-    const r2 = await prod.advance(db, o, req.user.id, { force, reason: req.body.reason });
-    await audit(db, req, 'order.advance', 'order', o.id, { from: o.current_stage_id, force, reason: req.body.reason });
+    const skipGold = !!req.body.skip_gold;
+    const r2 = await prod.advance(db, o, req.user.id, { force, reason: req.body.reason, skipGold });
+    await audit(db, req, 'order.advance', 'order', o.id, { from: o.current_stage_id, force, reason: req.body.reason, ...(skipGold ? { skip_gold: true } : {}) });
     return r2;
   }));
 });

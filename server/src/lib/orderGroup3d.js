@@ -21,7 +21,9 @@ async function groupAtStage(db, orderId) {
   return { ref, ids: rows.map((x) => x.id) };
 }
 
-export async function advanceGroup(db, req, orderId) {
+export async function advanceGroup(db, req, orderId, body = {}) {
+  // النقل بنفس وزن الذهب بدون تسليم واستلام: للمشرف (صلاحية نقل الطلبات) بعد التأكيد فقط
+  const skipGold = !!body.skip_gold && has(req, 'orders.advance');
   const { ref, ids } = await groupAtStage(db, orderId);
   if (!ids.length) throw bad('لا توجد بنود قيد التصنيع في هذه المرحلة');
   const stage = (await db.query('select * from stages where id=$1', [ref.current_stage_id])).rows[0];
@@ -31,15 +33,15 @@ export async function advanceGroup(db, req, orderId) {
     const o = await prod.lockOrder(db, id);
     try {
       await db.query('savepoint g');
-      await prod.advance(db, o, req.user.id, {});
+      await prod.advance(db, o, req.user.id, { skipGold });
       await db.query('release savepoint g');
       moved.push(o.order_no);
     } catch (e) {
       await db.query('rollback to savepoint g');
-      skipped.push({ order_no: o.order_no, reason: e.message });
+      skipped.push({ order_no: o.order_no, reason: e.message, ...(e.extra?.needs_gold ? { needs_gold: true } : {}) });
     }
   }
-  await audit(db, req, 'order.group_advance', 'order', ref.id, { stage: stage.name, moved, skipped });
+  await audit(db, req, 'order.group_advance', 'order', ref.id, { stage: stage.name, moved, skipped, ...(skipGold ? { skip_gold: true } : {}) });
   return { moved, skipped, stage: stage.name };
 }
 

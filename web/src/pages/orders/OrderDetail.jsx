@@ -6,7 +6,7 @@ import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
 import { ShortageModal, WithdrawModal, SHORTAGE_KINDS } from '../../components/ShortageTools.jsx';
 import { TransferModal } from '../../components/TransferTools.jsx';
 import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS, stoneItems } from '../../format.js';
-import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal, showAlert } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal, showAlert, askConfirm, useToast } from '../../ui.jsx';
 import PartialReturnModal from '../../components/PartialReturn.jsx';
 
 /** رابط تتبع عام للطلب (عرض فقط بدون تسجيل دخول): نسخ أو إرسال واتساب */
@@ -59,6 +59,18 @@ export default function OrderDetail() {
   const openCust = custodies.filter((c) => ['open', 'under_review'].includes(c.status));
   const act = (path, body, msg) => run(async () => { const r = await api.post(`/orders/${o.id}/${path}`, body); setModal(null); setF({}); reload(); return r; }, msg);
   const open = (m, init = {}) => { setF(init); setModal(m); };
+  const toast = useToast();
+  // نقل للمرحلة التالية: إن كانت المرحلة تتطلب تسليم واستلام ذهب تظهر رسالة توضيحية، والموافقة تنقله بنفس وزن الذهب
+  const advanceNow = () => run(async () => {
+    let r;
+    try { r = await api.post(`/orders/${o.id}/advance`, {}); } catch (e) {
+      if (!e.details?.needs_gold) throw e;
+      const ok = await askConfirm(goldSkipMsg(e.details.stage, orderBal), { title: 'نقل بدون تسليم واستلام', ok: 'موافق — انقل بنفس الوزن' });
+      if (!ok) return;
+      r = await api.post(`/orders/${o.id}/advance`, { skip_gold: true });
+    }
+    reload(); toast(r?.pending_approval ? 'أُرسل للاعتماد' : 'انتقل الطلب للمرحلة التالية', 'ok');
+  });
   const setv = (k) => (e) => setF({ ...f, [k]: e?.target ? e.target.value : e });
   const upload = (e) => run(async () => {
     const fd = new FormData();
@@ -150,7 +162,7 @@ export default function OrderDetail() {
             {cur?.kind === 'final_weight' && can('orders.advance') && !openCust.length && (!cur.handles_gold || custodies.some((c) => c.stage_id === cur.id && c.status === 'closed')) && <Btn onClick={() => open('final', { weight: orderBal })}>{o.final_weight ? 'تعديل الوزن النهائي' : 'تسجيل الوزن النهائي'}</Btn>}
             {cur?.kind === 'invoicing' && can('invoices.manage') && <LinkBtn kind="primary" to={`/admin/invoices?new=1&customer=${o.customer_id}&order=${o.id}`}>إصدار فاتورة الأجور</LinkBtn>}
             {o.status === 'ready' && can('orders.advance', 'orders.manage') && <Btn kind="ok" onClick={() => open('deliver')}>تسليم الطلب للعميل وإقفاله</Btn>}
-            {inProd && can('orders.advance') && cur?.kind !== 'delivery_ready' && <Btn kind="dark" loading={busy} onClick={() => act('advance', {}, 'انتقل الطلب للمرحلة التالية')}>{o.stage_state === 'pending_approval' ? 'اعتماد وإنهاء المرحلة' : 'نقل للمرحلة التالية'}</Btn>}
+            {inProd && can('orders.advance') && cur?.kind !== 'delivery_ready' && <Btn kind="dark" loading={busy} onClick={advanceNow}>{o.stage_state === 'pending_approval' ? 'اعتماد وإنهاء المرحلة' : 'نقل للمرحلة التالية'}</Btn>}
             {inProd && can('orders.manage') && <Btn kind="ghost" size="sm" onClick={() => open('force')}>تجاوز المرحلة (بسبب)</Btn>}
           </div>
           {cur?.kind === 'final_weight' && inProd && (o.final_weight
@@ -299,10 +311,15 @@ function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove
   const sameStage = list.filter((x) => x.status === 'in_production' && x.current_stage_id === o.current_stage_id);
   const pieces = list.reduce((a, x) => a + Number(x.quantity || 0), 0);
   const moveAll = () => run(async () => {
-    const r = await api.post(`/orders/${o.id}/group-advance`);
+    let r = await api.post(`/orders/${o.id}/group-advance`);
+    // بنود تتطلب تسليم واستلام ذهب: رسالة توضيحية، والموافقة تنقلها بنفس وزن الذهب
+    if (r.skipped?.some((x) => x.needs_gold)) {
+      const ok = await askConfirm(goldSkipMsg(o.stage_name), { title: 'نقل بدون تسليم واستلام', ok: 'موافق — انقل بنفس الوزن' });
+      if (ok) { const r2 = await api.post(`/orders/${o.id}/group-advance`, { skip_gold: true }); r = { ...r2, moved: [...(r.moved || []), ...(r2.moved || [])] }; }
+    }
     reload();
     if (r.skipped?.length) showAlert(`لم ينتقل:\n${r.skipped.map((x) => `${x.order_no}: ${x.reason}`).join('\n')}`);
-  }, 'انتقل الطلب كاملاً للمرحلة التالية');
+  }, 'تم');
   const mark = (x, k) => run(async () => {
     const next = { needs_design: x.needs_3d_design, needs_print: x.needs_3d_print, [k]: !(k === 'needs_design' ? x.needs_3d_design : x.needs_3d_print) };
     await api.post(`/orders/${x.id}/3d`, next); reload();
@@ -370,4 +387,11 @@ function SplitModal({ open, o, f, setF, busy, routes, onClose, onSubmit }) {
       <div className="hrow end"><Btn loading={busy} disabled={!ok} onClick={onSubmit}>تقسيم</Btn></div>
     </Modal>
   );
+}
+
+/** رسالة النقل بدون تسليم واستلام: الذهب يبقى على الطلب بنفس وزنه */
+function goldSkipMsg(stage, bal) {
+  return `مرحلة «${stage || 'الحالية'}» تتطلب عادةً تسليم الذهب للعامل واستلامه موزوناً قبل الانتقال، ولم يتم ذلك.\n\n`
+    + `عند الموافقة ينتقل الطلب للمرحلة التالية بنفس وزن الذهب${bal != null && bal !== '' ? ` (${fmtW(bal)} جم)` : ''} بدون أي عجز أو حركة ذهب، ويُسجَّل ذلك في سجل الطلب.\n\n`
+    + 'للتحويل إلى المرحلة التالية بنفس وزن الذهب اضغط «موافق».';
 }
