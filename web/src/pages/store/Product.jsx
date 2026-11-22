@@ -12,7 +12,7 @@ export default function Product() {
   const { id } = useParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { cart, setCart, apiBase, approved, loginUrl } = useCart();
+  const { cart, setCart, apiBase, approved, seller, loginUrl } = useCart();
   const { data: p, error } = useFetch(`${apiBase}/products/${id}`, { deps: [apiBase] });
   const [img, setImg] = useState(0);
   const { lookups } = useAuth();
@@ -64,7 +64,7 @@ export default function Product() {
             {p.lead_days != null && <div><dt>مدة التنفيذ المتوقعة</dt><dd>{p.lead_days} يوم عمل <span className="small text-body-secondary">من اعتماد الطلب (الجمعة عطلة)</span></dd></div>}
             {p.labor && <div><dt>أجور التصنيع</dt><dd style={{ color: 'var(--gold-ink)' }}>{fmtMoney(p.labor.rate)} {METHODS[p.labor.method]}</dd></div>}
             {p.labor && <div><dt>تقدير أجرة القطعة</dt><dd>{fmtMoney(p.labor.estimate)}</dd></div>}
-            {!approved && <div><dt>أجور التصنيع</dt><dd><Link to={loginUrl} className="link">سجّل الدخول لعرض الأجور</Link></dd></div>}
+            {!approved && <div><dt>أجور التصنيع</dt><dd>{seller ? 'حسب أجور العميل المختار عند الإرسال' : <Link to={loginUrl} className="link">سجّل الدخول لعرض الأجور</Link>}</dd></div>}
           </div>
           <Field label="العيار"><div className="chips">{p.karats.map((k) => <button key={k} className={`chip ${karat === k ? 'on' : ''}`} onClick={() => setSel({ ...sel, karat: k })}>{k}</button>)}</div></Field>
           <Field label="اللون"><div className="chips">{p.colors.map((c) => <button key={c} className={`chip ${color === c ? 'on' : ''}`} onClick={() => setSel({ ...sel, color: c })}>{COLORS[c]}</button>)}</div></Field>

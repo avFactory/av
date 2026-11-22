@@ -11,7 +11,7 @@ function loadCart() { try { return JSON.parse(localStorage.getItem('cart') || '[
 
 /** المتجر يتطلب تسجيل الدخول. إرسال الطلبات وعرض أجور التصنيع للعملاء المعتمدين فقط. */
 export default function StoreLayout() {
-  const { me, logout } = useAuth();
+  const { me, logout, can } = useAuth();
   const [cart, setCart] = useState(loadCart);
   useEffect(() => { try { localStorage.setItem('cart', JSON.stringify(cart)); } catch { /* ignore */ } }, [cart]);
   const loc = useLocation();
@@ -19,6 +19,8 @@ export default function StoreLayout() {
   useEffect(() => setMenu(false), [loc.pathname]);
   const isCustomer = me?.role_code === 'customer';
   const approved = isCustomer && me.customer_status === 'approved';
+  // مدير المبيعات: يضيف للسلة ثم يختار العميل عند الإرسال
+  const seller = !isCustomer && !!me && can('store.sales');
   const next = encodeURIComponent(loc.pathname + loc.search);
   // مصدر بيانات المنتجات: أسعار العميل الخاصة للمعتمد، والكتالوج العام لغيره
   const apiBase = approved ? '/store' : '/public';
@@ -26,7 +28,7 @@ export default function StoreLayout() {
   if (me === null) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
   const count = cart.reduce((s, i) => s + Number(i.quantity), 0);
   return (
-    <CartCtx.Provider value={{ cart, setCart, approved, apiBase, me, loginUrl: `/login?next=${next}` }}>
+    <CartCtx.Provider value={{ cart, setCart, approved, seller, apiBase, me, loginUrl: `/login?next=${next}` }}>
       <header className="navbar navbar-expand-lg navbar-dark bg-dark sticky-top store-top no-print" data-bs-theme="dark">
         <div className="container-xl">
           <Link to="/store" className="navbar-brand d-flex align-items-center gap-2"><img src="/logo-white.png" alt="AV" className="brand-logo" /><span className="fw-bold">مصنع AV للمجوهرات <small className="fw-normal text-white-50">· متجر الجملة</small></span></Link>
@@ -50,11 +52,17 @@ export default function StoreLayout() {
                 <NavLink to="/store/account" className="btn btn-outline-light btn-sm">{me.shop_name}{me.branch_name ? ` — ${me.branch_name}` : ''}</NavLink>
                 <button className="btn btn-outline-light btn-sm" onClick={logout}>خروج</button>
               </>}
-              {me && !isCustomer && <Link to="/" className="btn btn-outline-light btn-sm">العودة للنظام</Link>}
+              {seller && <span className="badge text-bg-warning">مدير المبيعات: {me.full_name}</span>}
+              {me && !isCustomer && <Link to={seller && me.role_code === 'sales_manager' ? '/orders' : '/'} className="btn btn-outline-light btn-sm">{seller && me.role_code === 'sales_manager' ? 'طلبات العملاء' : 'العودة للنظام'}</Link>}
             </div>
           </div>
         </div>
       </header>
+      {seller && (
+        <div className="page" style={{ paddingBottom: 0 }}>
+          <div className="alert alert-info mb-0">🛒 وضع مدير المبيعات: أضف المنتجات التي يريدها العميل إلى السلة، وعند الانتهاء افتح السلة واختر العميل ثم أرسل الطلب باسمه.</div>
+        </div>
+      )}
       {isCustomer && !approved && (
         <div className="page" style={{ paddingBottom: 0 }}>
           <div className="alert alert-warning">حساب محل <b>{me.shop_name}</b> بانتظار موافقة إدارة المصنع. يمكنكم تصفح المنتجات الآن، وإرسال الطلبات بعد الاعتماد. ارفعوا مستندات المنشأة من <Link to="/store/account" className="link">صفحة الحساب</Link>.</div>
@@ -69,7 +77,7 @@ export default function StoreLayout() {
 export function OrderGate({ what = 'إرسال الطلب' }) {
   const { me, loginUrl } = useCart();
   if (me?.role_code === 'customer') return <div className="alert alert-warning">حسابكم بانتظار موافقة إدارة المصنع - يمكنكم {what} بعد الاعتماد.</div>;
-  if (me) return <div className="alert alert-info">أنت مسجل بحساب موظف. {what} متاح لحسابات المحلات فقط.</div>;
+  if (me) return <div className="alert alert-info">أنت مسجل بحساب موظف. {what} متاح لحسابات المحلات فقط.{me.perms?.includes('store.sales') ? ' للطلب الخاص لعميل استخدم «طلب تصنيع جديد» من النظام.' : ''}</div>;
   return (
     <div className="card card-body grid" style={{ gap: 10 }}>
       <b>سجّل الدخول ل{what}</b>

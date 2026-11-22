@@ -1,13 +1,17 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { COLORS, fmtMoney, METHODS } from '../../format.js';
-import { Btn, Empty, Page, useAction, LinkBtn, showAlert } from '../../ui.jsx';
+import { Btn, Empty, Field, Page, SearchSelect, Select, useAction, useFetch, LinkBtn, showAlert } from '../../ui.jsx';
 import { delFiles, getFiles } from '../../fileStore.js';
 import { useCart, OrderGate } from '../../components/StoreLayout.jsx';
 import { useAuth } from '../../auth.jsx';
 
 export default function Cart() {
-  const { cart, setCart, approved } = useCart();
+  const { cart, setCart, approved, seller } = useCart();
+  const { data: customers } = useFetch(seller ? '/sales/customers' : null);
+  const [cust, setCust] = useState({ id: '', branch: '' });
+  const custRow = (customers || []).find((c) => String(c.id) === String(cust.id));
   const { lookups } = useAuth();
   const nav = useNavigate();
   const [run, busy] = useAction();
@@ -40,6 +44,16 @@ export default function Cart() {
     nav('/store/orders', { state: { cart: ref || stockRef } });
     if (stockRef && ref) await showAlert(`قُسم طلبك إلى طلبين:\n• ${stockRef} — المنتجات المتوفرة في المخزون\n• ${ref} — المنتجات التي تحتاج تصنيعاً`, { title: 'تم إرسال الطلب للمصنع' });
   }, 'تم إرسال الطلب للمصنع');
+  // مدير المبيعات: يرسل السلة باسم العميل المختار (المنتجات الجاهزة فقط)
+  const sendForCustomer = () => run(async () => {
+    if (!cust.id) { await showAlert('اختر العميل أولاً'); return; }
+    if (cart.some((i) => i.kind === 'custom')) { await showAlert('طلبات التصميم الخاص لا تُرسل من هنا — احذفها من السلة وأضفها من «طلب تصنيع جديد» في النظام'); return; }
+    const r = await api.post('/sales/orders', { customer_id: cust.id, branch_id: cust.branch || null, items: cart });
+    setCart([]); setCust({ id: '', branch: '' });
+    const refs = [r.stock_ref && `• ${r.stock_ref} — المتوفر في المخزون`, r.make_ref && `• ${r.make_ref} — يحتاج تصنيعاً`].filter(Boolean).join('\n');
+    await showAlert(`أُرسل الطلب باسم ${r.customer}${r.branch ? ` — ${r.branch}` : ''}:\n${refs}\n\nوصل العميلَ إشعارٌ بالطلب.`, { title: 'تم إرسال الطلب للمصنع' });
+    nav('/store');
+  });
   const remove = (n) => { const it = cart[n]; if (it.kind === 'custom') delFiles(it.key); setCart(cart.filter((_, j) => j !== n)); };
   const minOf = (x) => x.min || (x.kind === 'custom' ? (lookups?.settings?.min_order?.diamond ?? 2) : 1);
   const setQty = (n, q) => setCart(cart.map((x, j) => (j === n ? { ...x, quantity: Math.max(minOf(x), Math.min(9999, Number(q) || minOf(x))) } : x)));
@@ -85,7 +99,15 @@ export default function Cart() {
               <div className="d-flex justify-content-between"><span>عدد القطع</span><b>{pieces}</b></div>
               {laborTotal > 0 && <div className="d-flex justify-content-between"><span>أجور تقديرية</span><b>{fmtMoney(laborTotal)}</b></div>}
               <div className="small text-body-secondary">سيراجع المصنع الطلب ويؤكده. الأجور النهائية تحسب على الوزن الفعلي.{cart.some((i) => i.kind === 'custom') && ' طلبات التصميم الخاص يُرسل لها عرض أجور للموافقة.'}</div>
-              {!approved ? <OrderGate what="إرسال الطلب" /> : <Btn size="lg" className="w-100" loading={busy} onClick={send}>إرسال الطلب للمصنع</Btn>}
+              {seller ? (
+                <div className="d-grid gap-2 sales-pick">
+                  <Field label="اختر العميل *"><SearchSelect value={cust.id} onChange={(v) => setCust({ id: v, branch: '' })} placeholder="ابحث باسم المحل أو صاحبه أو الجوال…" options={(customers || []).map((c) => [c.id, c.shop_name, [c.owner_name, c.phone, c.city].filter(Boolean).join(' ')])} /></Field>
+                  {custRow && <div className="small text-body-secondary">{[custRow.owner_name, custRow.phone, custRow.city].filter(Boolean).join(' · ')}</div>}
+                  {custRow?.branches?.length > 0 && <Field label="الفرع"><Select value={cust.branch} onChange={(e) => setCust({ ...cust, branch: e.target.value })} placeholder="الحساب الرئيسي" options={custRow.branches.map((b) => [b.id, b.name])} /></Field>}
+                  <Btn size="lg" className="w-100" loading={busy} disabled={!cust.id} onClick={sendForCustomer}>إرسال الطلب باسم العميل</Btn>
+                  <div className="small text-body-secondary">الأجور النهائية تُحسب حسب أجور العميل المختار.</div>
+                </div>
+              ) : !approved ? <OrderGate what="إرسال الطلب" /> : <Btn size="lg" className="w-100" loading={busy} onClick={send}>إرسال الطلب للمصنع</Btn>}
             </div>
           </aside>
         </div>

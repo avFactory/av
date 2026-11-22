@@ -812,3 +812,37 @@ test('طلب متعدد المنتجات من شاشتنا: رقم واحد وب
   assert.equal((await pool.query("select count(*)::int n from orders where title='سليم'")).rows[0].n, 0, 'لا يُنشأ شيء عند خطأ في أي منتج');
   assert.equal((await call('POST', '/orders/multi', { items: [] })).status, 400);
 });
+
+test('مدير المبيعات: يضيف للسلة ويختار العميل والفرع، والطلب يُسجل باسم العميل ويصله إشعار', async () => {
+  const cust = (await pool.query("insert into customers(shop_name, owner_name, phone, status) values ('محل المبيعات','أبو علي','0551112222','approved') returning id")).rows[0].id;
+  const br = (await pool.query("insert into customer_branches(customer_id, name) values ($1,'فرع العليا') returning id", [cust])).rows[0].id;
+  const cu = (await pool.query("insert into users(username, password_hash, full_name, role_code, customer_id) values ('sales_cust',$1,'محل المبيعات','customer',$2) returning id", [hashPassword('Ss#2026xx'), cust])).rows[0].id;
+  const other = (await pool.query("insert into customers(shop_name, status) values ('محل غير معتمد','pending') returning id")).rows[0].id;
+  const p = (await pool.query("insert into products(sku, name, product_type, karats, colors, approx_weight, active) values ('SLS-1','خاتم مبيعات','خاتم','{21}','{yellow}',3,true) returning id")).rows[0].id;
+  const pOnly = (await pool.query("insert into products(sku, name, product_type, karats, colors, approx_weight, active, allowed_customer_ids) values ('SLS-2','خاص بعميل آخر','خاتم','{21}','{yellow}',3,true,$1) returning id", [[other]])).rows[0].id;
+  // حساب مدير المبيعات
+  await pool.query("insert into users(username, password_hash, full_name, role_code) values ('sales1',$1,'سالم المبيعات','sales_manager')", [hashPassword('Ss#2026xx')]);
+  let ck = '';
+  const S = async (m, path, body) => { const r = await fetch(base + '/api' + path, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+  await S('POST', '/auth/login', { username: 'sales1', password: 'Ss#2026xx' });
+  const list = (await S('GET', '/sales/customers')).data;
+  const row = list.find((c) => c.id === cust);
+  assert.ok(row && row.branches.some((b) => b.id === br), 'العملاء المعتمدون مع فروعهم');
+  assert.ok(!list.some((c) => c.id === other), 'غير المعتمد لا يظهر');
+  const items = [{ product_id: p, karat: 21, color: 'yellow', quantity: 5 }];
+  assert.equal((await S('POST', '/sales/orders', { customer_id: other, items })).status, 400, 'عميل غير معتمد');
+  assert.equal((await S('POST', '/sales/orders', { customer_id: cust, items: [{ product_id: pOnly, karat: 21, quantity: 5 }] })).status, 400, 'منتج غير مسموح لهذا العميل');
+  assert.equal((await S('POST', '/store/orders', { items })).status, 403, 'لا يطلب كعميل مباشرة');
+  const r = await S('POST', '/sales/orders', { customer_id: cust, branch_id: br, items });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const o = (await pool.query('select customer_id, branch_id, created_by, status, source from orders where id=$1', [r.data.orders[0].id])).rows[0];
+  const seller = (await pool.query("select id from users where username='sales1'")).rows[0].id;
+  assert.deepEqual([o.customer_id, o.branch_id, o.created_by, o.status, o.source], [cust, br, seller, 'pending_review', 'store_catalog']);
+  const n = (await pool.query("select title from notifications where user_id=$1 order by id desc limit 1", [cu])).rows[0];
+  assert.match(n.title, /سالم المبيعات/);
+  // موظف بدون الصلاحية
+  ck = '';
+  await pool.query("insert into users(username, password_hash, full_name, role_code) values ('sup_nosales',$1,'مشرف','supervisor')", [hashPassword('Ss#2026xx')]);
+  await S('POST', '/auth/login', { username: 'sup_nosales', password: 'Ss#2026xx' });
+  assert.equal((await S('GET', '/sales/customers')).status, 403);
+});

@@ -38,5 +38,6 @@ export function homeFor(me) {
   if (me.perms.includes('custody.issue') || me.perms.includes('custody.receive')) return '/sup';
   if (me.perms.includes('dashboard.view')) return '/admin';
   if (me.perms.includes('inventory.view')) return '/admin/inventory';
+  if (me.perms.includes('store.sales')) return '/store';
   return '/orders';
 }

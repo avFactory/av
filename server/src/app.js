@@ -19,6 +19,7 @@ import catalogRoutes from './routes/catalog.js';
 import financeRoutes from './routes/finance.js';
 import reportRoutes from './routes/reports.js';
 import storeRoutes from './routes/store.js';
+import salesRoutes from './routes/sales.js';
 import miscRoutes from './routes/misc.js';
 import publicRoutes from './routes/public.js';
 import castingRoutes from './routes/casting.js';
@@ -96,6 +97,7 @@ export function createApp() {
   app.use('/api/reports', reportRoutes);
   app.use('/api/store', statementStore);
   app.use('/api/store', storeRoutes);
+  app.use('/api/sales', salesRoutes);
   app.use('/api/public', publicRoutes);
   app.use('/api/casting', castingRoutes);
   app.use('/api/findings', findingsRoutes);

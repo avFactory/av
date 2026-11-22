@@ -15,7 +15,7 @@ const catBadges = (p) => [p.is_exclusive && 'خاص بك', p.has_diamond && 'أ�
 export default function Catalog() {
   // يرجع العميل لنفس المكان (الفلاتر والمنتجات المحمّلة وموضع التمرير) بعد فتح منتج والرجوع منه
   const [f, setF] = useState(() => SNAP?.f || { q: '', type: '', karat: '', cat: '' });
-  const { apiBase, approved, loginUrl } = useCart();
+  const { apiBase, approved, seller, loginUrl } = useCart();
   // الصفحة الأولى ثم تحميل المزيد تلقائياً عند الوصول لآخر القائمة
   const { data: first } = useFetch(`${apiBase}/products${qs({ ...f, limit: PAGE })}`, { deps: [apiBase] });
   const [more, setMore] = useState(() => (SNAP?.more ? { ...SNAP.more, loading: false } : { key: '', items: [], hasMore: false, loading: false }));
@@ -86,7 +86,7 @@ export default function Catalog() {
                 <span className="d-flex flex-wrap gap-1">{catBadges(p).map((c) => <span key={c} className={`badge rounded-pill fw-normal ${c === 'خاص بك' ? 'badge-excl' : 'text-bg-light border'}`}>{c === 'خاص بك' ? '★ ' : ''}{c}</span>)}</span>
                 <span className="small">الوزن التقريبي {fmtW(p.final_weight || p.approx_weight)} جم</span>
                 {p.labor && <span><b style={{ color: 'var(--gold-ink)' }}>{fmtMoney(p.labor.rate)}</b> <span className="small muted">{METHODS[p.labor.method]}</span></span>}
-                {!approved && <span className="small muted">أجور التصنيع تظهر بعد تسجيل الدخول</span>}
+                {!approved && !seller && <span className="small muted">أجور التصنيع تظهر بعد تسجيل الدخول</span>}
                 <span className="small muted">{p.in_stock || (p.availability === 'available' && p.stock_qty > 0) ? (p.stock_qty ? `متوفر (${p.stock_qty})` : 'متوفر') : 'يصنع حسب الطلب'}</span>
               </div>
             </Link>
