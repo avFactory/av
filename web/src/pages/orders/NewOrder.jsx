@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { COLORS, METHODS } from '../../format.js';
-import { Btn, Card, Field, Input, Page, Select, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
+import { Btn, Card, Field, FilePicker, Input, Page, SearchSelect, Select, Textarea, WeightInput, useAction, useFetch, showAlert } from '../../ui.jsx';
 
 export default function NewOrder() {
   const { lookups } = useAuth();
@@ -11,15 +11,33 @@ export default function NewOrder() {
   const { data: products } = useFetch('/catalog/products');
   const [f, setF] = useState({ title: '', product_type: '', karat: '21', color: 'yellow', quantity: '1', approx_weight: '', size: '', due_date: '', notes: '', customer_id: '', product_id: '', route_id: '', design_approval_required: false, labor_method: '', labor_rate: '' });
   const [run, busy] = useAction();
+  const [images, setImages] = useState([]);
   const set = (k) => (e) => setF({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e });
-  const submit = (e) => { e.preventDefault(); run(async () => { const o = await api.post('/orders', f); nav(`/orders/${o.id}`); }, 'تم إنشاء أمر الإنتاج'); };
+  const submit = (e) => {
+    e.preventDefault();
+    run(async () => {
+      const o = await api.post('/orders', f);
+      // صور الطلب (مرجع للتصنيع) تُرفع بعد إنشاء الطلب
+      if (images.length) {
+        try {
+          const fd = new FormData();
+          for (const x of images) fd.append('files', x);
+          fd.append('kind', 'reference');
+          fd.append('customer_visible', 'false');
+          await api.post(`/orders/${o.id}/files`, fd);
+        } catch (err) { await showAlert(`أُنشئ الطلب لكن تعذر رفع الصور: ${err.message} — ارفعها من صفحة الطلب`); }
+      }
+      nav(`/orders/${o.id}`);
+    }, 'تم إنشاء أمر الإنتاج');
+  };
+  const pickProduct = (id) => { const p = products?.find((x) => String(x.id) === String(id)); setF({ ...f, product_id: id, title: p?.name || f.title, product_type: p?.product_type || f.product_type, approx_weight: p?.approx_weight || f.approx_weight }); };
   return (
     <Page title="طلب تصنيع جديد" back="/orders">
       <form onSubmit={submit} className="grid">
         <Card title="بيانات الطلب">
           <div className="grid g3">
-            <Field label="العميل (اتركه فارغاً لطلب داخلي للمخزون)"><Select value={f.customer_id} onChange={set('customer_id')} placeholder="طلب داخلي" options={(lookups?.customers || []).map((c) => [c.id, c.shop_name])} /></Field>
-            <Field label="منتج من الكتالوج (اختياري)"><Select value={f.product_id} onChange={(e) => { const p = products?.find((x) => String(x.id) === e.target.value); setF({ ...f, product_id: e.target.value, title: p?.name || f.title, product_type: p?.product_type || f.product_type, approx_weight: p?.approx_weight || f.approx_weight }); }} placeholder="—" options={(products || []).map((p) => [p.id, `${p.sku} - ${p.name}`])} /></Field>
+            <Field label="العميل (اتركه فارغاً لطلب داخلي للمخزون)"><SearchSelect value={f.customer_id} onChange={(v) => setF({ ...f, customer_id: v })} emptyLabel="طلب داخلي" placeholder="ابحث باسم العميل…" options={(lookups?.customers || []).map((c) => [c.id, c.shop_name])} /></Field>
+            <Field label="منتج من الكتالوج (اختياري)"><SearchSelect value={f.product_id} onChange={pickProduct} emptyLabel="— بدون منتج" placeholder="ابحث باسم المنتج أو رقمه…" options={(products || []).map((p) => [p.id, `${p.sku} - ${p.name}`, p.product_type])} /></Field>
             <Field label="الوصف *"><Input value={f.title} onChange={set('title')} required /></Field>
             <Field label="نوع القطعة"><Input value={f.product_type} onChange={set('product_type')} placeholder="خاتم، سلسال، أسورة…" /></Field>
             <Field label="العيار"><Select value={f.karat} onChange={set('karat')} options={[['18', '18'], ['21', '21'], ['24', '24']]} /></Field>
@@ -32,6 +50,7 @@ export default function NewOrder() {
             <Field label=" "><label className="check"><input type="checkbox" checked={f.design_approval_required} onChange={set('design_approval_required')} /> يتطلب اعتماد العميل للتصميم قبل الصب</label></Field>
           </div>
           <Field label="ملاحظات" className="mt"><Textarea value={f.notes} onChange={set('notes')} /></Field>
+          <div className="mt"><FilePicker label="صور الطلب (مرجع للتصنيع — لا تظهر للعميل)" value={images} onChange={setImages} accept="image/*" max={10} hint="صورة القطعة أو الرسمة أو صورة من العميل" /></div>
         </Card>
         <Card title="أجور التصنيع (اتركها لتطبيق قواعد الأجور تلقائياً)">
           <div className="grid g3">

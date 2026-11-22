@@ -526,3 +526,39 @@ export function FilePicker({ label, value = [], onChange, accept = 'image/*', ma
     </div>
   );
 }
+
+/** توحيد النص العربي للبحث (أ/إ/آ ← ا، ى ← ي، ة ← ه) */
+const normAr = (s) => String(s || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[ً-ْ]/g, '').trim();
+
+/** قائمة اختيار مع بحث: options = [[value, label, extra?]] — يبحث في الاسم وأي نص إضافي */
+export function SearchSelect({ value, onChange, options = [], placeholder = 'ابحث…', emptyLabel }) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+  const cur = options.find((o) => String(o[0]) === String(value));
+  useEffect(() => {
+    if (!open) return undefined;
+    const h = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const words = normAr(q).split(/\s+/).filter(Boolean);
+  const list = options.filter((o) => { const hay = normAr(`${o[1]} ${o[2] || ''}`); return words.every((w) => hay.includes(w)); }).slice(0, 60);
+  const pick = (v) => { onChange(v); setQ(''); setOpen(false); };
+  return (
+    <div className="search-select position-relative" ref={boxRef}>
+      <input className="form-control" value={open ? q : cur?.[1] || ''} placeholder={cur ? cur[1] : placeholder}
+        onFocus={() => { setOpen(true); setQ(''); }} onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onKeyDown={(e) => { if (e.key === 'Enter' && open && list[0]) { e.preventDefault(); pick(String(list[0][0])); } if (e.key === 'Escape') setOpen(false); }} />
+      {open && (
+        <div className="dropdown-menu show w-100 shadow" style={{ maxHeight: 280, overflowY: 'auto' }}>
+          {emptyLabel && <button type="button" className={`dropdown-item ${!value ? 'active' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => pick('')}>{emptyLabel}</button>}
+          {list.map((o) => (
+            <button key={o[0]} type="button" className={`dropdown-item text-wrap ${String(o[0]) === String(value) ? 'active' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(String(o[0]))}>{o[1]}</button>
+          ))}
+          {!list.length && <span className="dropdown-item-text small text-body-secondary">لا توجد نتائج</span>}
+        </div>
+      )}
+    </div>
+  );
+}
