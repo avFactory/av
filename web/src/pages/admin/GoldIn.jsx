@@ -3,21 +3,23 @@ import { Link } from 'react-router-dom';
 import { fmtW } from '../../format.js';
 import { Btn, Field, Input, Loader, ModeTiles, Search, Select, WeightInput, useFetch } from '../../ui.jsx';
 
-/** إضافة ذهب للخزنة من: عميل (سداد ذهب في كشفه) / جمل الصافي (من رصيد المصنع لديهم) / شراء */
+/** إضافة ذهب للخزنة من: عميل (سداد ذهب في كشفه) / جمل الصافي (من رصيد المصنع لديهم) / مورد (يُخصم من رصيده المقدم) / شراء */
 export default function GoldIn({ m, setM, mats, busy, onSubmit }) {
   const { data: src } = useFetch('/inventory/gold/sources');
   const [q, setQ] = useState('');
   const source = m.source || 'customer';
   const mat24 = mats.find((x) => Number(x.karat) === 24)?.id;
-  const pick = (s) => setM({ ...m, source: s, customer_id: '', branch_id: '', dealer_id: '', material_id: s === 'dealer' && mat24 ? mat24 : m.material_id });
+  const pick = (s) => setM({ ...m, source: s, customer_id: '', branch_id: '', dealer_id: '', supplier_id: '', material_id: s === 'dealer' && mat24 ? mat24 : m.material_id });
   const cust = src?.customers.find((c) => String(c.id) === String(m.customer_id));
   const dealer = src?.dealers.find((d) => String(d.id) === String(m.dealer_id));
+  const supplier = src?.suppliers?.find((d) => String(d.id) === String(m.supplier_id));
   const list = (src?.customers || []).filter((c) => !q.trim() || c.shop_name.includes(q.trim()));
-  const ok = m.weight && m.material_id && (source === 'customer' ? m.customer_id && (!cust?.branches_only || m.branch_id) : source === 'dealer' ? m.dealer_id : m.note);
+  const ok = m.weight && m.material_id && (source === 'customer' ? m.customer_id && (!cust?.branches_only || m.branch_id) : source === 'dealer' ? m.dealer_id : source === 'supplier' ? m.supplier_id : m.note);
   return <>
     <ModeTiles value={source} onChange={pick} tiles={[
       ['customer', '🏪', 'من عميل', 'تسليم ذهب يُقيد في كشفه'],
       ['dealer', '🏦', 'من جمل الصافي', 'ديوان الذهب، الجنيه العربي…'],
+      ['supplier', '🏭', 'من مورد', 'مصنع لين، كنوز الشرق… يُخصم من رصيده'],
       ['purchase', '🛒', 'شراء', 'شراء ذهب من مورد'],
     ]} />
     {!src && source !== 'purchase' ? <Loader /> : source === 'customer' ? (
@@ -47,12 +49,21 @@ export default function GoldIn({ m, setM, mats, busy, onSubmit }) {
         ))}
         {!src.dealers.length && <div className="small text-body-secondary">لا يوجد جمل — أضفهم من <Link to="/admin/gold-dealers">صفحة جمل الصافي</Link></div>}
       </div>
+    ) : source === 'supplier' ? (
+      <div className="mode-tiles mb-3">
+        {(src.suppliers || []).map((d) => (
+          <button key={d.id} type="button" className={`mode-tile${String(m.supplier_id) === String(d.id) ? ' on' : ''}`} onClick={() => setM({ ...m, supplier_id: d.id })}>
+            <span className="mt-tx"><b>{d.name}</b><small>{d.supplies ? `${d.supplies} · ` : ''}رصيده المقدم: <b className="n" dir="ltr">{fmtW(d.balance)}</b> جم صافي</small></span>
+          </button>
+        ))}
+        {!src.suppliers?.length && <div className="small text-body-secondary">لا يوجد موردون — أضفهم من <Link to="/admin/suppliers">صفحة الموردين</Link></div>}
+      </div>
     ) : null}
     {cust?.branches?.length > 0 && (
       <Field label={`الفرع${cust.branches_only ? ' *' : ''}`}><Select value={m.branch_id || ''} onChange={(e) => setM({ ...m, branch_id: e.target.value })} placeholder={cust.branches_only ? 'اختر الفرع' : 'الحساب الرئيسي'} options={cust.branches.map((b) => [b.id, b.name])} /></Field>
     )}
     <Field label="المادة"><Select value={m.material_id} onChange={(e) => setM({ ...m, material_id: e.target.value })} options={mats.map((x) => [x.id, x.name])} /></Field>
-    <Field label="الوزن (جم) *" hint={dealer ? `المتاح لدى ${dealer.name}: ${fmtW(dealer.balance)} جم صافي` : undefined}><WeightInput big value={m.weight || ''} onChange={(v) => setM({ ...m, weight: v })} /></Field>
+    <Field label="الوزن (جم) *" hint={dealer ? `المتاح لدى ${dealer.name}: ${fmtW(dealer.balance)} جم صافي` : supplier ? `رصيد ${supplier.name} المقدم: ${fmtW(supplier.balance)} جم صافي — يُخصم منه صافي هذا الوزن` : undefined}><WeightInput big value={m.weight || ''} onChange={(v) => setM({ ...m, weight: v })} /></Field>
     <Field label={source === 'purchase' ? 'البيان *' : 'ملاحظات'}><Input value={m.note || ''} onChange={(e) => setM({ ...m, note: e.target.value })} placeholder={source === 'purchase' ? 'مثال: شراء سبائك من مورد / رصيد افتتاحي' : ''} /></Field>
     <Btn loading={busy} disabled={!ok} onClick={() => onSubmit({ ...m, source })}>تسجيل</Btn>
   </>;

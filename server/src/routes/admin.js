@@ -123,7 +123,7 @@ r.get('/org-gold', requirePerm('dashboard.org'), async (_req, res) => {
   const branches = await branchStock(pool);
   const customers = (await customerGold()).total;
   const dealers = Number((await one(`select coalesce(sum(case when e.kind='deposit' then e.weight else -e.weight end),0)::text t from gold_dealer_entries e join gold_dealers d on d.id=e.dealer_id where not e.reversed and d.active`)).t);
-  const suppliers = Number((await one(`select coalesce(sum(case when e.kind='findings_in' then -e.pure else e.pure end),0)::text t from gold_supplier_entries e join gold_suppliers s on s.id=e.supplier_id where s.active`)).t);
+  const suppliers = Number((await one(`select coalesce(sum(case when e.kind in ('findings_in','gold_in') then -e.pure else e.pure end),0)::text t from gold_supplier_entries e join gold_suppliers s on s.id=e.supplier_id where s.active`)).t);
   const r4 = (x) => Math.round(x * 10000) / 10000;
   const parts = { factory: r4(Number(factory.pure)), taiba: branches.taiba.pure, store: branches.store.pure, customers, dealers: r4(dealers), suppliers: r4(suppliers) };
   res.json({ ready: { weight: r4(readyW), pure: r4(readyP), count: readyCount, orders: ready }, branches, parts, factory_weight: Number(factory.weight),

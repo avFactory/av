@@ -253,6 +253,13 @@ test('الموردون: صرف ذهب صافي مقدماً للمورد، وا�
   assert.equal((await admin('POST', `/findings/${f.id}/in`, { source: 'supplier', supplier_id: lin.id, weight: '40', pieces: '20' })).status, 200);
   assert.equal(await bal(), Number(lin.balance) + 20, '50 − 30');
   assert.equal((await admin('POST', `/findings/${f.id}/in`, { source: 'supplier', weight: '1' })).status, 400, 'المورد مطلوب');
+  // ذهب من المورد للخزنة: 8 جم عيار 18 = 6 صافي يُخصم من رصيده
+  const v1 = Number((await pool.query("select coalesce(sum(balance),0) b from gold_balances where loc_type='vault' and material_id=$1", [m18])).rows[0].b);
+  assert.equal((await admin('POST', '/inventory/gold/in', { source: 'supplier', supplier_id: lin.id, material_id: m18, weight: '8' })).status, 200);
+  assert.equal(await bal(), Number(lin.balance) + 14, '20 − 6');
+  assert.equal(Number((await pool.query("select coalesce(sum(balance),0) b from gold_balances where loc_type='vault' and material_id=$1", [m18])).rows[0].b), v1 + 8, 'دخل الخزنة');
+  assert.equal((await admin('POST', '/inventory/gold/in', { source: 'supplier', material_id: m18, weight: '1' })).status, 400, 'المورد مطلوب');
+  assert.ok((await admin('GET', '/inventory/gold/sources')).data.suppliers.some((s) => s.id === lin.id), 'الموردون ضمن مصادر الإضافة');
   // إضافة مورد جديد
   const n = await admin('POST', '/inventory/suppliers', { name: 'مورد ثالث', supplies: 'أقفال' });
   assert.equal(n.status, 200);

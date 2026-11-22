@@ -4,7 +4,7 @@ import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtDT } from '../../format.js';
 import { Badge, Btn, Field, Input, Loader, Modal, Page, Table, WeightInput, useAction, useFetch } from '../../ui.jsx';
 
-const KIND = { gold_out: ['صرف ذهب', 'warn'], findings_in: ['استلام خامات', 'ok'], opening: ['رصيد افتتاحي', 'muted'] };
+const KIND = { gold_out: ['صرف ذهب', 'warn'], findings_in: ['استلام خامات', 'ok'], gold_in: ['استلام ذهب للخزنة', 'ok'], opening: ['رصيد افتتاحي', 'muted'] };
 
 /** موردو الخامات: الذهب الصافي المصروف لهم مقدماً والخامات المستلمة منهم */
 export default function GoldSuppliers() {
@@ -37,7 +37,7 @@ export default function GoldSuppliers() {
         ['الرقم', (e) => <span dir="ltr">{e.entry_no}</span>], ['المورد', 'supplier_name'],
         ['الحركة', (e) => <Badge tone={KIND[e.kind][1]}>{KIND[e.kind][0]}</Badge>],
         ['الوزن', (e) => <span className="n">{fmtW(e.weight)} <small>ع{e.karat}</small></span>],
-        ['الصافي', (e) => <b className="n">{e.kind === 'findings_in' ? '−' : '+'}{fmtW(e.pure)}</b>],
+        ['الصافي', (e) => <b className="n">{['findings_in', 'gold_in'].includes(e.kind) ? '−' : '+'}{fmtW(e.pure)}</b>],
         ['البيان', (e) => e.note || e.finding_name || '—'], ['بواسطة', 'created_by_name'], ['التاريخ', (e) => fmtDT(e.created_at)],
       ]} /></div>
       <Modal open={!!m} onClose={() => setM(null)} title={m?.type === 'opening' ? `رصيد افتتاحي — ${m.name}` : m?.id ? 'تعديل مورد' : 'إضافة مورد'}>

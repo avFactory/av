@@ -25,7 +25,7 @@ r.get('/gold', requirePerm('inventory.view', 'custody.view_all', 'dashboard.view
 r.post('/gold/in', requirePerm('inventory.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
     const b = req.body;
-    const source = oneOf(b.source || 'purchase', ['purchase', 'customer', 'dealer'], 'مصدر الذهب');
+    const source = oneOf(b.source || 'purchase', ['purchase', 'customer', 'dealer', 'supplier'], 'مصدر الذهب');
     const m = int(b.material_id, 'المادة');
     const w = W(b.weight, 'الوزن');
     const mat = (await db.query('select id, name, karat from materials where id=$1', [m])).rows[0];
@@ -50,10 +50,16 @@ r.post('/gold/in', requirePerm('inventory.manage'), async (req, res) => {
       if (!d) throw notFound('الجمل غير موجود');
       mv = await ledger.post(db, { kind: 'stock_in', material_id: m, weight: w, from: ['external', null], to: ['vault', null], reason: `استلام ذهب من ${d.name}${note ? `: ${note}` : ''}`, user_id: req.user.id });
       await dealerEntry(db, { dealerId: d.id, kind: 'withdraw', weight: (Number(w) * Number(mat.karat) / 24).toFixed(4), ledgerId: mv.id, note: note || 'سحب للخزنة', userId: req.user.id });
+    } else if (source === 'supplier') {
+      // ذهب من مورد (مصنع لين، كنوز الشرق…): يدخل الخزنة ويُخصم صافيه من رصيده المقدم
+      const s = (await db.query('select id, name from gold_suppliers where id=$1', [int(b.supplier_id, 'المورد')])).rows[0];
+      if (!s) throw notFound('المورد غير موجود');
+      mv = await ledger.post(db, { kind: 'stock_in', material_id: m, weight: w, from: ['external', null], to: ['vault', null], reason: `استلام ذهب من المورد ${s.name}${note ? `: ${note}` : ''}`, user_id: req.user.id });
+      await supplierEntry(db, { supplierId: s.id, kind: 'gold_in', weight: w, karat: mat.karat, materialId: m, ledgerId: mv.id, note: note || 'استلام ذهب للخزنة', userId: req.user.id });
     } else {
       mv = await ledger.post(db, { kind: 'stock_in', material_id: m, weight: w, from: ['external', null], to: ['vault', null], reason: `شراء: ${note}`, user_id: req.user.id });
     }
-    await audit(db, req, 'gold.in', 'gold_ledger', mv.id, { material: m, weight: w, source, note, customer_id: b.customer_id || null, dealer_id: b.dealer_id || null });
+    await audit(db, req, 'gold.in', 'gold_ledger', mv.id, { material: m, weight: w, source, note, customer_id: b.customer_id || null, dealer_id: b.dealer_id || null, supplier_id: b.supplier_id || null });
     return mv;
   }));
 });
@@ -71,7 +77,7 @@ r.get('/gold/sources', requirePerm('inventory.manage'), async (_req, res) => {
   }
   for (const c of customers) c.pure = owe.get(c.id);
   customers.sort((a, b) => b.pure - a.pure || a.shop_name.localeCompare(b.shop_name, 'ar'));
-  res.json({ customers, dealers: await listDealers(pool) });
+  res.json({ customers, dealers: await listDealers(pool), suppliers: await listSuppliers(pool) });
 });
 
 // ------------------------------------------------------------------ موردو الخامات

@@ -1,12 +1,12 @@
 // موردو الخامات: رصيد الذهب الصافي المقدم لكل مورد
 import { bad, notFound } from './http.js';
 
-export const supplierBalanceSql = `coalesce((select sum(case when e.kind='findings_in' then -e.pure else e.pure end) from gold_supplier_entries e where e.supplier_id=s.id), 0)`;
+export const supplierBalanceSql = `coalesce((select sum(case when e.kind in ('findings_in','gold_in') then -e.pure else e.pure end) from gold_supplier_entries e where e.supplier_id=s.id), 0)`;
 
 export async function listSuppliers(db, { all = false } = {}) {
   return (await db.query(`select s.*, ${supplierBalanceSql}::numeric(16,4)::text as balance,
-      coalesce((select sum(e.pure) from gold_supplier_entries e where e.supplier_id=s.id and e.kind<>'findings_in'), 0)::numeric(16,4)::text as gold_out,
-      coalesce((select sum(e.pure) from gold_supplier_entries e where e.supplier_id=s.id and e.kind='findings_in'), 0)::numeric(16,4)::text as received
+      coalesce((select sum(e.pure) from gold_supplier_entries e where e.supplier_id=s.id and e.kind not in ('findings_in','gold_in')), 0)::numeric(16,4)::text as gold_out,
+      coalesce((select sum(e.pure) from gold_supplier_entries e where e.supplier_id=s.id and e.kind in ('findings_in','gold_in')), 0)::numeric(16,4)::text as received
     from gold_suppliers s where $1 or s.active order by s.id`, [all])).rows;
 }
 
