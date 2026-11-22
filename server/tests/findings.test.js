@@ -846,3 +846,19 @@ test('مدير المبيعات: يضيف للسلة ويختار العميل �
   await S('POST', '/auth/login', { username: 'sup_nosales', password: 'Ss#2026xx' });
   assert.equal((await S('GET', '/sales/customers')).status, 403);
 });
+
+test('المطابقة اليومية تحت الصب: القائم − الأكياس − المعالق − العلب − وزن آخر = الباقي، بأوزان قابلة للتعديل', async () => {
+  const r = await call('POST', '/casting/daily', { gross: '100', bags: '4', spoons: '2', boxes_weight: '10.5', other_weight: '1', other_note: 'ورق' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(Number(r.data.net), +(100 - 4 * 0.383 - 2 * 0.75 - 10.5 - 1).toFixed(3));
+  const r2 = await call('POST', '/casting/daily', { gross: '50', bags: '2', bag_weight: '0.4', spoons: '1', spoon_weight: '0.8' });
+  assert.equal(Number(r2.data.net), +(50 - 0.8 - 0.8).toFixed(3));
+  const d = (await call('GET', '/casting/daily')).data;
+  assert.equal(d.rows.length, 2);
+  assert.deepEqual([Number(d.defaults.bag_weight), Number(d.defaults.spoon_weight)], [0.4, 0.8], 'آخر وزن مستخدم يصبح الافتراضي');
+  assert.equal((await call('POST', '/casting/daily', { gross: '1', bags: '10' })).status, 400, 'الخصومات أكبر من القائم');
+  assert.equal((await call('POST', '/casting/daily', { gross: '' })).status, 400);
+  assert.equal((await call('POST', '/casting/daily', { gross: '5', bags: '1.5' })).status, 400, 'عدد الأكياس صحيح');
+  assert.equal((await call('DELETE', `/casting/daily/${r.data.id}`)).status, 200);
+  assert.equal((await call('GET', '/casting/daily')).data.rows.length, 1);
+});
