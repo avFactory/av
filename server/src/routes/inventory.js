@@ -212,6 +212,7 @@ r.post('/gold/movements/:id/reverse', requirePerm('custody.reverse', 'stocktake.
     if (!mv) throw notFound();
     if (mv.custody_id || mv.settlement_id) throw conflict('حركات العهدة تصحح من شاشة العهدة/التسوية');
     if (mv.kind === 'reversal') throw conflict('لا يمكن عكس حركة عكسية');
+    if (['delivery', 'to_finished_stock'].includes(mv.kind)) throw conflict('التسليم للعميل يُلغى من صفحة الطلب: «إلغاء التسليم»');
     const done = await db.query('select 1 from gold_ledger where reverses_id=$1', [mv.id]);
     if (done.rowCount) throw conflict('الحركة معكوسة مسبقاً');
     if (mv.to_type !== 'external' && mv.to_type !== 'variance') await ledger.requireBalance(db, mv.to_type, mv.to_ref, mv.material_id, mv.weight, 'لا يمكن العكس لعدم كفاية الرصيد');

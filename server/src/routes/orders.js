@@ -197,6 +197,10 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
       coalesce(sum(weight) filter (where kind='final_excess'),0)::text as final_excess,
       (select coalesce(sum(a.weight),0) from custody_additions a where a.order_id = any($1::int[]) and not a.reversed)::text as findings_added
     from gold_ledger g where order_id = any($1::int[]) and reverses_id is null and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)`, [goldIds]);
+  // الذهب المستلم من العميل على الطلب (يمكن إلغاء الخاطئ منه)
+  const customerGold = await many(`select g.id, g.movement_no, g.weight::text, g.reason, g.created_at, u.full_name as user_name
+    from gold_ledger g left join users u on u.id=g.created_by where g.order_id = any($1::int[]) and g.kind='customer_gold_in'
+      and not exists (select 1 from gold_ledger r where r.reverses_id=g.id) order by g.id`, [goldIds]);
   const designs = await many('select d.*, u.full_name as sent_by_name from design_reviews d left join users u on u.id=d.sent_by where order_id=$1 order by id desc', [id]);
   const stones = await many(`select m.id, m.kind, m.carats::text, m.count, m.created_at, l.lot_no, l.stone_type, w.full_name as worker_name
     from stone_movements m join stone_lots l on l.id=m.lot_id left join users w on w.id=m.worker_id where m.order_id=$1 order by m.id`, [id]);
@@ -211,7 +215,7 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
         coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
           from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details
       from orders o left join routes r on r.id=o.route_id left join stages s on s.id=o.current_stage_id where o.cart_ref=$1 order by o.order_no`, [o.cart_ref]) : [];
-  res.json({ order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams: stonesG, suggestedLabor: labor, siblings, group: grp?.isGroup ? { lead: grp.lead, ids: grp.ids } : null });
+  res.json({ order: o, stages, log, files, custodies, gold, goldFlow, customerGold, designs, stones, invoices, stonesGrams: stonesG, suggestedLabor: labor, siblings, group: grp?.isGroup ? { lead: grp.lead, ids: grp.ids } : null });
 });
 
 r.put('/:id', requirePerm('orders.manage'), async (req, res) => {
@@ -408,6 +412,25 @@ r.post('/:id/allocate', requirePerm('custody.issue', 'inventory.manage', 'orders
   }));
 });
 
+/** إلغاء ذهب مستلم من العميل سُجّل بالخطأ (بحركة عكسية) — ثم يُسجّل الوزن الصحيح من جديد */
+r.post('/:id/customer-gold/:mvId/reverse', requirePerm('orders.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const reason = str(req.body.reason, 'سبب الإلغاء', { required: true });
+    const grp = await groupInfo(db, int(req.params.id));
+    const ids = grp?.isGroup ? grp.ids : [int(req.params.id)];
+    const mv = (await db.query("select * from gold_ledger where id=$1 and kind='customer_gold_in' and order_id = any($2::int[]) for update", [int(req.params.mvId), ids])).rows[0];
+    if (!mv) throw notFound('الحركة غير موجودة');
+    if ((await db.query('select 1 from gold_ledger where reverses_id=$1', [mv.id])).rowCount) throw conflict('أُلغيت مسبقاً');
+    const o = await prod.lockOrder(db, mv.order_id);
+    if (o.status === 'delivered') throw conflict('الطلب مُسلَّم — ألغِ التسليم أولاً');
+    await ledger.requireBalance(db, 'order', mv.order_id, mv.material_id, mv.weight, 'ذهب الطلب الحالي أقل من الوزن المراد إلغاؤه (صُرف للعامل) — استلمه أولاً');
+    const rv = await ledger.reverse(db, mv, `إلغاء ذهب مستلم من العميل: ${reason}`, req.user.id);
+    await prod.logStage(db, o.id, o.current_stage_id, 'note', req.user.id, `أُلغي استلام ${Number(mv.weight)} جم من العميل: ${reason}`);
+    await audit(db, req, 'order.customer_gold_reverse', 'order', o.id, { movement: mv.movement_no, weight: mv.weight, reason });
+    return { ok: true, reversal: rv.movement_no };
+  }));
+});
+
 /** إرجاع فائض ذهب الطلب للخزنة */
 r.post('/:id/deallocate', requirePerm('custody.issue', 'inventory.manage', 'orders.manage'), async (req, res) => {
   res.json(await tx(async (db) => {
@@ -488,6 +511,14 @@ r.post('/:id/deliver', requirePerm('orders.manage', 'orders.advance'), async (re
     const o = await prod.lockOrder(db, int(req.params.id));
     await prod.deliver(db, req, o, str(req.body.note, 'ملاحظات'));
     return { ok: true };
+  }));
+});
+
+/** إلغاء التسليم للعميل (للتصحيح): الذهب يعود للطلب ويرجع «جاهز للتسليم» ثم يُسلَّم من جديد */
+r.post('/:id/undeliver', requirePerm('orders.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const o = await prod.lockOrder(db, int(req.params.id));
+    return prod.undeliver(db, req, o, str(req.body.reason, 'سبب الإلغاء', { required: true }));
   }));
 });
 

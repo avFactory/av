@@ -47,11 +47,13 @@ export default function OrderDetail() {
   const [withdraw, setWithdraw] = useState(null);
   const [part, setPart] = useState(null);
   const [transfer, setTransfer] = useState(null);
+  const [cgRev, setCgRev] = useState(null);
+  const toast = useToast();
   const { data: pendTr, reload: reloadTr } = useFetch('/sup/transfers', { live: ['custody_transfers', 'custodies'] });
   const [run, busy] = useAction();
   if (error) return <div className="page"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
-  const { order: o, stages, log, files, custodies, gold, goldFlow, designs, stones, invoices, stonesGrams, suggestedLabor, siblings = [] } = data;
+  const { order: o, stages, log, files, custodies, gold, goldFlow, customerGold = [], designs, stones, invoices, stonesGrams, suggestedLabor, siblings = [] } = data;
   // الطلب متعدد المنتجات: رصيد ذهب الطلب كاملاً (مجموع البنود)
   const orderBal = String(gold.filter((g) => g.loc_type === 'order').reduce((a, g) => a + Number(g.balance), 0));
   const grp = data.group;
@@ -59,7 +61,6 @@ export default function OrderDetail() {
   const openCust = custodies.filter((c) => ['open', 'under_review'].includes(c.status));
   const act = (path, body, msg) => run(async () => { const r = await api.post(`/orders/${o.id}/${path}`, body); setModal(null); setF({}); reload(); return r; }, msg);
   const open = (m, init = {}) => { setF(init); setModal(m); };
-  const toast = useToast();
   // نقل للمرحلة التالية: إن كانت المرحلة تتطلب تسليم واستلام ذهب تظهر رسالة توضيحية، والموافقة تنقله بنفس وزن الذهب
   const advanceNow = () => run(async () => {
     let r;
@@ -132,6 +133,17 @@ export default function OrderDetail() {
             ['ذهب مخصص للطلب', fmtW(goldFlow.allocated)], ['رصيد الطلب (تحت التشغيل)', fmtW(orderBal)], ['لدى العمال', fmtW(openCust.reduce((s, c) => s + Number(c.weight_issued), 0))],
             ['بقايا مستردة', fmtW(Number(goldFlow.scrap) + Number(goldFlow.recovered))], ['عجز طبيعي', fmtW(goldFlow.normal_loss)], ['عجز غير طبيعي', fmtW(Number(goldFlow.abnormal_loss) + Number(goldFlow.abnormal_pending))],
             Number(stonesGrams.used) > 0 && ['أحجار مركبة', `${fmtW(stonesGrams.used)} جم`]]} />
+          {customerGold.length > 0 && (
+            <div className="mt small d-grid gap-1">
+              <b>ذهب مستلم من العميل</b>
+              {customerGold.map((g) => (
+                <div key={g.id} className="hrow between border rounded-3 p-2">
+                  <span><b dir="ltr">{fmtW(g.weight)}</b> جم · {fmtDT(g.created_at)}{g.user_name ? ` · ${g.user_name}` : ''}{g.reason ? ` · ${g.reason}` : ''}</span>
+                  {can('orders.manage') && o.status !== 'delivered' && <Btn size="sm" kind="ghost" onClick={() => setCgRev(g)}>إلغاء</Btn>}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="hrow gap wrap mt">
             {can('orders.manage') && !['delivered', 'cancelled'].includes(o.status) && <Btn size="sm" kind="ghost" onClick={() => open('labor', { labor_method: o.labor_method || '', labor_rate: o.labor_rate || '' })}>تعديل الأجرة</Btn>}
             {o.labor_method === 'manual' && !o.labor_manual_approved_by && can('labor.approve_manual') && <Btn size="sm" onClick={() => act('approve-manual-labor', {}, 'تم اعتماد الأجرة')}>اعتماد الأجرة اليدوية</Btn>}
@@ -162,6 +174,7 @@ export default function OrderDetail() {
             {cur?.kind === 'final_weight' && can('orders.advance') && !openCust.length && (!cur.handles_gold || custodies.some((c) => c.stage_id === cur.id && c.status === 'closed')) && <Btn onClick={() => open('final', { weight: orderBal })}>{o.final_weight ? 'تعديل الوزن النهائي' : 'تسجيل الوزن النهائي'}</Btn>}
             {cur?.kind === 'invoicing' && can('invoices.manage') && <LinkBtn kind="primary" to={`/admin/invoices?new=1&customer=${o.customer_id}&order=${o.id}`}>إصدار فاتورة الأجور</LinkBtn>}
             {o.status === 'ready' && can('orders.advance', 'orders.manage') && <Btn kind="ok" onClick={() => open('deliver')}>تسليم الطلب للعميل وإقفاله</Btn>}
+            {o.status === 'delivered' && can('orders.manage') && <Btn kind="ghost" onClick={() => setModal('undeliver')}>↩ إلغاء التسليم</Btn>}
             {inProd && can('orders.advance') && cur?.kind !== 'delivery_ready' && <Btn kind="dark" loading={busy} onClick={advanceNow}>{o.stage_state === 'pending_approval' ? 'اعتماد وإنهاء المرحلة' : 'نقل للمرحلة التالية'}</Btn>}
             {inProd && can('orders.manage') && <Btn kind="ghost" size="sm" onClick={() => open('force')}>تجاوز المرحلة (بسبب)</Btn>}
           </div>
@@ -297,6 +310,9 @@ export default function OrderDetail() {
         onSubmit={() => run(async () => { const r = await api.post(`/orders/${o.id}/split`, f); setModal(null); setF({}); reload(); return r; }, 'تم فصل الكمية في بند جديد')} />
       <ReasonModal open={modal === 'cancel'} title="إلغاء الطلب" label="سبب الإلغاء (يعاد رصيد ذهب الطلب للخزنة)" danger busy={busy} onClose={() => setModal(null)} onSubmit={(reason) => act('cancel', { reason }, 'تم الإلغاء')} />
       <ReasonModal open={modal === 'reject'} title="رفض الطلب" label="سبب الرفض (يظهر للعميل)" danger busy={busy} onClose={() => setModal(null)} onSubmit={(reason) => act('reject', { reason }, 'تم الرفض')} />
+      <ReasonModal open={!!cgRev} title={`إلغاء ${cgRev ? fmtW(cgRev.weight) : ''} جم مستلمة من العميل`} label="سبب الإلغاء (بعدها سجّل الوزن الصحيح من «تسجيل ذهب على الطلب»)" danger busy={busy} onClose={() => setCgRev(null)}
+        onSubmit={(reason) => run(async () => { await api.post(`/orders/${o.id}/customer-gold/${cgRev.id}/reverse`, { reason }); setCgRev(null); reload(); }, 'أُلغي الاستلام بحركة عكسية')} />
+      <ReasonModal open={modal === 'undeliver'} title="إلغاء التسليم للعميل" label="سبب الإلغاء (يعود ذهب الطلب له بحركة عكسية ويرجع «جاهز للتسليم» لتسلّمه من جديد)" danger busy={busy} onClose={() => setModal(null)} onSubmit={(reason) => act('undeliver', { reason }, 'أُلغي التسليم — الطلب جاهز للتسليم من جديد')} />
       <ReasonModal open={modal === 'force'} title="تجاوز شروط المرحلة" label="سبب التجاوز (يسجل في سجل التدقيق)" danger busy={busy} onClose={() => setModal(null)} onSubmit={(reason) => act('advance', { force: true, reason }, 'تم التجاوز')} />
     </Page>
   );

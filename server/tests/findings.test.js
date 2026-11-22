@@ -771,3 +771,22 @@ test('نقل الطلب لمرحلة تتطلب تسليم واستلام: رس�
   const log = (await pool.query("select note as reason from order_stage_log where order_id=$1 and stage_id=$2 and event='completed' order by id desc limit 1", [o.id, st])).rows[0];
   assert.match(log.reason, /بنفس وزن الذهب/);
 });
+
+test('إلغاء ذهب مستلم من العميل سُجّل بالخطأ: حركة عكسية للمدير بسبب، ثم تسجيل الوزن الصحيح', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=18 and active")).rows[0].id;
+  const cust = (await pool.query('select id from customers limit 1')).rows[0]?.id;
+  const o = (await call('POST', '/orders', { title: 'ذهب العميل', product_type: 'خاتم', karat: 18, quantity: 1, material_id: mat, ...(cust ? { customer_id: cust } : {}) })).data;
+  for (let i = 0; i < 3 && (await pool.query('select status from orders where id=$1', [o.id])).rows[0].status !== 'in_production'; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
+  await pool.query("update orders set status='in_production' where id=$1 and status not in ('in_production')", [o.id]);
+  assert.equal((await call('POST', `/orders/${o.id}/allocate`, { source: 'customer', weight: '50', note: 'خطأ' })).status, 200);
+  const d = (await call('GET', `/orders/${o.id}`)).data;
+  assert.equal(d.customerGold.length, 1);
+  const mv = d.customerGold[0].id;
+  assert.equal((await call('POST', `/orders/${o.id}/customer-gold/${mv}/reverse`, {})).status, 400, 'السبب إلزامي');
+  assert.equal((await call('POST', `/orders/${o.id}/customer-gold/${mv}/reverse`, { reason: 'الوزن الصحيح 5' })).status, 200);
+  assert.equal((await call('POST', `/orders/${o.id}/customer-gold/${mv}/reverse`, { reason: 'x' })).status, 409, 'لا يُلغى مرتين');
+  assert.equal(await bal('order', o.id, mat), 0);
+  await call('POST', `/orders/${o.id}/allocate`, { source: 'customer', weight: '5' });
+  assert.equal(await bal('order', o.id, mat), 5);
+  assert.equal((await call('GET', `/orders/${o.id}`)).data.customerGold.length, 1);
+});

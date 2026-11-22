@@ -308,6 +308,21 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
   // 100 = المسلم للعميل + البقايا + العجز الطبيعي + غير الطبيعي
   const del = (await admin.get(`/api/orders/${ids.order}`)).gold.find((g) => g.loc_type === 'delivered');
   assert.equal((n(del.balance) + n(flow.scrap) + n(flow.recovered) + n(flow.normal_loss) + n(flow.abnormal_loss)).toFixed(4), '100.0000');
+
+  // إلغاء التسليم (تصحيح): للمدير فقط، بسبب، يعود الذهب للطلب ويرجع جاهزاً للتسليم، ثم يُسلَّم من جديد
+  const delW = n(del.balance);
+  const dmv = (await pool.query("select id from gold_ledger where order_id=$1 and kind='delivery'", [ids.order])).rows[0].id;
+  assert.equal((await admin.req('POST', `/api/inventory/gold/movements/${dmv}/reverse`, { reason: 'x' })).status, 409, 'العكس العام للتسليم ممنوع');
+  assert.equal((await sup.req('POST', `/api/orders/${ids.order}/undeliver`, { reason: 'خطأ' })).status, 403, 'المشرف لا يلغي التسليم');
+  assert.equal((await admin.req('POST', `/api/orders/${ids.order}/undeliver`, {})).status, 400, 'السبب إلزامي');
+  await admin.post(`/api/orders/${ids.order}/undeliver`, { reason: 'سُلّم بالخطأ' });
+  o = await orderOf(ids.order);
+  assert.equal(o.status, 'ready');
+  const g2 = (await admin.get(`/api/orders/${ids.order}`)).gold;
+  assert.equal(n(g2.find((g) => g.loc_type === 'order')?.balance), delW, 'الذهب عاد للطلب');
+  assert.equal(n(g2.find((g) => g.loc_type === 'delivered')?.balance || 0), 0);
+  await sup.post(`/api/orders/${ids.order}/deliver`, { note: 'التسليم الصحيح' });
+  assert.equal((await orderOf(ids.order)).status, 'delivered');
 });
 
 test('العمليات الجماعية: تسليم واستلام عدة طلبات في جلسة واحدة + كشف للطباعة', async () => {

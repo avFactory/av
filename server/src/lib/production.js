@@ -299,6 +299,30 @@ export async function deliver(db, req, order, note) {
   await audit(db, req, 'deliver', 'order', order.id, { note });
 }
 
+/** إلغاء تسليم الطلب للعميل (تسليم بالخطأ أو لتعديله): يعود الذهب للطلب بحركة عكسية ويرجع الطلب «جاهز للتسليم» */
+export async function undeliver(db, req, order, reason) {
+  if (order.status !== 'delivered') throw conflict('الطلب ليس مُسلَّماً');
+  const stages = await routeStages(db, order.route_id);
+  const ready = stages.find((s) => s.kind === 'delivery_ready');
+  if (!ready) throw conflict('مسار الطلب لا يحتوي مرحلة جاهز للتسليم');
+  const mvs = (await db.query(`select * from gold_ledger g where order_id=$1 and kind in ('delivery','to_finished_stock')
+    and not exists (select 1 from gold_ledger r where r.reverses_id=g.id) order by id`, [order.id])).rows;
+  const toStock = !order.customer_id && order.product_id;
+  if (toStock) {
+    const p = (await db.query('select stock_qty from products where id=$1 for update', [order.product_id])).rows[0];
+    if (Number(p?.stock_qty || 0) < Number(order.quantity)) throw conflict('القطع خرجت من المخزون الجاهز (بيعت أو صُرفت) — لا يمكن إلغاء التسليم');
+  }
+  for (const mv of mvs) {
+    await ledger.requireBalance(db, mv.to_type, mv.to_ref, mv.material_id, mv.weight, 'لا يمكن إلغاء التسليم لعدم كفاية الرصيد');
+    await ledger.reverse(db, mv, `إلغاء تسليم ${order.order_no}: ${reason}`, req.user.id);
+  }
+  if (toStock) await db.query('update products set stock_qty = stock_qty - $2 where id=$1', [order.product_id, order.quantity]);
+  await db.query("update orders set status='ready', stage_state='waiting', current_stage_id=$2, stage_seq=$3, delivered_at=null, updated_at=now() where id=$1", [order.id, ready.id, ready.seq]);
+  await logStage(db, order.id, ready.id, 'note', req.user.id, `أُلغي التسليم للعميل: ${reason}`, false);
+  await audit(db, req, 'undeliver', 'order', order.id, { reason, reversed: mvs.length });
+  return { ok: true, reversed: mvs.length };
+}
+
 export async function notifyWorkerAssigned(db, order, workerId) {
   await notifyUsers(db, [workerId], { kind: 'assigned', title: `تم إسناد الطلب ${order.order_no} إليك`, body: order.title, link: `/w/orders/${order.id}` });
 }
