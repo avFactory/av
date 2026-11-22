@@ -525,7 +525,7 @@ const IMG_RE = /\.(jpe?g|png|webp|gif|heic|heif|bmp)(\?|$)/i;
 const okType = (f, accept) => !accept || accept === '*' || accept.split(',').some((a) => { a = a.trim(); return a.endsWith('/*') ? (f.type || '').startsWith(a.slice(0, -1)) : a.startsWith('.') ? f.name.toLowerCase().endsWith(a) : f.type === a; }) || (accept.includes('image/') && IMG_RE.test(f.name));
 
 /** ملفات من السحب والإفلات (من سطح المكتب أو واتساب ويب/ديسكتوب) أو من رابط صورة مسحوبة */
-async function filesFromTransfer(dt, accept) {
+export async function filesFromTransfer(dt, accept) {
   const files = [...(dt?.files || [])].filter((f) => okType(f, accept));
   if (files.length) return files;
   // بعض المتصفحات تسحب الصورة كرابط فقط: نحاول تحميلها

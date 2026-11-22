@@ -1019,3 +1019,24 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .dc-net b { font-size: 1.6rem; color: var(--ok, #198754); }
 .dc-net.bad b { color: var(--bad, #dc3545); }
 .dc-total { display: flex; gap: 24px; justify-content: flex-end; padding: 12px 16px; border-top: 1px solid var(--bs-border-color); font-weight: 600; }
+
+/* إدخال الطلب السريع بالصور */
+.bulk-drop { display: grid; gap: 4px; place-items: center; text-align: center; padding: 22px 16px; border: 2px dashed var(--bs-primary, #a8864f); border-radius: 16px; background: var(--bs-tertiary-bg); cursor: pointer; transition: background .15s, transform .15s; }
+.bulk-drop b { font-size: 1.1rem; }
+.bulk-drop span { color: var(--bs-secondary-color); font-size: .88rem; }
+.bulk-drop.dragging { background: rgba(168, 134, 79, .15); transform: scale(1.01); }
+.bulk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.bulk-card { border: 1px solid var(--bs-border-color); border-radius: 14px; overflow: hidden; background: var(--bs-body-bg); display: flex; flex-direction: column; }
+.bulk-card.bad { border-color: var(--bs-danger); box-shadow: 0 0 0 3px rgba(220, 53, 69, .2); }
+.bulk-img { position: relative; aspect-ratio: 1 / 1; background: var(--bs-tertiary-bg); }
+.bulk-img .zoom-thumb { width: 100%; height: 100%; border: 0; border-radius: 0; }
+.bulk-file { display: grid; place-content: center; height: 100%; font-weight: 800; text-align: center; padding: 8px; }
+.bulk-file small { font-weight: 400; font-size: .7rem; color: var(--bs-secondary-color); word-break: break-all; }
+.bulk-no { position: absolute; top: 6px; inset-inline-start: 6px; background: rgba(0,0,0,.65); color: #fff; border-radius: 999px; padding: 1px 9px; font-weight: 700; font-size: .8rem; }
+.bulk-x { position: absolute; top: 6px; inset-inline-end: 6px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); color: #fff; font-size: 18px; line-height: 1; }
+.bulk-fields { display: grid; gap: 6px; padding: 8px; }
+.bulk-row { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
+.bulk-row select { flex: 1; min-width: 0; }
+.bulk-qty { display: flex; align-items: center; border: 1px solid var(--bs-border-color); border-radius: 8px; overflow: hidden; }
+.bulk-qty button { border: 0; background: var(--bs-tertiary-bg); width: 30px; height: 30px; font-weight: 700; }
+.bulk-qty input { width: 42px; border: 0; text-align: center; background: transparent; color: inherit; }
