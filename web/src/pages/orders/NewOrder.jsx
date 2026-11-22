@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../../api.js';
+import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { COLORS, METHODS } from '../../format.js';
 import { Btn, Card, Field, FilePicker, Input, Page, SearchSelect, Select, Textarea, WeightInput, useAction, useFetch, showAlert } from '../../ui.jsx';
@@ -37,7 +37,7 @@ export default function NewOrder() {
         <Card title="بيانات الطلب">
           <div className="grid g3">
             <Field label="العميل (اتركه فارغاً لطلب داخلي للمخزون)"><SearchSelect value={f.customer_id} onChange={(v) => setF({ ...f, customer_id: v })} emptyLabel="طلب داخلي" placeholder="ابحث باسم العميل…" options={(lookups?.customers || []).map((c) => [c.id, c.shop_name])} /></Field>
-            <Field label="منتج من الكتالوج (اختياري)"><SearchSelect value={f.product_id} onChange={pickProduct} emptyLabel="— بدون منتج" placeholder="ابحث باسم المنتج أو رقمه…" options={(products || []).map((p) => [p.id, `${p.sku} - ${p.name}`, p.product_type])} /></Field>
+            <Field label="منتج من الكتالوج (اختياري)"><SearchSelect value={f.product_id} onChange={pickProduct} emptyLabel="— بدون منتج" placeholder="ابحث باسم المنتج أو رقمه…" options={(products || []).map((p) => [p.id, `${p.sku} - ${p.name}`, p.product_type, fileUrl((p.media || []).find((m) => m.kind === 'image')?.path, 160)])} /></Field>
             <Field label="الوصف *"><Input value={f.title} onChange={set('title')} required /></Field>
             <Field label="نوع القطعة"><Input value={f.product_type} onChange={set('product_type')} placeholder="خاتم، سلسال، أسورة…" /></Field>
             <Field label="العيار"><Select value={f.karat} onChange={set('karat')} options={[['18', '18'], ['21', '21'], ['24', '24']]} /></Field>

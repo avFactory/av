@@ -530,7 +530,7 @@ export function FilePicker({ label, value = [], onChange, accept = 'image/*', ma
 /** توحيد النص العربي للبحث (أ/إ/آ ← ا، ى ← ي، ة ← ه) */
 const normAr = (s) => String(s || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[ً-ْ]/g, '').trim();
 
-/** قائمة اختيار مع بحث: options = [[value, label, extra?]] — يبحث في الاسم وأي نص إضافي */
+/** قائمة اختيار مع بحث: options = [[value, label, extra?, thumbUrl?]] — يبحث في الاسم وأي نص إضافي، ويعرض صورة مصغرة إن وُجدت */
 export function SearchSelect({ value, onChange, options = [], placeholder = 'ابحث…', emptyLabel }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
@@ -545,8 +545,10 @@ export function SearchSelect({ value, onChange, options = [], placeholder = 'ا�
   const words = normAr(q).split(/\s+/).filter(Boolean);
   const list = options.filter((o) => { const hay = normAr(`${o[1]} ${o[2] || ''}`); return words.every((w) => hay.includes(w)); }).slice(0, 60);
   const pick = (v) => { onChange(v); setQ(''); setOpen(false); };
+  const thumbs = options.some((o) => o[3]);
   return (
-    <div className="search-select position-relative" ref={boxRef}>
+    <div className={`search-select position-relative${cur?.[3] && !open ? ' has-thumb' : ''}`} ref={boxRef}>
+      {cur?.[3] && !open && <img className="ss-sel-thumb" src={cur[3]} alt="" />}
       <input className="form-control" value={open ? q : cur?.[1] || ''} placeholder={cur ? cur[1] : placeholder}
         onFocus={() => { setOpen(true); setQ(''); }} onChange={(e) => { setQ(e.target.value); setOpen(true); }}
         onKeyDown={(e) => { if (e.key === 'Enter' && open && list[0]) { e.preventDefault(); pick(String(list[0][0])); } if (e.key === 'Escape') setOpen(false); }} />
@@ -554,7 +556,10 @@ export function SearchSelect({ value, onChange, options = [], placeholder = 'ا�
         <div className="dropdown-menu show w-100 shadow" style={{ maxHeight: 280, overflowY: 'auto' }}>
           {emptyLabel && <button type="button" className={`dropdown-item ${!value ? 'active' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => pick('')}>{emptyLabel}</button>}
           {list.map((o) => (
-            <button key={o[0]} type="button" className={`dropdown-item text-wrap ${String(o[0]) === String(value) ? 'active' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(String(o[0]))}>{o[1]}</button>
+            <button key={o[0]} type="button" className={`dropdown-item text-wrap d-flex align-items-center gap-2 ${String(o[0]) === String(value) ? 'active' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(String(o[0]))}>
+              {thumbs && (o[3] ? <img className="ss-thumb" src={o[3]} alt="" loading="lazy" /> : <span className="ss-thumb ss-thumb-empty" />)}
+              <span>{o[1]}</span>
+            </button>
           ))}
           {!list.length && <span className="dropdown-item-text small text-body-secondary">لا توجد نتائج</span>}
         </div>

@@ -975,3 +975,9 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .lang-btn:hover, .lang-btn.on { border-color: var(--gold, #b08d57); background: rgba(176,141,87,.12); }
 .lang-note { font-size: .85rem; opacity: .7; margin-top: 14px; }
 .wk-lang { font-size: .85rem; }
+
+/* البحث مع صورة مصغرة (اختيار المنتج) */
+.ss-thumb { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 8px; object-fit: cover; background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); }
+.ss-thumb-empty { display: inline-block; }
+.search-select.has-thumb .form-control { padding-inline-start: 48px; }
+.ss-sel-thumb { position: absolute; inset-inline-start: 6px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 6px; object-fit: cover; pointer-events: none; z-index: 1; }
