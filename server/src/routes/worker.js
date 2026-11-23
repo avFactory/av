@@ -10,7 +10,7 @@ import { advance, lockOrder, logStage } from '../lib/production.js';
 import { audit } from '../lib/audit.js';
 import { orderThumb } from '../lib/orderThumb.js';
 import { is3D, addInternalImages } from '../lib/internalImages.js';
-import { advanceGroup, set3d, queue3d, d3List, d3Done } from '../lib/orderGroup3d.js';
+import { advanceGroup, set3d, queue3d, d3List, d3Done, setPriority } from '../lib/orderGroup3d.js';
 import { checkAckWeight, workerCloseStage } from '../lib/workerClose.js';
 import { createReturnRequest, cancelReturnRequest } from '../lib/partialReturn.js';
 import { createTransfer, acceptTransfer, rejectTransfer, cancelTransfer, transferCols } from '../lib/transfer.js';
@@ -83,7 +83,7 @@ r.get('/orders/:id', async (req, res) => {
     files, custodies: myCustodies, log,
     // بنود الطلب كاملة (الطلب يُعامل كقطعة واحدة)
     // فريق 3D: كل منتجات الطلب بكل صورها وملفاتها واحتياج التصميم/الطباعة
-    items3d: is3D(req.user) ? await many(`select x.id, x.order_no, x.title, x.product_type, x.quantity, x.size, x.notes, x.color, x.needs_3d_design, x.needs_3d_print, x.d3_checked_at,
+    items3d: is3D(req.user) ? await many(`select x.id, x.order_no, x.title, x.product_type, x.quantity, x.size, x.notes, x.color, x.needs_3d_design, x.needs_3d_print, x.d3_checked_at, x.priority, x.d3_design_done_at, x.d3_print_done_at,
         s.name as stage_name, s.kind as stage_kind,
         coalesce((select jsonb_agg(jsonb_build_object('id', f.id, 'kind', f.kind, 'path', f.path, 'mime', f.mime, 'name', f.original_name) order by (f.kind='model3d'), f.id) from order_files f where f.order_id=x.id), '[]'::jsonb)
           || coalesce((select jsonb_agg(jsonb_build_object('id', 'p' || pm.id, 'kind', 'product', 'path', pm.path, 'mime', case pm.kind when 'video' then 'video/mp4' else 'image/jpeg' end, 'name', 'صورة المنتج') order by pm.sort, pm.id) from product_media pm where pm.product_id=x.product_id), '[]'::jsonb) as files
@@ -256,6 +256,10 @@ for (const kind of ['design', 'print']) {
     res.json(await d3List(pool, kind, req.query.done === '1'));
   });
 }
+r.post('/orders/:id/priority', async (req, res) => {
+  if (!is3D(req.user)) throw forbidden('لفريق 3D فقط');
+  res.json(await tx((db) => setPriority(db, req, int(req.params.id), req.body.priority)));
+});
 r.post('/orders/:id/3d-done', async (req, res) => {
   res.json(await tx((db) => d3Done(db, req, int(req.params.id), req.body)));
 });

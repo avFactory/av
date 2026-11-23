@@ -6,7 +6,7 @@ import { autoShortName } from '../lib/shortName.js';
 import QRCode from 'qrcode';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, has } from '../lib/auth.js';
-import { bad, conflict, notFound, int, str, weight as W, money, oneOf } from '../lib/http.js';
+import { bad, conflict, notFound, int, str, weight as W, money, oneOf, forbidden, HttpError } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { notifyCustomer, notifyPerm } from '../lib/notify.js';
 import { upload, registerFiles } from '../lib/uploads.js';
@@ -16,8 +16,8 @@ import { resolveLabor, laborAmount } from '../lib/labor.js';
 import { nextItemNo, orderCopyColumns, groupInfo, newGroupNo } from '../lib/orderGroups.js';
 import { applyDueDate, capacity } from '../lib/leadTime.js';
 import { bullionVals } from './catalog.js';
-import { addInternalImages } from '../lib/internalImages.js';
-import { advanceGroup, set3d } from '../lib/orderGroup3d.js';
+import { addInternalImages, is3D } from '../lib/internalImages.js';
+import { advanceGroup, set3d, setPriority } from '../lib/orderGroup3d.js';
 import { moveToShortage, resumeShortage } from '../lib/shortage.js';
 
 const r = Router();
@@ -153,7 +153,9 @@ export async function orderDetail(db, id) {
  * رقم الطلب، ثم عدد القطع لكل نوع (خاتم 3 · عقد 2 …)، ثم خط وتحته العميل.
  * رمز QR = أرقام رقم الطلب الرئيسي، ومسحه يفتح بنود الطلب.
  */
-r.get('/labels', requirePerm('orders.view'), async (req, res) => {
+// الملصق (باركود الطلب كاملاً): للموظفين، ولفريق 3D من شاشتهم
+const labelsAccess = (req, _res, next) => (req.user && (has(req, 'orders.view') || is3D(req.user)) ? next() : next(req.user ? forbidden() : new HttpError(401, 'يجب تسجيل الدخول')));
+r.get('/labels', labelsAccess, async (req, res) => {
   const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 200).map((x) => int(x));
   if (!ids.length) throw bad('لم يتم تحديد طلبات');
   const picked = await many('select id, coalesce(cart_ref, order_no) as grp from orders where id = any($1::int[])', [ids]);
@@ -237,7 +239,7 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
   const stonesG = await prod.embeddedStonesGrams(pool, id);
   const labor = await resolveLabor(pool, { customer_id: o.customer_id, product_id: o.product_id, product_type: o.product_type });
   // بنود نفس الطلب (من السلة أو بعد التقسيم)
-  const siblings = o.cart_ref ? await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, o.color, o.notes, o.status, o.approx_weight::text,
+  const siblings = o.cart_ref ? await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, o.color, o.notes, o.status, o.priority, o.approx_weight::text,
         o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.bullion_type, o.bullion_weight::text, o.labor_estimate::text,
         o.needs_3d_design, o.needs_3d_print, o.d3_checked_at, o.current_stage_id, s.kind as stage_kind,
         r.name as route_name, case when o.stage_state='shortage' then '⚠ النواقص' else s.name end as stage_name, ${orderThumb()} as thumb,
@@ -458,6 +460,11 @@ r.post('/:id/customer-gold/:mvId/reverse', requirePerm('orders.manage'), async (
     await audit(db, req, 'order.customer_gold_reverse', 'order', o.id, { movement: mv.movement_no, weight: mv.weight, reason });
     return { ok: true, reversal: rv.movement_no };
   }));
+});
+
+/** أولوية المنتج: 0 ليس مستعجلاً، 1 مستعجل، 2 مستعجل جداً */
+r.post('/:id/priority', requirePerm('orders.manage', 'orders.advance'), async (req, res) => {
+  res.json(await tx((db) => setPriority(db, req, int(req.params.id), req.body.priority)));
 });
 
 /** إرجاع فائض ذهب الطلب للخزنة */

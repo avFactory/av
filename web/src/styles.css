@@ -1056,3 +1056,8 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .i3d-add b { font-size: 1.6rem; line-height: 1; }
 .i3d-add span { font-size: .75rem; }
 .i3d-add.hot { border-color: var(--bs-warning); color: var(--bs-body-color); background: rgba(255, 193, 7, .12); }
+
+/* أولوية المنتج */
+.prio-chips .chip.prio-warning.on { background: #ffc107; border-color: #ffc107; color: #000; }
+.prio-chips .chip.prio-danger.on { background: #dc3545; border-color: #dc3545; color: #fff; }
+.prio-badge { font-size: .72rem; display: inline-block; width: fit-content; align-self: flex-start; }

@@ -61,17 +61,18 @@ export async function set3d(db, req, orderId, body) {
 /** طابور مرحلة 3D: الطلبات (مجمعة) الموجودة في مرحلة التصميم */
 export async function queue3d(db) {
   return (await db.query(`select o.id, o.order_no, coalesce(o.cart_ref, o.order_no) as grp, o.title, o.product_type, o.quantity, o.size, o.color, o.notes, o.due_date,
-      o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.needs_3d_design, o.needs_3d_print, o.d3_checked_at, o.d3_design_done_at, o.d3_print_done_at,
+      o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text, o.needs_3d_design, o.needs_3d_print, o.d3_checked_at, o.d3_design_done_at, o.d3_print_done_at, o.priority,
+      max(o.priority) over (partition by coalesce(o.cart_ref, o.order_no)) as grp_priority,
       s.name as stage_name, c.shop_name,
       coalesce((select f.path from order_files f where f.order_id=o.id and f.mime like 'image/%' and f.kind <> 'internal' order by f.id desc limit 1),
         (select pm.path from product_media pm where pm.product_id=o.product_id and pm.kind='image' order by pm.sort, pm.id limit 1)) as thumb
     from orders o join stages s on s.id=o.current_stage_id left join customers c on c.id=o.customer_id
-    where o.status='in_production' and s.kind='design' and not s.handles_gold order by o.due_date nulls last, grp, o.order_no`)).rows;
+    where o.status='in_production' and s.kind='design' and not s.handles_gold order by grp_priority desc, o.due_date nulls last, grp, o.priority desc, o.order_no`)).rows;
 }
 
 // ------------------------------------------------------------------ صفحتا التصاميم والطباعة لفريق 3D (لكل منتج على حدة)
 const ITEM_COLS = `o.id, o.order_no, coalesce(o.cart_ref, o.order_no) as grp, o.title, o.product_type, o.quantity, o.size, o.color, o.notes, o.due_date,
-  o.needs_3d_design, o.needs_3d_print, o.d3_design_done_at, o.d3_print_done_at, s.name as stage_name, c.shop_name,
+  o.needs_3d_design, o.needs_3d_print, o.d3_design_done_at, o.d3_print_done_at, o.priority, s.name as stage_name, c.shop_name,
   dd.full_name as design_by_name, pp.full_name as print_by_name,
   coalesce((select jsonb_agg(jsonb_build_object('id', f.id, 'kind', f.kind, 'path', f.path, 'mime', f.mime, 'name', f.original_name) order by (f.kind='model3d'), f.id) from order_files f where f.order_id=o.id), '[]'::jsonb)
     || coalesce((select jsonb_agg(jsonb_build_object('id', 'p' || pm.id, 'kind', 'product', 'path', pm.path, 'mime', 'image/jpeg', 'name', 'صورة المنتج') order by pm.sort, pm.id) from product_media pm where pm.product_id=o.product_id and pm.kind='image'), '[]'::jsonb) as files`;
@@ -84,7 +85,7 @@ export async function d3List(db, kind, done = false) {
   const at = kind === 'print' ? 'o.d3_print_done_at' : 'o.d3_design_done_at';
   return (await db.query(`select ${ITEM_COLS} from ${ITEM_FROM}
     where ${need} and o.status not in ('cancelled','rejected') and ${done ? `${at} > now() - interval '30 days'` : `${at} is null and o.status in ('approved','in_production','on_hold')`}
-    order by ${done ? `${at} desc` : 'o.due_date nulls last, o.order_no'} limit 300`)).rows;
+    order by ${done ? `${at} desc` : 'o.priority desc, o.due_date nulls last, o.order_no'} limit 300`)).rows;
 }
 
 /** إنجاز تصميم/طباعة منتج واحد (أو التراجع) */
@@ -107,4 +108,19 @@ export async function d3Done(db, req, orderId, body) {
   await prod.logStage(db, o.id, o.current_stage_id, 'note', req.user.id, undo ? `تراجع عن إنجاز ${what} 3D` : `✓ أُنجز ${what} 3D للمنتج`, false, req.user.role_code === 'worker' ? req.user.id : null);
   await audit(db, req, `order.3d_${kind}_${undo ? 'undo' : 'done'}`, 'order', o.id, {});
   return { ok: true };
+}
+
+export const PRIORITY = ['ليس مستعجلاً', 'مستعجل', 'مستعجل جداً'];
+/** أولوية منتج واحد (بند) — للمشرف/مدير الطلبات أو فريق 3D */
+export async function setPriority(db, req, orderId, value) {
+  const p = Number(value);
+  if (![0, 1, 2].includes(p)) throw bad('الأولوية غير صالحة');
+  if (!has(req, 'orders.manage') && !has(req, 'orders.advance') && !is3D(req.user)) throw forbidden();
+  const o = (await db.query('select id, current_stage_id, priority from orders where id=$1 for update', [orderId])).rows[0];
+  if (!o) throw notFound('الطلب غير موجود');
+  if (o.priority === p) return { ok: true, priority: p };
+  await db.query('update orders set priority=$2, updated_at=now() where id=$1', [o.id, p]);
+  await prod.logStage(db, o.id, o.current_stage_id, 'note', req.user.id, `الأولوية: ${PRIORITY[p]}`, false, req.user.role_code === 'worker' ? req.user.id : null);
+  await audit(db, req, 'order.priority', 'order', o.id, { from: o.priority, to: p });
+  return { ok: true, priority: p };
 }

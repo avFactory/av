@@ -995,3 +995,28 @@ test('فريق 3D: صفحة التصاميم وصفحة الطباعة لكل م
   assert.equal((await tw('GET', '/w/3d/design')).status, 403);
   assert.equal((await tw('POST', `/w/orders/${c.id}/3d-done`, { kind: 'print' })).status, 403);
 });
+
+test('أولوية كل منتج (ليس مستعجلاً/مستعجل/مستعجل جداً) ترتب قوائم 3D، وباركود واحد للطلب كاملاً يطبعه فريق 3D', async () => {
+  const r = await call('POST', '/orders/multi', { items: [{ title: 'أ', product_type: 'خاتم', karat: '18' }, { title: 'ب', product_type: 'حلق', karat: '18' }] });
+  const [a, b] = r.data.orders;
+  assert.equal((await call('POST', `/orders/${b.id}/priority`, { priority: 2 })).status, 200);
+  assert.equal((await call('POST', `/orders/${b.id}/priority`, { priority: 5 })).status, 400);
+  assert.equal((await pool.query('select priority from orders where id=$1', [a.id])).rows[0].priority, 0, 'بقية المنتجات لم تتأثر');
+  const mkUser = async (u, spec) => { await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, specialty) values ($1,$2,$1,'worker',$1,$3)", [u, hashPassword('D3d#2026xx'), spec]); let ck = '';
+    const go = async (m, p, body) => { const res = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); const sc = res.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: res.status, data: await res.json() }; };
+    await go('POST', '/auth/login', { username: u, password: 'D3d#2026xx' }); return go; };
+  const d3 = await mkUser('d3pr', 'ثري دي');
+  assert.equal((await d3('POST', `/w/orders/${a.id}/priority`, { priority: 1 })).status, 200);
+  await d3('POST', `/w/orders/${a.id}/3d`, { needs_design: true, needs_print: false });
+  await d3('POST', `/w/orders/${b.id}/3d`, { needs_design: true, needs_print: false });
+  const des = (await d3('GET', '/w/3d/design')).data.filter((x) => [a.id, b.id].includes(x.id)).map((x) => x.id);
+  assert.deepEqual(des, [b.id, a.id], 'المستعجل جداً أولاً');
+  // باركود واحد للطلب كاملاً — فريق 3D يطبعه
+  const lb = await d3('GET', `/orders/labels?ids=${a.id},${b.id}`);
+  assert.equal(lb.status, 200);
+  assert.equal(lb.data.length, 1, 'ملصق واحد للطلب');
+  assert.equal(lb.data[0].qr_code, r.data.cart_ref.replace(/\D/g, ''));
+  const tw = await mkUser('d3pn', 'تلميع');
+  assert.equal((await tw('GET', `/orders/labels?ids=${a.id}`)).status, 403);
+  assert.equal((await tw('POST', `/w/orders/${a.id}/priority`, { priority: 1 })).status, 403);
+});

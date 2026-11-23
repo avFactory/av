@@ -3,6 +3,8 @@ import { api, fileUrl } from '../../api.js';
 import { fmtDate, COLORS, stoneItems } from '../../format.js';
 import { Btn, Loader, useAction, useFetch, showAlert, askConfirm } from '../../ui.jsx';
 import { t } from '../../i18n.js';
+import { PriorityBadge, PriorityChips } from '../../components/Priority.jsx';
+import { printLabels } from '../../components/PrintLabelsBtn.jsx';
 
 /**
  * طابور مرحلة 3D (لفريق 3D): كل طلب بمنتجاته، ولكل قطعة: تحتاج تصميم / طباعة / لا تحتاج،
@@ -45,7 +47,8 @@ export default function Queue3d() {
           <div key={g.key} className="d3-group">
             <div className="hrow between wrap gap">
               <div><b dir="ltr">{g.key}</b><div className="small text-body-secondary">{g.shop || t('طلب داخلي')}{g.due ? ` · ${t('التسليم')} ${fmtDate(g.due)}` : ''}</div></div>
-              <span className="small">{t('{n} أصناف', { n: g.items.length })}</span>
+              <span className="d-flex gap-2 align-items-center small">{t('{n} أصناف', { n: g.items.length })}
+                <button type="button" className="btn btn-outline-secondary btn-sm py-0" title={t('طباعة باركود الطلب كاملاً')} onClick={() => run(() => printLabels([g.items[0].id]))}>🏷 {t('طباعة QR')}</button></span>
             </div>
             {g.items.map((x) => {
               const extra = [x.size && `${t('مقاس')} ${x.size}`, x.color && t(COLORS[x.color] || x.color), ...stoneItems(x).map(([k, v]) => `${k} ${v}`)].filter(Boolean);
@@ -54,7 +57,7 @@ export default function Queue3d() {
                 <div key={x.id} className="oi-row" style={{ cursor: 'default' }}>
                   {x.thumb ? <img src={fileUrl(x.thumb, 400)} alt="" /> : <span className="oi-ph">◇</span>}
                   <div className="oi-main">
-                    <Link to={`/w/orders/${x.id}`} className="text-reset"><b>{x.product_type || x.title} × {x.quantity}</b></Link>
+                    <Link to={`/w/orders/${x.id}`} className="text-reset"><b>{x.product_type || x.title} × {x.quantity}</b></Link> <PriorityBadge value={x.priority} />
                     <div className="small text-body-secondary" dir="ltr" style={{ textAlign: 'right' }}>{x.order_no}</div>
                     {extra.length > 0 && <div className="small">{extra.join(' · ')}</div>}
                     {x.notes && <div className="small text-body-secondary">📝 {x.notes}</div>}
@@ -69,6 +72,7 @@ export default function Queue3d() {
                       <button type="button" disabled={busy} className={`chip chip-sm ${x.needs_3d_print ? 'on' : ''}`} onClick={() => mark(x, { needs_design: !!x.needs_3d_design, needs_print: !x.needs_3d_print })}>{t('🖨 طباعة')}</button>
                       <button type="button" disabled={busy} className={`chip chip-sm ${none ? 'on' : ''}`} onClick={() => mark(x, { needs_design: false, needs_print: false })}>{t('لا يحتاج')}</button>
                     </div>
+                    <PriorityChips value={x.priority} busy={busy} onChange={(p) => run(async () => { await api.post(`/w/orders/${x.id}/priority`, { priority: p }); reload(); })} />
                   </div>
                 </div>
               );

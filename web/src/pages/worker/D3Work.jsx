@@ -5,6 +5,7 @@ import { COLORS, fmtDate, fmtDT } from '../../format.js';
 import { Btn, Empty, Loader, Tabs, useAction, useFetch } from '../../ui.jsx';
 import { D3Gallery, useD3Drop } from '../../components/Items3D.jsx';
 import { t } from '../../i18n.js';
+import { PriorityBadge } from '../../components/Priority.jsx';
 
 /**
  * صفحة التصاميم / الطباعة لفريق 3D: كل منتج (بند) على حدة وليس الطلب كاملاً.
@@ -40,6 +41,7 @@ function D3Item({ x, kind, tab, busy, run, reload, onDone }) {
       <div className="hrow between wrap gap">
         <div>
           <Link to={`/w/orders/${x.id}`} className="text-reset"><b>{x.product_type || x.title} × {x.quantity}</b></Link>
+          {' '}<PriorityBadge value={x.priority} />
           {has3d && <span className="badge text-bg-success ms-1">3D ✓</span>}
           {waitDesign && <span className="badge text-bg-warning ms-1">{t('بانتظار التصميم')}</span>}
           <div className="small text-body-secondary" dir="ltr" style={{ textAlign: 'start' }}>{x.order_no} · {x.shop_name || t('طلب داخلي')}</div>

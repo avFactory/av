@@ -8,6 +8,7 @@ import { TransferModal } from '../../components/TransferTools.jsx';
 import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal, showAlert, askConfirm, useToast, FileLink } from '../../ui.jsx';
 import PartialReturnModal from '../../components/PartialReturn.jsx';
+import { PriorityBadge, PriorityChips } from '../../components/Priority.jsx';
 
 /** رابط تتبع عام للطلب (عرض فقط بدون تسجيل دخول): نسخ أو إرسال واتساب */
 function TrackLinkBtn({ o }) {
@@ -151,7 +152,7 @@ export default function OrderDetail() {
         </Card>
         <div className="card card-body d-grid gap-2" style={{ textAlign: 'center', alignContent: 'start' }}>
           {o.thumb && <FileLink path={o.thumb} image className="order-hero"><img src={fileUrl(o.thumb, 800)} alt={o.title} /></FileLink>}
-          <img src={qrUrl(o.qr_token)} alt="QR" style={{ width: 110, height: 110, justifySelf: 'center' }} /><div className="small muted">QR الطلب</div>
+          <img src={qrUrl((o.cart_ref || o.order_no).replace(/\D/g, ''))} alt="QR" style={{ width: 110, height: 110, justifySelf: 'center' }} /><div className="small muted">{o.cart_ref ? 'QR الطلب كاملاً' : 'QR الطلب'}</div>
         </div>
       </div>);
       // الطلب بأكثر من منتج: تُخفى هذه البطاقات (المنتجات تظهر في الأعلى) وتبقى تفاصيل البند وأجرته في قائمة مطوية
@@ -330,7 +331,7 @@ export default function OrderDetail() {
 /** بنود الطلب الواحد (أعلى الصفحة): تفاصيل كل منتج، ونقل الطلب كاملاً للمرحلة التالية، وتحديد احتياج 3D لكل قطعة */
 function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove, can3d, run, reload, onShortage }) {
   const nav = useNavigate();
-  const list = siblings.length ? siblings : [{ id: o.id, order_no: o.order_no, title: o.title, quantity: o.quantity, status: o.status, approx_weight: o.approx_weight, route_name: o.route_name, stage_name: o.stage_name }];
+  const list = siblings.length ? siblings : [{ id: o.id, order_no: o.order_no, title: o.title, quantity: o.quantity, status: o.status, priority: o.priority, approx_weight: o.approx_weight, route_name: o.route_name, stage_name: o.stage_name }];
   const canSplit = canManage && ['pending_review', 'quoted'].includes(o.status) && o.quantity > 1;
   const startable = canManage && o.cart_ref && siblings.some((x) => ['pending_review', 'approved'].includes(x.status));
   const sameStage = list.filter((x) => x.status === 'in_production' && x.current_stage_id === o.current_stage_id);
@@ -371,7 +372,7 @@ function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove
             <div key={x.id} className={`oi-row${x.id === o.id ? ' current' : ''}`} onClick={() => x.id !== o.id && nav(`/orders/${x.id}`)} role={x.id !== o.id ? 'link' : undefined}>
               {x.thumb ? <img src={fileUrl(x.thumb, 400)} alt="" /> : <span className="oi-ph">◇</span>}
               <div className="oi-main">
-                <div className="oi-title"><b>{x.product_type || x.title} × {x.quantity}</b> <span className="small text-body-secondary">{x.title !== x.product_type ? x.title : ''}</span></div>
+                <div className="oi-title"><b>{x.product_type || x.title} × {x.quantity}</b> <PriorityBadge value={x.priority} /> <span className="small text-body-secondary">{x.title !== x.product_type ? x.title : ''}</span></div>
                 <div className="small text-body-secondary"><span dir="ltr">{x.order_no}</span>{x.approx_weight ? ` · ${fmtW(x.approx_weight)} جم تقريبي` : ''}{x.route_name ? ` · ${x.route_name}` : ''}</div>
                 {extra.length > 0 && <div className="small">{extra.join(' · ')}</div>}
                 {x.notes && <div className="small text-body-secondary">📝 {x.notes}</div>}
@@ -379,6 +380,9 @@ function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove
               <div className="oi-side" onClick={(e) => e.stopPropagation()}>
                 <div className="d-flex gap-1 flex-wrap justify-content-end"><StatusBadge map={STATUS} value={x.status} />{x.stage_name && <Badge tone="gold">{x.stage_name}</Badge>}
                   {onShortage && x.status === 'in_production' && <button type="button" className="chip chip-sm" onClick={() => onShortage(x)}>⚠ نواقص</button>}</div>
+                {(canManage || canMove) && !['delivered', 'cancelled', 'rejected'].includes(x.status) && (
+                  <div className="d-flex justify-content-end mt-1"><PriorityChips value={x.priority} busy={busy} onChange={(p) => run(async () => { await api.post(`/orders/${x.id}/priority`, { priority: p }); reload(); }, 'تم تحديد الأولوية')} /></div>
+                )}
                 {(in3d || x.d3_checked_at) && (
                   <div className="d-flex gap-1 flex-wrap justify-content-end mt-1">
                     {can3d && in3d ? <>

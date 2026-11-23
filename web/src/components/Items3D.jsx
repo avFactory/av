@@ -3,6 +3,8 @@ import { api, fileUrl } from '../api.js';
 import { COLORS } from '../format.js';
 import { Btn, FileLink, useAction, showAlert, filesFromTransfer } from '../ui.jsx';
 import { t } from '../i18n.js';
+import { PriorityBadge, PriorityChips } from './Priority.jsx';
+import { printLabels } from './PrintLabelsBtn.jsx';
 
 const IMG = (f) => /^image\//.test(f.mime || '');
 const KIND = { model3d: '3D', design: 'تصميم', reference: 'مرجع', internal: '🔒 داخلية', product: 'المنتج', execution: 'تنفيذ', sketch: 'رسمة' };
@@ -24,7 +26,10 @@ export default function Items3D({ items, reload, canMoveAll, firstId }) {
     <div className="card card-body d-grid gap-3">
       <div className="hrow between wrap gap">
         <b>{t('منتجات الطلب')} <span className="small text-body-secondary fw-normal">({items.length}{design ? ` · ${t('{n} عليها تصميم', { n: design })}` : ''})</span></b>
-        {canMoveAll && <Btn size="sm" kind="dark" loading={busy} onClick={move}>{t('نقل الطلب كاملاً للمرحلة التالية')}</Btn>}
+        <span className="d-flex gap-2">
+          <Btn size="sm" kind="ghost" loading={busy} title={t('طباعة باركود الطلب كاملاً')} onClick={() => run(() => printLabels([firstId]))}>🏷 {t('طباعة QR')}</Btn>
+          {canMoveAll && <Btn size="sm" kind="dark" loading={busy} onClick={move}>{t('نقل الطلب كاملاً للمرحلة التالية')}</Btn>}
+        </span>
       </div>
       {items.map((x, i) => <Item3D key={x.id} n={i + 1} x={x} busy={busy} mark={mark} run={run} reload={reload} />)}
     </div>
@@ -40,7 +45,7 @@ function Item3D({ n, x, busy, mark, run, reload }) {
     <div className={`i3d ${x.needs_3d_design ? 'needs' : ''} ${drag ? 'dragging' : ''}`} {...props}>
       <div className="hrow between wrap gap">
         <div>
-          <b>{n}. {x.product_type || x.title} × {x.quantity}</b> {x.needs_3d_design && <span className="badge text-bg-warning">{t('عليه تصميم')}</span>} {has3d && <span className="badge text-bg-success">3D ✓</span>}
+          <b>{n}. {x.product_type || x.title} × {x.quantity}</b> <PriorityBadge value={x.priority} /> {x.needs_3d_design && <span className="badge text-bg-warning">{t('عليه تصميم')}</span>} {has3d && <span className="badge text-bg-success">3D ✓</span>}
           <div className="small text-body-secondary" dir="ltr" style={{ textAlign: 'start' }}>{x.order_no} · {t(x.stage_name)}</div>
           <div className="small">{[x.color && t(COLORS[x.color] || x.color), x.size && `${t('مقاس')} ${x.size}`].filter(Boolean).join(' · ')}</div>
           {x.notes && <div className="small text-body-secondary">📝 {x.notes}</div>}
@@ -49,6 +54,7 @@ function Item3D({ n, x, busy, mark, run, reload }) {
           <button type="button" disabled={busy} className={`chip chip-sm ${x.needs_3d_design ? 'on' : ''}`} onClick={() => mark(x, { needs_design: !x.needs_3d_design, needs_print: !!x.needs_3d_print })}>{t('✏️ تصميم')}</button>
           <button type="button" disabled={busy} className={`chip chip-sm ${x.needs_3d_print ? 'on' : ''}`} onClick={() => mark(x, { needs_design: !!x.needs_3d_design, needs_print: !x.needs_3d_print })}>{t('🖨 طباعة')}</button>
           <button type="button" disabled={busy} className={`chip chip-sm ${none ? 'on' : ''}`} onClick={() => mark(x, { needs_design: false, needs_print: false })}>{t('لا يحتاج')}</button>
+          <PriorityChips value={x.priority} busy={busy} onChange={(p) => run(async () => { await api.post(`/w/orders/${x.id}/priority`, { priority: p }); reload(); })} />
         </div>
       </div>
       <D3Gallery x={x} run={run} reload={reload} />
