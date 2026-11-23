@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtDate, COLORS, stoneItems } from '../../format.js';
-import { Btn, Loader, useAction, useFetch, showAlert } from '../../ui.jsx';
+import { Btn, Loader, useAction, useFetch, showAlert, askConfirm } from '../../ui.jsx';
 import { t } from '../../i18n.js';
 
 /**
@@ -18,8 +18,19 @@ export default function Queue3d() {
     if (!g) { g = { key: x.grp, items: [], shop: x.shop_name, due: x.due_date }; groups.push(g); }
     g.items.push(x);
   }
-  const mark = (x, body) => run(async () => { await api.post(`/w/orders/${x.id}/3d`, body); reload(); });
-  const move = (g) => run(async () => {
+  // تحديد تصميم/طباعة لمنتج واحد: يظهر في صفحة التصاميم أو الطباعة (المنتج وحده وليس الطلب كاملاً)
+  const mark = (x, body) => {
+    const toDesign = body.needs_design && !x.needs_3d_design;
+    const toPrint = body.needs_print && !x.needs_3d_print;
+    return run(async () => { await api.post(`/w/orders/${x.id}/3d`, body); reload(); },
+      toDesign ? 'أُضيف المنتج لصفحة التصاميم' : toPrint ? 'أُضيف المنتج لصفحة الطباعة' : undefined);
+  };
+  const move = async (g) => {
+    const pend = g.items.filter((x) => (x.needs_3d_design && !x.d3_design_done_at) || (x.needs_3d_print && !x.d3_print_done_at));
+    if (pend.length && !await askConfirm(t('{n} منتج لم يُنجز تصميمه أو طباعته بعد. نقل الطلب كاملاً للمرحلة التالية الآن؟', { n: pend.length }))) return;
+    moveNow(g);
+  };
+  const moveNow = (g) => run(async () => {
     const r = await api.post(`/w/orders/${g.items[0].id}/group-advance`);
     reload();
     if (r.skipped?.length) showAlert(`لم ينتقل:\n${r.skipped.map((s) => `${s.order_no}: ${s.reason}`).join('\n')}`);
@@ -47,6 +58,10 @@ export default function Queue3d() {
                     <div className="small text-body-secondary" dir="ltr" style={{ textAlign: 'right' }}>{x.order_no}</div>
                     {extra.length > 0 && <div className="small">{extra.join(' · ')}</div>}
                     {x.notes && <div className="small text-body-secondary">📝 {x.notes}</div>}
+                    {(x.needs_3d_design || x.needs_3d_print) && <div className="small d-flex gap-2 flex-wrap mt-1">
+                      {x.needs_3d_design && <Link to="/w/designs" className={`badge ${x.d3_design_done_at ? 'text-bg-success' : 'text-bg-warning'}`}>{x.d3_design_done_at ? t('✓ صُمم') : t('✏️ في التصاميم')}</Link>}
+                      {x.needs_3d_print && <Link to="/w/prints" className={`badge ${x.d3_print_done_at ? 'text-bg-success' : 'text-bg-warning'}`}>{x.d3_print_done_at ? t('✓ طُبع') : t('🖨 في الطباعة')}</Link>}
+                    </div>}
                   </div>
                   <div className="oi-side">
                     <div className="d-flex gap-1 flex-wrap justify-content-end">

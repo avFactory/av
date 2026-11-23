@@ -31,8 +31,13 @@ export default function WorkerLayout() {
       <nav className="nav nav-justified fixed-bottom bg-body border-top shadow-sm wk-nav no-print">
         <NavLink to="/w" end className="nav-link"><i>▤</i>{t('مهامي')}</NavLink>
         <NavLink to="/w/scan" className="nav-link"><i>⌁</i>{t('مسح QR')}</NavLink>
-        <NavLink to="/w/losses" className="nav-link"><i>⚖</i>{t('العجز')}</NavLink>
-        <NavLink to="/w/history" className="nav-link"><i>↺</i>{t('السجل')}</NavLink>
+        {me?.is_3d ? <>
+          <NavLink to="/w/designs" className="nav-link"><i>✏️</i>{t('التصاميم')}</NavLink>
+          <NavLink to="/w/prints" className="nav-link"><i>🖨</i>{t('الطباعة')}</NavLink>
+        </> : <>
+          <NavLink to="/w/losses" className="nav-link"><i>⚖</i>{t('العجز')}</NavLink>
+          <NavLink to="/w/history" className="nav-link"><i>↺</i>{t('السجل')}</NavLink>
+        </>}
         <NavLink to="/w/notifications" className="nav-link"><i>◔</i>{t('الإشعارات')}</NavLink>
       </nav>
     </div>

@@ -964,3 +964,34 @@ test('فريق 3D: أي طلب يعرض كل منتجاته بكل صورها، 
   assert.equal((await tw('GET', `/w/orders/${a.id}`)).status, 403);
   void mat;
 });
+
+test('فريق 3D: صفحة التصاميم وصفحة الطباعة لكل منتج على حدة (وليس الطلب كاملاً)', async () => {
+  const r = await call('POST', '/orders/multi', { items: [{ title: 'خاتم أ', product_type: 'خاتم', karat: '18' }, { title: 'حلق ب', product_type: 'حلق', karat: '18' }, { title: 'عقد ج', product_type: 'عقد', karat: '18' }] });
+  const [a, b, c] = r.data.orders;
+  const mkUser = async (u, spec) => { await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, specialty) values ($1,$2,$1,'worker',$1,$3)", [u, hashPassword('D3d#2026xx'), spec]); let ck = '';
+    const go = async (m, p, body, form) => { const res = await fetch(base + '/api' + p, { method: m, headers: form ? { cookie: ck } : { cookie: ck, 'content-type': 'application/json' }, body: form || (body ? JSON.stringify(body) : undefined) }); const sc = res.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: res.status, data: await res.json() }; };
+    await go('POST', '/auth/login', { username: u, password: 'D3d#2026xx' }); return go; };
+  const d3 = await mkUser('d3dp', 'ثري دي');
+  await d3('POST', `/w/orders/${b.id}/3d`, { needs_design: true, needs_print: true });
+  await d3('POST', `/w/orders/${c.id}/3d`, { needs_design: false, needs_print: true });
+  const des = (await d3('GET', '/w/3d/design')).data.map((x) => x.id);
+  assert.ok(des.includes(b.id) && !des.includes(a.id) && !des.includes(c.id), 'المنتج المحدد للتصميم فقط');
+  const pr = (await d3('GET', '/w/3d/print')).data.map((x) => x.id);
+  assert.ok(pr.includes(b.id) && pr.includes(c.id) && !pr.includes(a.id), 'كل منتج للطباعة وحده');
+  assert.equal((await d3('POST', `/w/orders/${b.id}/3d-done`, { kind: 'design' })).status, 400, 'ارفع ملف التصميم أولاً');
+  assert.equal((await d3('POST', `/w/orders/${b.id}/3d-done`, { kind: 'print' })).status, 400, 'الطباعة بعد التصميم');
+  assert.equal((await d3('POST', `/w/orders/${c.id}/3d-done`, { kind: 'print' })).status, 200, 'طباعة منتج لا يحتاج تصميم');
+  const fd = new FormData(); fd.append('files', new Blob(['solid x\nendsolid x\n'], { type: 'model/stl' }), 'b.stl');
+  assert.equal((await d3('POST', `/w/orders/${b.id}/3d-files`, null, fd)).status, 200);
+  assert.equal((await d3('POST', `/w/orders/${b.id}/3d-done`, { kind: 'design' })).status, 200);
+  assert.ok(!(await d3('GET', '/w/3d/design')).data.some((x) => x.id === b.id), 'خرج من الحالية');
+  assert.ok((await d3('GET', '/w/3d/design?done=1')).data.some((x) => x.id === b.id && x.design_by_name === 'd3dp'), 'في المنجزة');
+  assert.equal((await d3('POST', `/w/orders/${b.id}/3d-done`, { kind: 'print' })).status, 200);
+  const st = (await pool.query('select d3_design_done_at is not null d, d3_print_done_at is not null p from orders where id=$1', [b.id])).rows[0];
+  assert.deepEqual([st.d, st.p], [true, true]);
+  assert.equal((await pool.query('select count(*)::int n from orders where id=$1 and d3_print_done_at is not null', [a.id])).rows[0].n, 0, 'بقية منتجات الطلب لم تتأثر');
+  assert.equal((await d3('POST', `/w/orders/${b.id}/3d-done`, { kind: 'print', undo: true })).status, 200, 'تراجع');
+  const tw = await mkUser('d3no', 'تلميع');
+  assert.equal((await tw('GET', '/w/3d/design')).status, 403);
+  assert.equal((await tw('POST', `/w/orders/${c.id}/3d-done`, { kind: 'print' })).status, 403);
+});

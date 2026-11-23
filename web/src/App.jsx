@@ -23,6 +23,7 @@ const Review = L(() => import('./pages/sup/Review.jsx'));
 const Log = L(() => import('./pages/sup/Log.jsx'));
 const Batch = L(() => import('./pages/sup/Batch.jsx'));
 const Scan = L(() => import('./pages/sup/Scan.jsx'));
+const D3Work = L(() => import('./pages/worker/D3Work.jsx'));
 const Casting = L(() => import('./pages/sup/Casting.jsx'));
 const DailyCheck = L(() => import('./pages/sup/DailyCheck.jsx'));
 const Orders = L(() => import('./pages/orders/Orders.jsx'));
@@ -166,6 +167,8 @@ export default function App() {
           <Route path="/w/history" element={<WHistory />} />
           <Route path="/w/scan" element={<WScan />} />
           <Route path="/w/losses" element={<WLosses />} />
+          <Route path="/w/designs" element={<D3Work kind="design" />} />
+          <Route path="/w/prints" element={<D3Work kind="print" />} />
           <Route path="/w/notifications" element={<Notifications />} />
           <Route path="/w/account" element={<Account />} />
         </Route>

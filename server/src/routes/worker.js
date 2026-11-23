@@ -10,7 +10,7 @@ import { advance, lockOrder, logStage } from '../lib/production.js';
 import { audit } from '../lib/audit.js';
 import { orderThumb } from '../lib/orderThumb.js';
 import { is3D, addInternalImages } from '../lib/internalImages.js';
-import { advanceGroup, set3d, queue3d } from '../lib/orderGroup3d.js';
+import { advanceGroup, set3d, queue3d, d3List, d3Done } from '../lib/orderGroup3d.js';
 import { checkAckWeight, workerCloseStage } from '../lib/workerClose.js';
 import { createReturnRequest, cancelReturnRequest } from '../lib/partialReturn.js';
 import { createTransfer, acceptTransfer, rejectTransfer, cancelTransfer, transferCols } from '../lib/transfer.js';
@@ -248,6 +248,16 @@ r.post('/orders/:id/files', upload.array('files', 10), async (req, res) => {
 r.get('/3d', async (req, res) => {
   if (!is3D(req.user)) throw forbidden('لفريق 3D فقط');
   res.json(await queue3d(pool));
+});
+/** صفحة التصاميم / الطباعة لفريق 3D: كل منتج على حدة (الحالية أو المنجزة) */
+for (const kind of ['design', 'print']) {
+  r.get(`/3d/${kind}`, async (req, res) => {
+    if (!is3D(req.user)) throw forbidden('لفريق 3D فقط');
+    res.json(await d3List(pool, kind, req.query.done === '1'));
+  });
+}
+r.post('/orders/:id/3d-done', async (req, res) => {
+  res.json(await tx((db) => d3Done(db, req, int(req.params.id), req.body)));
 });
 r.post('/orders/:id/3d', async (req, res) => {
   if (!is3D(req.user)) throw forbidden('لفريق 3D فقط');

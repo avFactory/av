@@ -32,23 +32,12 @@ export default function Items3D({ items, reload, canMoveAll, firstId }) {
 }
 
 function Item3D({ n, x, busy, mark, run, reload }) {
-  const ref = useRef(null);
-  const [drag, setDrag] = useState(false);
   const files = x.files || [];
-  const imgs = files.filter(IMG);
-  const others = files.filter((f) => !IMG(f));
   const has3d = files.some((f) => f.kind === 'model3d');
   const none = x.d3_checked_at && !x.needs_3d_design && !x.needs_3d_print;
-  const upload = (list) => list.length && run(async () => {
-    const fd = new FormData();
-    for (const f of list) fd.append('files', f);
-    await api.post(`/w/orders/${x.id}/3d-files`, fd);
-    reload();
-  }, 'تم رفع ملفات 3D');
+  const { drag, props } = useD3Drop(x, run, reload);
   return (
-    <div className={`i3d ${x.needs_3d_design ? 'needs' : ''} ${drag ? 'dragging' : ''}`}
-      onDragOver={(e) => { e.preventDefault(); if (!drag) setDrag(true); }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDrag(false); }}
-      onDrop={async (e) => { e.preventDefault(); setDrag(false); upload(await filesFromTransfer(e.dataTransfer, '*')); }}>
+    <div className={`i3d ${x.needs_3d_design ? 'needs' : ''} ${drag ? 'dragging' : ''}`} {...props}>
       <div className="hrow between wrap gap">
         <div>
           <b>{n}. {x.product_type || x.title} × {x.quantity}</b> {x.needs_3d_design && <span className="badge text-bg-warning">{t('عليه تصميم')}</span>} {has3d && <span className="badge text-bg-success">3D ✓</span>}
@@ -62,6 +51,25 @@ function Item3D({ n, x, busy, mark, run, reload }) {
           <button type="button" disabled={busy} className={`chip chip-sm ${none ? 'on' : ''}`} onClick={() => mark(x, { needs_design: false, needs_print: false })}>{t('لا يحتاج')}</button>
         </div>
       </div>
+      <D3Gallery x={x} run={run} reload={reload} />
+    </div>
+  );
+}
+
+/** صور وملفات المنتج (تكبر بالنقر) مع زر إضافة صور/ملفات 3D */
+export function D3Gallery({ x, run, reload, upload: canUpload = true }) {
+  const ref = useRef(null);
+  const files = x.files || [];
+  const imgs = files.filter(IMG);
+  const others = files.filter((f) => !IMG(f));
+  const has3d = files.some((f) => f.kind === 'model3d');
+  const upload = (list) => list.length && run(async () => {
+    const fd = new FormData();
+    for (const f of list) fd.append('files', f);
+    await api.post(`/w/orders/${x.id}/3d-files`, fd);
+    reload();
+  }, 'تم رفع ملفات 3D');
+  return (
       <div className="i3d-gallery">
         {imgs.map((f) => (
           <FileLink key={f.id} path={f.path} image className="i3d-img" title={f.name}>
@@ -73,11 +81,29 @@ function Item3D({ n, x, busy, mark, run, reload }) {
             <b>{(f.name || '').split('.').pop()?.toUpperCase()}</b><small>{f.name}</small><span className="i3d-tag is3d">{t(KIND[f.kind] || f.kind)}</span>
           </FileLink>
         ))}
-        <button type="button" className={`i3d-add ${x.needs_3d_design && !has3d ? 'hot' : ''}`} onClick={() => ref.current?.click()}>
-          <b>＋</b><span>{t('صور / ملفات 3D')}</span>
-        </button>
-        <input ref={ref} type="file" multiple hidden accept="image/*,.stl,.obj,.3dm,.step,.stp,.glb,.gltf,.zip,.pdf" onChange={(e) => { upload([...e.target.files]); e.target.value = ''; }} />
+        {canUpload && <>
+          <button type="button" className={`i3d-add ${x.needs_3d_design && !has3d ? 'hot' : ''}`} onClick={() => ref.current?.click()}>
+            <b>＋</b><span>{t('صور / ملفات 3D')}</span>
+          </button>
+          <input ref={ref} type="file" multiple hidden accept="image/*,.stl,.obj,.3dm,.step,.stp,.glb,.gltf,.zip,.pdf" onChange={(e) => { upload([...e.target.files]); e.target.value = ''; }} />
+        </>}
       </div>
-    </div>
   );
+}
+
+/** رفع ملفات 3D بالسحب والإفلات على أي بطاقة منتج */
+export function useD3Drop(x, run, reload) {
+  const [drag, setDrag] = useState(false);
+  return {
+    drag,
+    props: {
+      onDragOver: (e) => { e.preventDefault(); if (!drag) setDrag(true); },
+      onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDrag(false); },
+      onDrop: async (e) => {
+        e.preventDefault(); setDrag(false);
+        const list = await filesFromTransfer(e.dataTransfer, '*');
+        if (list.length) run(async () => { const fd = new FormData(); for (const f of list) fd.append('files', f); await api.post(`/w/orders/${x.id}/3d-files`, fd); reload(); }, 'تم رفع ملفات 3D');
+      },
+    },
+  };
 }
