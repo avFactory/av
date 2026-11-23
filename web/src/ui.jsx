@@ -645,3 +645,19 @@ export function SearchSelect({ value, onChange, options = [], placeholder = 'ا�
     </div>
   );
 }
+
+/**
+ * رابط ملف/صورة: الصورة تُعرض مكبرة داخل الصفحة (بدون تبويب جديد — على الجوال قد يفتح التبويب الجديد خارج التطبيق بدون تسجيل الدخول)،
+ * وبقية الملفات (PDF…) تفتح في تبويب جديد.
+ */
+export function FileLink({ path, image, className, children, title, style }) {
+  const [open, setOpen] = useState(false);
+  const href = path ? `/api/files/${path}` : undefined;
+  return (
+    <>
+      <a href={href} target="_blank" rel="noreferrer" className={className} title={title} style={style}
+        onClick={image ? (e) => { e.preventDefault(); setOpen(true); } : undefined}>{children}</a>
+      {image && <Lightbox src={open ? href : null} onClose={() => setOpen(false)} />}
+    </>
+  );
+}

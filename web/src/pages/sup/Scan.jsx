@@ -5,7 +5,7 @@ import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, DESIGN_STATUS } from '../../format.js';
 import OrderGroupItems from '../../components/OrderGroupItems.jsx';
-import { Card, Page, ScanInput, useToast, Kv, LinkBtn, Badge } from '../../ui.jsx';
+import { Card, Page, ScanInput, useToast, Kv, LinkBtn, Badge, FileLink } from '../../ui.jsx';
 
 /** مسح QR الطلب للوصول المباشر لبياناته (مع تطبيق الصلاحيات في الخادم) */
 export default function Scan() {
@@ -21,7 +21,7 @@ export default function Scan() {
       <ScanInput onScan={scan} />
       {o && (
         <Card className="mt" title={<span>{o.group?.length > 1 ? <>{o.cart_ref} <span className="small text-body-secondary">— الطلب كامل ({o.group.length} أصناف)</span></> : <>{o.order_no} — {o.title}</>}</span>} actions={<Badge tone="gold">{o.stage_name || o.status}</Badge>}>
-          {o.thumb && <a href={fileUrl(o.thumb)} target="_blank" rel="noreferrer" className="order-hero mb-3" style={{ maxWidth: 360 }}><img src={fileUrl(o.thumb, 800)} alt={o.title} /></a>}
+          {o.thumb && <FileLink path={o.thumb} image className="order-hero mb-3" style={{ maxWidth: 360 }}><img src={fileUrl(o.thumb, 800)} alt={o.title} /></FileLink>}
           <Kv items={[['المادة', o.material_name], ['الكمية', o.quantity], ['رصيد ذهب الطلب', `${fmtW(o.order_balance)} جم`], ['حالة التصميم', DESIGN_STATUS[o.design_status]],
             ['لدى العمال', o.open_custodies.map((c) => `${c.full_name} (${fmtW(c.weight_issued)})`).join('، ') || '—']]} />
           <div className="hrow gap wrap mt">

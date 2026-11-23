@@ -6,7 +6,7 @@ import PrintLabelsBtn from '../../components/PrintLabelsBtn.jsx';
 import { ShortageModal, WithdrawModal, SHORTAGE_KINDS } from '../../components/ShortageTools.jsx';
 import { TransferModal } from '../../components/TransferTools.jsx';
 import { fmtW, fmtDT, fmtDate, fmtMoney, fmtPct, STATUS, CUSTODY_STATUS, SETTLEMENT_STATUS, DESIGN_STATUS, METHODS, COLORS, LOCS, stoneItems } from '../../format.js';
-import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal, showAlert, askConfirm, useToast } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Kv, LinkBtn, Loader, Modal, Page, Select, StatusBadge, Table, Tabs, Textarea, WeightInput, useAction, useFetch, Badge, ErrorBox, ReasonModal, showAlert, askConfirm, useToast, FileLink } from '../../ui.jsx';
 import PartialReturnModal from '../../components/PartialReturn.jsx';
 
 /** رابط تتبع عام للطلب (عرض فقط بدون تسجيل دخول): نسخ أو إرسال واتساب */
@@ -150,7 +150,7 @@ export default function OrderDetail() {
           </div>
         </Card>
         <div className="card card-body d-grid gap-2" style={{ textAlign: 'center', alignContent: 'start' }}>
-          {o.thumb && <a href={fileUrl(o.thumb)} target="_blank" rel="noreferrer" className="order-hero"><img src={fileUrl(o.thumb, 800)} alt={o.title} /></a>}
+          {o.thumb && <FileLink path={o.thumb} image className="order-hero"><img src={fileUrl(o.thumb, 800)} alt={o.title} /></FileLink>}
           <img src={qrUrl(o.qr_token)} alt="QR" style={{ width: 110, height: 110, justifySelf: 'center' }} /><div className="small muted">QR الطلب</div>
         </div>
       </div>);
@@ -228,8 +228,8 @@ export default function OrderDetail() {
               </div>
             )}>
               <div className="files">{files.map((x) => (
-                <a key={x.id} href={fileUrl(x.path)} target="_blank" rel="noreferrer">{x.mime?.startsWith('image') ? <img src={fileUrl(x.path, 400)} alt="" /> : <div className="doc">{(x.original_name || '').split('.').pop()?.toUpperCase()}</div>}
-                  <span>{x.original_name}<br /><span className="muted">{FILE_KIND[x.kind] || x.kind}{x.customer_visible ? ' · ظاهر للعميل' : ''}</span></span></a>
+                <FileLink key={x.id} path={x.path} image={x.mime?.startsWith('image')}>{x.mime?.startsWith('image') ? <img src={fileUrl(x.path, 400)} alt="" /> : <div className="doc">{(x.original_name || '').split('.').pop()?.toUpperCase()}</div>}
+                  <span>{x.original_name}<br /><span className="muted">{FILE_KIND[x.kind] || x.kind}{x.customer_visible ? ' · ظاهر للعميل' : ''}</span></span></FileLink>
               ))}</div>
             </Card>
             {can('design.manage') && o.customer_id && (

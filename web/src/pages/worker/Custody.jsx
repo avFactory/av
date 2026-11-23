@@ -4,7 +4,7 @@ import { api, fileUrl } from '../../api.js';
 import { fmtW, fmtDT, fmtPct, WORK_STATE, calcLoss, CUSTODY_STATUS, COLORS, stoneItems } from '../../format.js';
 import OrderGroupItems from '../../components/OrderGroupItems.jsx';
 import { TransferModal } from '../../components/TransferTools.jsx';
-import { Btn, Card, Field, Input, Loader, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal, askConfirm } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Loader, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal, askConfirm, FileLink } from '../../ui.jsx';
 import { t, tMat, isRtl } from '../../i18n.js';
 
 /** شاشة العهدة للعامل: تأكيد الاستلام، بدء/إيقاف العمل، تسجيل الأوزان، رفع الصور، إنهاء المرحلة */
@@ -41,7 +41,7 @@ export default function WCustody() {
     <div className="wk-body">
       <Link to="/w" className="back">{isRtl() ? '→' : '←'} {t('مهامي')}</Link>
       <Card title={<span>{t(c.order_no)}</span>} actions={c.status === 'open' ? <Badge tone="gold">{t(WORK_STATE[c.work_state])}</Badge> : <StatusBadge map={CUSTODY_STATUS} value={c.status} />}>
-        {mainImg && <a href={fileUrl(mainImg.path)} target="_blank" rel="noreferrer" className="wk-hero-img"><img src={fileUrl(mainImg.path, 800)} alt={c.title} /></a>}
+        {mainImg && <FileLink path={mainImg.path} image className="wk-hero-img"><img src={fileUrl(mainImg.path, 800)} alt={c.title} /></FileLink>}
         <Kv items={[[t('الوصف'), t(c.title)], [t('المرحلة الحالية'), t(c.stage_name)], [t('المادة'), tMat(c.material_name)], [t('الوزن المسلم لك'), <span dir="ltr">{fmtW(c.weight_issued)} {t('جم')}</span>],
           c.kind === 'general' && [t('نوع العهدة'), t('عهدة عامة (رصيد بدون طلب)')],
           c.kind !== 'general' && [t('عدد القطع'), c.pieces], [t('المقاس'), c.size], [t('تاريخ التسليم'), fmtDT(c.issued_at)], c.order_notes && [t('ملاحظات الطلب'), c.order_notes], od?.order?.color && [t('اللون'), t(COLORS[od.order.color] || od.order.color)], ...(od?.order ? stoneItems(od.order) : [])]} />
@@ -93,7 +93,7 @@ export default function WCustody() {
       )}
       {od?.files?.length > 0 && (
         <Card title={t('التصاميم والصور')}>
-          <div className="files">{od.files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt={f.original_name} /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
+          <div className="files">{od.files.map((f) => <FileLink key={f.id} path={f.path} image={f.mime?.startsWith('image')}>{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt={f.original_name} /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></FileLink>)}</div>
         </Card>
       )}
       {c.status === 'open' && !c.worker_ack_at && (

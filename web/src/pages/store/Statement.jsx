@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api, fileUrl, qs } from '../../api.js';
 import StatementTable, { StatementSummary, SUB_ST, PAY_METHODS, methodLabel, money2, gold3 } from '../../components/StatementView.jsx';
 import { fmtDT } from '../../format.js';
-import { Badge, Btn, Card, Field, Input, Loader, Page, Select, Tabs, Textarea, WeightInput, useAction, useFetch } from '../../ui.jsx';
+import { Badge, Btn, Card, Field, Input, Loader, Page, Select, Tabs, Textarea, WeightInput, useAction, useFetch, FileLink } from '../../ui.jsx';
 
 const num = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
 const EMPTY = { kind: 'money', amount: '', method: 'transfer', weight: '', karat: '24', reference: '', paid_at: '', note: '', file: null };
@@ -58,7 +58,7 @@ export default function Statement() {
         <Card className="mb no-print" title="مستندات السداد المرفوعة">
           <div className="d-grid gap-2">{st.submissions.map((s) => (
             <div key={s.id} className={`sub-row ${s.status}`}>
-              <a href={fileUrl(s.document_path)} target="_blank" rel="noreferrer" className="sub-doc">{s.mime?.startsWith('image') ? <img src={fileUrl(s.document_path, 200)} alt="" /> : <span>PDF</span>}</a>
+              <FileLink path={s.document_path} image={s.mime?.startsWith('image')} className="sub-doc">{s.mime?.startsWith('image') ? <img src={fileUrl(s.document_path, 200)} alt="" /> : <span>PDF</span>}</FileLink>
               <div className="sub-main">
                 <b>{s.kind === 'money' ? `مبلغ ${money2(s.amount)} ر.س` : `ذهب ${gold3(s.weight)} جم عيار ${s.karat}`}</b>{methodLabel(s.method) && <span className="small">{methodLabel(s.method)}</span>}
                 <span className="small text-body-secondary"><span dir="ltr">{s.submission_no}</span> · {fmtDT(s.created_at)}{s.reference ? ` · ${s.reference}` : ''}</span>

@@ -56,7 +56,7 @@ export function createApp() {
   app.use(express.json({ limit: '2mb' }));
   app.use((req, _res, next) => { if (req.body === undefined) req.body = {}; next(); });
   app.use(cookieParser());
-  // حماية CSRF: الطلبات المعدِّلة يجب أن تأتي من نفس المصدر (إضافة لملف تعريف الارتباط SameSite=Strict)
+  // حماية CSRF: الطلبات المعدِّلة يجب أن تأتي من نفس المصدر (مع ملف تعريف الارتباط SameSite=Lax: يُرسل عند فتح رابط صورة/ملف في تبويب جديد من تطبيق الجوال)
   app.use('/api', (req, _res, next) => {
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
       const origin = req.headers.origin;

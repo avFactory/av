@@ -279,3 +279,14 @@ test('صلاحيات الروابط الخارجية: كل رابط بصلاحي
   const a = (await admin('GET', '/admin/pricing')).data;
   assert.ok(a.token && a.token_short, 'المدير يرى الرابطين');
 });
+
+test('ملف تعريف الجلسة: HttpOnly و SameSite=Lax (فتح صورة في تبويب جديد من تطبيق الجوال يبقى مسجلاً)، وحماية المصدر للتعديل', async () => {
+  const r = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'Admin#2026pass' }) });
+  const sc = r.headers.get('set-cookie') || '';
+  assert.match(sc, /HttpOnly/i);
+  assert.match(sc, /SameSite=Lax/i);
+  const ck = sc.split(';')[0];
+  // طلب تعديل من موقع آخر يُرفض رغم إرسال ملف تعريف الارتباط
+  const x = await fetch(base + '/api/orders', { method: 'POST', headers: { cookie: ck, origin: 'https://evil.example', 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(x.status, 403);
+});

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, fileUrl } from '../../api.js';
 import { fmtMoney } from '../../format.js';
-import { Btn, Card, Field, Input, Loader, Page, useAction, useFetch } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Loader, Page, useAction, useFetch, FileLink } from '../../ui.jsx';
 import AccountPw from '../Account.jsx';
 import Branches from '../../components/Branches.jsx';
 import { Kv } from '../../ui.jsx';
@@ -38,7 +38,7 @@ export default function SAccount() {
           <Btn className="mt" loading={busy} onClick={() => run(async () => { await api.put('/store/account', f); reload(); }, 'تم الحفظ')}>حفظ</Btn>
         </Card>
         <Card title="مستندات المنشأة" className="mt">
-          <div className="files mb">{data.docs.map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer">{d.mime?.startsWith('image') ? <img src={fileUrl(d.path, 400)} alt="" /> : <div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{{ cr: 'السجل التجاري', vat: 'الشهادة الضريبية', national_address: 'العنوان الوطني' }[d.doc_type] || d.original_name}</span></a>)}</div>
+          <div className="files mb">{data.docs.map((d) => <FileLink key={d.id} path={d.path} image={d.mime?.startsWith('image')}>{d.mime?.startsWith('image') ? <img src={fileUrl(d.path, 400)} alt="" /> : <div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{{ cr: 'السجل التجاري', vat: 'الشهادة الضريبية', national_address: 'العنوان الوطني' }[d.doc_type] || d.original_name}</span></FileLink>)}</div>
           <label className="btn btn-outline-secondary">رفع السجل التجاري / شهادة الضريبة<input type="file" multiple hidden accept="image/*,.pdf" onChange={(e) => { const fd = new FormData(); for (const x of e.target.files) fd.append('files', x); run(async () => { await api.post('/store/account/documents', fd); reload(); }, 'تم رفع المستندات'); }} /></label>
         </Card>
         {data.customer.status === 'approved' && <div className="mt"><BranchesBox /></div>}

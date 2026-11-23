@@ -15,7 +15,7 @@ export async function createSession(res, user, req) {
     [hash(token), user.id, String(TTL_HOURS), req.ip, String(req.headers['user-agent'] || '').slice(0, 300)]
   );
   res.cookie(COOKIE, token, {
-    httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production',
+    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production',
     maxAge: TTL_HOURS * 3600 * 1000, path: '/',
   });
 }

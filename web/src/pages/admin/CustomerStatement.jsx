@@ -4,7 +4,7 @@ import { api, fileUrl, qs } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import StatementTable, { StatementSummary, SUB_ST, methodLabel, money2, gold3 } from '../../components/StatementView.jsx';
 import { fmtDT } from '../../format.js';
-import { Badge, Btn, Card, Field, Input, Loader, Modal, Page, ReasonModal, Select, Tabs, Textarea, WeightInput, useAction, useFetch, askConfirm } from '../../ui.jsx';
+import { Badge, Btn, Card, Field, Input, Loader, Modal, Page, ReasonModal, Select, Tabs, Textarea, WeightInput, useAction, useFetch, askConfirm, FileLink } from '../../ui.jsx';
 
 const KINDS = [['opening', 'رصيد افتتاحي'], ['gold_payment', 'سداد ذهب من العميل'], ['money_adjust', 'تسوية مبالغ'], ['gold_adjust', 'تسوية ذهب']];
 const num = (v) => String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, '');
@@ -20,9 +20,9 @@ export function SubmissionsList({ list, onDone, showCustomer }) {
       <div className="d-grid gap-2">
         {list.map((s) => (
           <div key={s.id} className={`sub-row ${s.status}`}>
-            <a href={fileUrl(s.document_path)} target="_blank" rel="noreferrer" className="sub-doc">
+            <FileLink path={s.document_path} image={s.mime?.startsWith('image')} className="sub-doc">
               {s.mime?.startsWith('image') ? <img src={fileUrl(s.document_path, 200)} alt="" /> : <span>PDF</span>}
-            </a>
+            </FileLink>
             <div className="sub-main">
               <b>{s.kind === 'money' ? `مبلغ ${money2(s.amount)} ر.س` : `ذهب ${gold3(s.weight)} جم عيار ${s.karat}`}</b>{methodLabel(s.method) && <span className="badge text-bg-light border fw-normal ms-1">{methodLabel(s.method)}</span>}
               <span className="small text-body-secondary">{showCustomer && <><Link to={`/admin/customers/${s.customer_id}/statement`}>{s.shop_name}</Link>{s.branch_name ? ` — ${s.branch_name}` : ''} · </>}

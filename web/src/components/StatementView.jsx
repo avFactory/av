@@ -1,5 +1,5 @@
+import { FileLink } from '../ui.jsx';
 import { Link } from 'react-router-dom';
-import { fileUrl } from '../api.js';
 
 const m = (v) => (v ? Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
 const g = (v) => (v ? Number(v).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : '');
@@ -40,7 +40,7 @@ export default function StatementTable({ st, staff }) {
           {st.rows.map((r, i) => (
             <tr key={i} className={`st-${r.type}`}>
               <td className="text-nowrap">{r.date}</td>
-              <td>{r.description}{r.document && <> · <a href={fileUrl(r.document)} target="_blank" rel="noreferrer">المستند</a></>}</td>
+              <td>{r.description}{r.document && <> · <FileLink path={r.document}>المستند</FileLink></>}</td>
               <td className="text-nowrap">{link(r)}</td>
               <td className="n">{m(r.money_debit)}</td><td className="n">{m(r.money_credit)}</td><td className="n">{bal(r.money_balance, m)}</td>
               <td className="n">{g(r.gold_debit)}</td><td className="n">{g(r.gold_credit)}</td><td>{r.gold_debit || r.gold_credit ? r.karat : ''}</td><td className="n">{bal(r.pure_balance, g)}</td>

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtDT, fmtMoney } from '../../format.js';
-import { Btn, Field, Input, Loader, Modal, Page, Select, Table, useAction, useFetch, Textarea, Search, Badge, Empty, Kv, askConfirm } from '../../ui.jsx';
+import { Btn, Field, Input, Loader, Modal, Page, Select, Table, useAction, useFetch, Textarea, Search, Badge, Empty, Kv, askConfirm, FileLink } from '../../ui.jsx';
 import StoneIssueEdit from '../../components/StoneIssueEdit.jsx';
 
 const MK = { in: 'إضافة', issue: 'تسليم لعامل', return: 'مرتجع من عامل', used: 'مستخدم (مركب)', lost: 'مفقود', adjust_in: 'تسوية زيادة', adjust_out: 'تسوية نقص', reversal: 'عكس حركة' };
@@ -171,7 +171,7 @@ function LotModal({ lot, onClose, can, onMove, onEdit, onReverse, onEditIssue })
       </div>
       <Kv items={[['النوع', l.stone_type], ['اللون', l.color], ['النقاء', l.clarity], ['الشهادة', l.certificate_no], ['حد التنبيه', l.min_carats ? `${ct(l.min_carats)} قيراط` : '—'], ['السعر', l.unit_price ? fmtMoney(l.unit_price) : '—'], ['ملاحظات', l.notes]]} />
       {can('stones.manage') && <div className="hrow gap"><Btn onClick={() => onMove(l)}>تسجيل حركة</Btn><Btn kind="ghost" onClick={() => onEdit(l)}>تعديل البيانات</Btn></div>}
-      {lot.media.length > 0 && <div className="files">{lot.media.map((m) => <a key={m.id} href={fileUrl(m.path)} target="_blank" rel="noreferrer"><img src={fileUrl(m.path, 400)} alt="" /></a>)}</div>}
+      {lot.media.length > 0 && <div className="files">{lot.media.map((m) => <FileLink key={m.id} path={m.path} image={m.kind !== 'video'}><img src={fileUrl(m.path, 400)} alt="" /></FileLink>)}</div>}
       <Table rows={lot.movements} empty="لا توجد حركات" rowClass={(m) => (m.reversed ? 'row-warn' : '')} columns={[['الحركة', (m) => MK[m.kind]], ['قيراط', (m) => <span className="n">{ct(m.carats)}</span>], ['العدد', 'count'], ['الطلب', 'order_no'], ['العامل', 'worker_name'], ['ملاحظة', 'note'], ['بواسطة', 'user_name'], ['التاريخ', (m) => fmtDT(m.created_at)],
         ['', (m) => can('stones.manage') && m.kind !== 'reversal' && !m.reversed && <span className="d-flex gap-1">{m.kind === 'issue' && <Btn size="sm" kind="ghost" onClick={() => onEditIssue(m)}>تعديل</Btn>}<Btn size="sm" kind="ghost" onClick={() => onReverse(m)}>عكس</Btn></span>]]} />
     </Modal>

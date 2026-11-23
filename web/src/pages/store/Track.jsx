@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtDate, fmtDT, fmtMoney, fmtW, STATUS, DESIGN_STATUS, METHODS, COLORS, stoneItems } from '../../format.js';
-import { Btn, Card, Field, Kv, Loader, Page, StatusBadge, Textarea, useAction, useFetch, ErrorBox, askConfirm } from '../../ui.jsx';
+import { Btn, Card, Field, Kv, Loader, Page, StatusBadge, Textarea, useAction, useFetch, ErrorBox, askConfirm, FileLink } from '../../ui.jsx';
 
 /** متابعة الطلب للعميل - بدون معلومات داخلية */
 export default function Track() {
@@ -76,7 +76,7 @@ export default function Track() {
       {pending && (
         <Card title="التصميم بانتظار اعتمادكم" className="mb">
           {pending.message && <p className="mb">{pending.message}</p>}
-          <div className="files mb">{files.filter((f) => pending.file_ids.includes(f.id)).map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div>
+          <div className="files mb">{files.filter((f) => pending.file_ids.includes(f.id)).map((f) => <FileLink key={f.id} path={f.path} image={f.mime?.startsWith('image')}>{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></FileLink>)}</div>
           <Field label="ملاحظاتكم (إلزامية عند طلب التعديل أو الرفض)"><Textarea value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <div className="hrow gap wrap mt">
             <Btn kind="ok" loading={busy} onClick={() => decide('approved')}>اعتماد التصميم</Btn>
@@ -87,7 +87,7 @@ export default function Track() {
       )}
       {(files.length > 0 || designs.length > 0 || invoices.length > 0) && (
         <div className="grid g2">
-          {files.length > 0 && <Card title="الملفات والصور"><div className="files">{files.map((f) => <a key={f.id} href={fileUrl(f.path)} target="_blank" rel="noreferrer">{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></a>)}</div></Card>}
+          {files.length > 0 && <Card title="الملفات والصور"><div className="files">{files.map((f) => <FileLink key={f.id} path={f.path} image={f.mime?.startsWith('image')}>{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.original_name}</span></FileLink>)}</div></Card>}
           {designs.length > 0 && <Card title="سجل اعتماد التصميم">{designs.map((d) => <div key={d.id} className="small hrow between"><span>{DESIGN_STATUS[d.status] || d.status} {d.customer_note ? `- ${d.customer_note}` : ''}</span><span className="muted">{fmtDT(d.decided_at || d.sent_at)}</span></div>)}</Card>}
           {invoices.length > 0 && <Card title="الفواتير">{invoices.map((i) => <Link key={i.id} to={`/store/invoices/${i.id}`} className="link hrow between"><span>{i.invoice_no}</span><span>{fmtMoney(i.total)}</span></Link>)}</Card>}
         </div>

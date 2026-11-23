@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtMoney, fmtDate, STATUS, METHODS } from '../../format.js';
-import { Btn, Card, Field, Input, Kv, Loader, Page, Select, StatusBadge, Table, Tabs, useAction, useFetch, Badge, TierBadge } from '../../ui.jsx';
+import { Btn, Card, Field, Input, Kv, Loader, Page, Select, StatusBadge, Table, Tabs, useAction, useFetch, Badge, TierBadge, FileLink } from '../../ui.jsx';
 
 export default function CustomerDetail() {
   const { id } = useParams();
@@ -35,10 +35,10 @@ export default function CustomerDetail() {
             {[['cr', 'السجل التجاري'], ['vat', 'الشهادة الضريبية'], ['national_address', 'العنوان الوطني']].map(([t, label]) => {
               const d = data.docs.find((x) => x.doc_type === t);
               return d
-                ? <a key={t} href={fileUrl(d.path)} target="_blank" rel="noreferrer">{d.mime?.startsWith('image') ? <img src={fileUrl(d.path, 400)} alt="" /> : <div className="doc">PDF</div>}<span><b>{label}</b></span></a>
+                ? <FileLink key={t} path={d.path} image={d.mime?.startsWith('image')}>{d.mime?.startsWith('image') ? <img src={fileUrl(d.path, 400)} alt="" /> : <div className="doc">PDF</div>}<span><b>{label}</b></span></FileLink>
                 : <span key={t} className="text-body-secondary small border rounded-3 p-2">{label}: غير مرفق</span>;
             })}
-            {data.docs.filter((d) => !d.doc_type).map((d) => <a key={d.id} href={fileUrl(d.path)} target="_blank" rel="noreferrer">{d.mime?.startsWith('image') ? <img src={fileUrl(d.path, 400)} alt="" /> : <div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{d.original_name}</span></a>)}
+            {data.docs.filter((d) => !d.doc_type).map((d) => <FileLink key={d.id} path={d.path} image={d.mime?.startsWith('image')}>{d.mime?.startsWith('image') ? <img src={fileUrl(d.path, 400)} alt="" /> : <div className="doc">{(d.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{d.original_name}</span></FileLink>)}
           </div>
         </Card>
       </div>
