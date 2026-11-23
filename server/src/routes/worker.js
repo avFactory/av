@@ -1,6 +1,6 @@
 // واجهة العامل: لا يرى إلا عهده وطلباته
 import { Router } from 'express';
-import { workerLossRows, monthTotals, monthStart } from '../lib/workerLoss.js';
+import { workerLossRows, monthTotals, monthStart, heldLossSummary } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm } from '../lib/auth.js';
 import { bad, conflict, forbidden, notFound, int, str, weight as W } from '../lib/http.js';
@@ -274,7 +274,13 @@ r.get('/losses', async (req, res) => {
   const advance = await one('select amount::text, grams::text, price_per_gram::text, created_at from worker_advances where worker_id=$1 and month=$2', [req.user.id, month]);
   const months = await many(`select distinct to_char(date_trunc('month', st.received_at at time zone 'Asia/Riyadh'), 'YYYY-MM') as m
     from settlements st join custodies c on c.id=st.custody_id where c.worker_id=$1 and st.status <> 'reversed' order by 1 desc limit 12`, [req.user.id]);
-  res.json({ month: month.slice(0, 7), rows, totals: monthTotals(rows), advance, months: months.map((x) => x.m) });
+  res.json({ month: month.slice(0, 7), rows, totals: monthTotals(rows), advance, months: months.map((x) => x.m), held: await heldLossSummary(pool, req.user.id) });
+});
+
+/** العجز المعلق في حسابي (لم يُثبَّت بإقفال الشهر) */
+r.get('/held', async (req, res) => {
+  const rows = await heldLossSummary(pool, req.user.id);
+  res.json({ held: rows.reduce((a, r) => a + Number(r.held), 0).toFixed(4), rows });
 });
 
 /** حركات الذهب للعامل: كل ما دخل عهدته أو خرج منها (تسليم، استلام، استلام جزئي، تحويل، عجز، تعديل، تصحيح) مع الرصيد */

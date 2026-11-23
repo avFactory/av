@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 // لوحة الإدارة: الإحصائيات، الموظفون، الأدوار، العملاء، المراحل ونسب العجز، المسارات، الإعدادات، التدقيق
 import { Router } from 'express';
-import { monthlyLossSummary, workerLossRows, monthTotals, monthStart } from '../lib/workerLoss.js';
+import { monthlyLossSummary, workerLossRows, monthTotals, monthStart, heldLossSummary, fixWorkerMonth } from '../lib/workerLoss.js';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm, hashPassword, has } from '../lib/auth.js';
 import { bad, conflict, forbidden, notFound, int, str, oneOf, weight as W } from '../lib/http.js';
@@ -790,7 +790,29 @@ r.get('/loss-advances', requirePerm('loss.advances', 'loss.approve'), async (req
   const advances = await many(`select a.id, a.worker_id, a.grams::text, a.pure_grams::text, a.price_per_gram::text, a.amount::text, a.notes, a.created_at, u.full_name as created_by_name
     from worker_advances a left join users u on u.id=a.created_by where a.month=$1`, [month]);
   const gold24 = (await getPricing(pool)).gold24;
-  res.json({ month: month.slice(0, 7), workers, advances, gold24 });
+  // العجز المعلق في حسابات العمال (لم يُثبَّت) لهذا الشهر وما قبله، والمثبت في هذا الشهر
+  const held = (await heldLossSummary(pool)).filter((h) => `${h.month}-01` <= month);
+  const closings = await many(`select k.worker_id, m.name as material_name, k.actual::text, k.allowed::text, k.normal::text, k.abnormal::text, k.settlements, k.created_at, u.full_name as created_by_name
+    from worker_loss_closings k join materials m on m.id=k.material_id left join users u on u.id=k.created_by where k.month=$1`, [month]);
+  res.json({ month: month.slice(0, 7), workers, advances, gold24, held, closings });
+});
+
+/** تثبيت عجز الشهر على العامل (أو كل العمال): يخرج العجز المعلق من رصيده للعجز الطبيعي/غير الطبيعي */
+r.post('/loss-advances/fix', requirePerm('loss.advances', 'loss.approve'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const month = monthStart(req.body.month);
+    const note = str(req.body.note, 'ملاحظة', { max: 300 });
+    if (req.body.worker_id) return { workers: [{ worker_id: int(req.body.worker_id), ...(await fixWorkerMonth(db, req, int(req.body.worker_id), month, note)) }] };
+    const ids = (await db.query(`select distinct c.worker_id from settlements st join custodies c on c.id=st.custody_id
+      where st.loss_held and st.loss_fixed_at is null and st.status <> 'reversed' and date_trunc('month', st.received_at at time zone 'Asia/Riyadh')::date = $1::date`, [month])).rows.map((r) => r.worker_id);
+    const out = [], skipped = [];
+    for (const id of ids) {
+      await db.query('savepoint fx');
+      try { out.push({ worker_id: id, ...(await fixWorkerMonth(db, req, id, month, note)) }); await db.query('release savepoint fx'); }
+      catch (e) { await db.query('rollback to savepoint fx'); if (e.status !== 409) throw e; skipped.push({ worker_id: id, reason: e.message }); }
+    }
+    return { workers: out, skipped };
+  }));
 });
 r.post('/loss-advances', requirePerm('loss.advances'), async (req, res) => {
   res.json(await tx(async (db) => {
@@ -804,6 +826,8 @@ r.post('/loss-advances', requirePerm('loss.advances'), async (req, res) => {
     const t = monthTotals(rows);
     if (!(t.charged > 0)) throw bad('لا يوجد عجز على حساب العامل في هذا الشهر');
     if (rows.some((r) => ['pending_review', 'investigating'].includes(r.status)) && !req.body.include_pending) throw conflict('يوجد عجز تحت المراجعة لهذا العامل - اعتمده أولاً أو أكد التسجيل');
+    // تسجيل السلفة يثبّت عجز الشهر المعلق على العامل (إن لم يُثبَّت)
+    if (!rows.some((r) => ['pending_review', 'investigating'].includes(r.status))) await fixWorkerMonth(db, req, workerId, month);
     const grams = t.charged;
     const pure = t.charged_pure;
     const amount = Math.round(pure * price * 100) / 100;

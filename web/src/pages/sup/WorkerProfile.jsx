@@ -23,7 +23,8 @@ export default function WorkerProfile() {
   const [tr, setTr] = useState(null);
   const [run, busy] = useAction();
   if (!data) return <Loader />;
-  const { worker: w, custodies, totals, balances, assigned, recent, stones } = data;
+  const { worker: w, custodies, totals, balances, assigned, recent, stones, held = [] } = data;
+  const heldTotal = held.reduce((a, h) => a + Number(h.held), 0);
   const open = custodies.filter((c) => c.status === 'open');
   const review = custodies.filter((c) => c.status === 'under_review');
   const closed = custodies.filter((c) => c.status === 'closed');
@@ -53,6 +54,7 @@ export default function WorkerProfile() {
       </>}>
       <div className="grid g4 mb">
         <Stat label="الذهب في عهدته الآن" value={fmtW(open.reduce((s, c) => s + Number(c.weight_issued), 0))} unit="جم" tone="gold" sub={balances.map((b) => `${b.name}: ${fmtW(b.balance)}`).join(' · ')} />
+        {heldTotal !== 0 && <Stat label="عجز معلق في حسابه" value={fmtW(heldTotal)} unit="جم" tone={heldTotal > 0 ? 'bad' : 'ok'} to="/admin/loss-advances" sub={`${held.map((h) => `${h.month} · ${h.material_name}: ${fmtW(h.held)}`).join(' · ')} — يُثبَّت بإقفال الشهر`} />}
         <Stat label="إجمالي ما استلمه" value={fmtW(totals.received_total)} unit="جم" />
         <Stat label="إجمالي ما أعاده" value={fmtW(totals.returned_total)} unit="جم" />
         <Stat label="بقايا مستردة" value={fmtW(totals.scrap_total)} unit="جم" />

@@ -11,12 +11,20 @@ export default function WHome() {
   const { data } = useFetch('/w/tasks', { live: ['custodies', 'orders'] });
   const { me } = useAuth();
   const { data: trs, reload: reloadTr } = useFetch('/w/transfers', { live: ['custodies', 'custody_transfers'] });
+  const { data: held } = useFetch('/w/held', { live: ['settlements', 'gold_ledger'] });
   if (!data) return <Loader />;
   const { custodies, tasks } = data;
   const total = custodies.filter((c) => c.status === 'open').reduce((s, c) => s + Number(c.weight_issued), 0);
   return (
     <div className="wk-body">
-      <div className="card card-body hrow between"><span className="muted">{t('الذهب في عهدتي')}</span><b dir="ltr" style={{ fontSize: '1.4rem' }}>{fmtW(total)} {t('جم')}</b></div>
+      <div className="card card-body">
+        <div className="hrow between"><span className="muted">{t('الذهب في عهدتي')}</span><b dir="ltr" style={{ fontSize: '1.4rem' }}>{fmtW(total)} {t('جم')}</b></div>
+        {Number(held?.held) !== 0 && held && (
+          <Link to="/w/losses" className="hrow between small mt-2 pt-2 border-top" style={{ color: 'inherit', textDecoration: 'none' }}>
+            <span className={Number(held.held) > 0 ? 'text-danger' : ''}>{t('عجز الشهر في حسابي (يُثبَّت نهاية الشهر)')}</span><b dir="ltr">{fmtW(held.held)} {t('جم')}</b>
+          </Link>
+        )}
+      </div>
       <IncomingTransfers items={trs?.incoming} onChange={() => { reloadTr(); }} />
       {me?.is_3d && <Queue3d />}
       {!custodies.length && !tasks.length && !me?.is_3d && <Empty>{t('لا توجد مهام مسندة إليك حالياً')}</Empty>}

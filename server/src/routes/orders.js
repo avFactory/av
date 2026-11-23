@@ -217,6 +217,15 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
       coalesce(sum(weight) filter (where kind='final_excess'),0)::text as final_excess,
       (select coalesce(sum(a.weight),0) from custody_additions a where a.order_id = any($1::int[]) and not a.reversed)::text as findings_added
     from gold_ledger g where order_id = any($1::int[]) and reverses_id is null and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)`, [goldIds]);
+  // العجز المعلق في حساب العامل (يُثبَّت بإقفال الشهر) يُحسب في عجز الطلب من التسويات
+  const held = await one(`select coalesce(sum(st.normal_loss - st.held_offset),0) n,
+      coalesce(sum(st.abnormal_loss - coalesce(st.recovered_weight,0)) filter (where st.status not in ('pending_review','investigating')),0) a,
+      coalesce(sum(st.abnormal_loss) filter (where st.status in ('pending_review','investigating')),0) p
+    from settlements st join custodies c on c.id=st.custody_id where c.order_id = any($1::int[]) and st.loss_held and st.status <> 'reversed'`, [goldIds]);
+  const add4 = (x, y) => (Number(x) + Number(y)).toFixed(4);
+  goldFlow.normal_loss = add4(goldFlow.normal_loss, held.n);
+  goldFlow.abnormal_loss = add4(goldFlow.abnormal_loss, held.a);
+  goldFlow.abnormal_pending = add4(goldFlow.abnormal_pending, held.p);
   // الذهب المستلم من العميل على الطلب (يمكن إلغاء الخاطئ منه)
   const customerGold = await many(`select g.id, g.movement_no, g.weight::text, g.reason, g.created_at, u.full_name as user_name
     from gold_ledger g left join users u on u.id=g.created_by where g.order_id = any($1::int[]) and g.kind='customer_gold_in'

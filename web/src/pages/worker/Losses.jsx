@@ -25,6 +25,7 @@ export default function WLosses() {
       {data.advance
         ? <div className="alert alert-warning py-2 small mb-2">{t('سُجّل عجز هذا الشهر سلفة بقيمة {a} تُخصم من الراتب.', { a: fmtMoney(data.advance.amount) })}</div>
         : data.totals.charged > 0 && <div className="small text-body-secondary mb-2">{t('إجمالي العجز ناقص المسموح على مجموع شغل الشهر يبقى على حسابك حتى نهاية الشهر، ثم يُسجَّل سلفة تُخصم من الراتب.')}</div>}
+      {(data.held || []).some((h) => h.month === data.month) && <div className="alert alert-light border py-2 small mb-2">{t('يبقى العجز في حسابك، وأي زيادة ترجعها تُخصم منه، ويُثبَّت عليك عند إقفال الشهر.')}</div>}
       {!data.rows.length && <div className="text-center text-body-secondary py-5">{t('لا يوجد عجز في هذا الشهر')}</div>}
       <div className="loss-list">
         {data.rows.map((r) => {

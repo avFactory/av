@@ -301,10 +301,14 @@ r.get('/reconciliation', requirePerm('inventory.view', 'reports.view', 'custody.
       coalesce(sum(b.balance),0) as ledger_sum
     from materials m left join gold_balances b on b.material_id=m.id group by m.id
     having m.active or coalesce(sum(b.balance),0) <> 0 order by m.id`);
-  // فحص 1: رصيد كل عامل في الدفتر = مجموع عهده المفتوحة
+  // فحص 1: رصيد كل عامل في الدفتر = مجموع عهده المفتوحة + عجز الشهر المعلق في حسابه (لم يُثبَّت بعد)
   const workerCheck = await many(`
     with led as (select loc_ref as worker_id, material_id, balance from gold_balances where loc_type='worker'),
-         cus as (select worker_id, material_id, sum(weight_issued - weight_used) w from custodies where status='open' group by 1,2)
+         cus0 as (select worker_id, material_id, sum(weight_issued - weight_used) w from custodies where status='open' group by 1,2
+                  union all
+                  select c.worker_id, c.material_id, sum(st.actual_loss - coalesce(st.recovered_weight,0)) from settlements st join custodies c on c.id=st.custody_id
+                  where st.loss_held and st.loss_fixed_at is null and st.status <> 'reversed' group by 1,2),
+         cus as (select worker_id, material_id, sum(w) w from cus0 group by 1,2)
     select coalesce(l.worker_id, c.worker_id) worker_id, u.full_name, m.name material, coalesce(l.balance,0)::text ledger, coalesce(c.w,0)::text custodies,
            (coalesce(l.balance,0) = coalesce(c.w,0)) ok
     from led l full join cus c on c.worker_id=l.worker_id and c.material_id=l.material_id

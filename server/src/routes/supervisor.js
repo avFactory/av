@@ -1,3 +1,4 @@
+import { heldLossSummary } from '../lib/workerLoss.js';
 import { Router } from 'express';
 import { orderThumb } from '../lib/orderThumb.js';
 import { pool, tx, many, one } from '../db.js';
@@ -64,7 +65,10 @@ r.get('/workers', requirePerm('workers.view', 'custody.issue', 'custody.receive'
       (select coalesce(sum(c.weight_issued * m.karat / 24.0),0) from custodies c join materials m on m.id=c.material_id where c.worker_id=u.id and c.status='open')::numeric(16,4)::text as open_pure,
       (select count(*) from settlements s join custodies c on c.id=s.custody_id where c.worker_id=u.id and s.status in ('pending_review','investigating'))::int as review_count,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.worker_ack_at is null)::int as pending_ack,
-      (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.worker_ack_at is null and c.worker_rejected_at is not null)::int as rejected_count
+      (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.worker_ack_at is null and c.worker_rejected_at is not null)::int as rejected_count,
+      -- عجز الشهر المعلق في حسابه (لم يُثبَّت)
+      (select coalesce(sum(st.actual_loss - coalesce(st.recovered_weight,0)),0) from settlements st join custodies c on c.id=st.custody_id
+        where c.worker_id=u.id and st.loss_held and st.loss_fixed_at is null and st.status <> 'reversed')::numeric(16,4)::text as held_loss
     from users u left join departments d on d.id=u.department_id
     where u.role_code='worker' and u.active
       and ($1::text is null or u.full_name ilike $1 or u.employee_no ilike $1 or u.username ilike $1)
@@ -91,8 +95,11 @@ r.get('/workers/:id', requirePerm('workers.view', 'custody.issue', 'custody.rece
       coalesce(sum(case when kind='issue' and reverses_id is null then weight end),0)::text as received_total,
       coalesce(sum(case when kind='return' then weight end),0)::text as returned_total,
       coalesce(sum(case when kind='scrap_return' then weight end),0)::text as scrap_total,
-      coalesce(sum(case when kind='normal_loss' then weight end),0)::text as normal_loss_total,
-      coalesce(sum(case when kind in ('abnormal_pending','abnormal_loss') then weight end),0)::text as abnormal_loss_total
+      -- العجز من الدفتر (القديم + المثبت) + المعلق في حسابه من التسويات
+      (coalesce(sum(case when kind in ('normal_loss','month_loss_normal') then weight end),0)
+        + (select coalesce(sum(st.normal_loss),0) from settlements st join custodies c on c.id=st.custody_id where c.worker_id=$1 and st.loss_held and st.loss_fixed_at is null and st.status <> 'reversed'))::text as normal_loss_total,
+      (coalesce(sum(case when kind in ('abnormal_pending','abnormal_loss','month_loss_abnormal') then weight end),0)
+        + (select coalesce(sum(st.abnormal_loss - coalesce(st.recovered_weight,0)),0) from settlements st join custodies c on c.id=st.custody_id where c.worker_id=$1 and st.loss_held and st.loss_fixed_at is null and st.status <> 'reversed'))::text as abnormal_loss_total
     from gold_ledger g where worker_id=$1 and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)`, [id]);
   const balances = await many(`select b.material_id, m.name, b.balance::text from gold_balances b join materials m on m.id=b.material_id
                                where b.loc_type='worker' and b.loc_ref=$1 and b.balance <> 0`, [id]);
@@ -108,7 +115,7 @@ r.get('/workers/:id', requirePerm('workers.view', 'custody.issue', 'custody.rece
        from stone_movements m join stone_lots l on l.id=m.lot_id left join orders o on o.id=m.order_id
        where m.worker_id=$1 and m.kind <> 'reversal' and not exists (select 1 from stone_movements r where r.reverses_id=m.id)
        group by l.lot_no, l.stone_type, o.order_no having sum(case m.kind when 'issue' then m.carats when 'return' then -m.carats when 'used' then -m.carats when 'lost' then -m.carats else 0 end) <> 0`, [id]);
-  res.json({ worker: w, custodies, totals, balances, assigned, recent, stones });
+  res.json({ worker: w, custodies, totals, balances, assigned, recent, stones, held: await heldLossSummary(pool, w.id) });
 });
 
 /** البحث عن طلب بالرقم أو رمز QR */
@@ -383,7 +390,7 @@ export const KIND_LABELS = {
   allocate: 'تخصيص من الخزنة للطلب', customer_gold_in: 'ذهب مستلم من العميل', stock_in: 'إضافة للخزنة', stock_out: 'صرف من الخزنة',
   issue: 'تسليم للعامل', return: 'استلام من العامل', general_issue: 'عهدة عامة من الخزنة للعامل', general_return: 'إرجاع عهدة عامة للخزنة', scrap_return: 'بقايا مستردة', normal_loss: 'عجز طبيعي',
   abnormal_pending: 'عجز غير طبيعي (معلق)', abnormal_loss: 'عجز غير طبيعي', abnormal_loss_approved: 'اعتماد عجز غير طبيعي',
-  loss_recovered: 'عجز مسترد بعد التحقيق', gain_pending: 'زيادة وزن (معلقة)', reversal: 'حركة عكسية (تصحيح)',
+  loss_recovered: 'عجز مسترد بعد التحقيق', gain_pending: 'زيادة وزن (معلقة)', month_loss_normal: 'تثبيت عجز الشهر (طبيعي)', month_loss_abnormal: 'تثبيت عجز الشهر (غير طبيعي)', reversal: 'حركة عكسية (تصحيح)',
   delivery: 'تسليم للعميل', to_finished_stock: 'إدخال منتج جاهز للمخزون', from_finished_stock: 'صرف منتج جاهز لطلب',
   final_excess: 'فائض الوزن النهائي للبقايا', final_gain: 'زيادة الوزن النهائي', scrap_to_vault: 'تحويل بقايا للخزنة',
   dealloc: 'إرجاع ذهب الطلب للخزنة', stock_adjust: 'تسوية جرد', convert_out: 'تحويل مادة (صادر)', convert_in: 'تحويل مادة (وارد)',

@@ -34,7 +34,7 @@ export const COLORS = { yellow: 'أصفر', white: 'أبيض', rose: 'روز' };
 export const METHODS = { per_gram: 'لكل جرام', per_piece: 'لكل قطعة', fixed: 'ثابتة للطلب', manual: 'يدوية (تتطلب اعتماد)' };
 export const KINDS = {
   allocate: 'تخصيص من الخزنة', customer_gold_in: 'ذهب من العميل', stock_in: 'إضافة للخزنة', stock_out: 'صرف من الخزنة', issue: 'تسليم للعامل', general_issue: 'عهدة عامة للعامل', general_return: 'إرجاع عهدة عامة للخزنة',
-  return: 'استلام من العامل', scrap_return: 'بقايا مستردة', normal_loss: 'عجز طبيعي', abnormal_pending: 'عجز غير طبيعي (معلق)', abnormal_loss: 'عجز غير طبيعي',
+  return: 'استلام من العامل', scrap_return: 'بقايا مستردة', normal_loss: 'عجز طبيعي', abnormal_pending: 'عجز غير طبيعي (معلق)', abnormal_loss: 'عجز غير طبيعي', month_loss_normal: 'تثبيت عجز الشهر (طبيعي)', month_loss_abnormal: 'تثبيت عجز الشهر (غير طبيعي)',
   abnormal_loss_approved: 'اعتماد عجز غير طبيعي', loss_recovered: 'مسترد بعد التحقيق', gain_pending: 'زيادة وزن', reversal: 'حركة عكسية',
   delivery: 'تسليم للعميل', partial_return: 'استلام جزئي من العامل', shortage_return: 'سحب للنواقص من العامل', to_finished_stock: 'إدخال للمخزون الجاهز', from_finished_stock: 'صرف من المخزون الجاهز', final_excess: 'فائض الوزن النهائي',
   custody_adjust: 'تعديل العهدة', findings_issue: 'صرف خامات', findings_return: 'إرجاع خامات', group_merge: 'دمج ذهب الطلب', customer_gold_payment: 'سداد ذهب من العميل',

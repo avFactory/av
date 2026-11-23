@@ -19,6 +19,8 @@ const call = async (method, path, body) => {
 };
 const n = (x) => Number(Number(x).toFixed(4));
 const bal = async (type, ref, mat) => n((await pool.query('select coalesce(sum(balance),0) b from gold_balances where loc_type=$1 and loc_ref is not distinct from $2 and material_id=$3', [type, ref, mat])).rows[0].b);
+// عجز الشهر المعلق في حساب العامل (لم يُثبَّت بإقفال الشهر)
+const heldOf = async (w, mat) => n((await pool.query(`select coalesce(sum(st.actual_loss - coalesce(st.recovered_weight,0)),0) h from settlements st join custodies c on c.id=st.custody_id where c.worker_id=$1 and c.material_id=$2 and st.loss_held and st.loss_fixed_at is null and st.status <> 'reversed'`, [w, mat])).rows[0].h);
 
 before(async () => {
   await pool.query('drop schema public cascade; create schema public;');
@@ -345,7 +347,7 @@ test('تحويل الطلب من عامل لعامل المرحلة التالي
   assert.deepEqual([Number(stl.weight_issued), Number(stl.returned_weight), Number(stl.actual_loss)], [10, 9.5, 0.5]);
   assert.ok(Number(stl.normal_loss) > 0 && Math.abs(Number(stl.normal_loss) + Number(stl.abnormal_loss) - 0.5) < 1e-9, 'طبيعي + غير طبيعي = 0.5');
   assert.equal((await pool.query('select custody_id from settlements where id=$1', [stl.id])).rows[0].custody_id, cus.id, 'التسوية على عهدة الأول');
-  assert.equal(await bal('worker', A.id, mat), 0);
+  assert.equal(await bal('worker', A.id, mat), await heldOf(A.id, mat), 'العجز يبقى في حساب العامل حتى إقفال الشهر');
   assert.equal(await bal('worker', B.id, mat), 9.5);
   assert.notEqual((await stageOf()).id, st1, 'انتقل للمرحلة التالية');
   const nc = (await pool.query('select worker_id, weight_issued::float w, worker_ack_at, stage_id from custodies where id=$1', [ac.data.custody_id])).rows[0];
@@ -371,7 +373,7 @@ test('تحويل الطلب من عامل لعامل المرحلة التالي
   const g = (await pool.query("select (weight_issued - weight_used)::float left from custodies where worker_id=$1 and kind='general' and status='open'", [B.id])).rows[0];
   assert.equal(g.left, 1.5, 'خُصمت الزيادة من العهدة العامة');
   assert.equal(await bal('worker', B.id, mat), 1.5);
-  assert.equal(await bal('worker', A.id, mat), 11);
+  assert.equal(+(await bal('worker', A.id, mat) - await heldOf(A.id, mat)).toFixed(4), 11, 'عهدته + عجزه المعلق');
   // المصادر المتاحة للإضافة تشمل العهدة العامة
   assert.ok((await call('GET', `/findings/worker/${B.id}`)).data.some((x) => x.general));
 });
@@ -412,7 +414,7 @@ test('مرحلة الجودة يديرها عاملها: تسليم تلقائي
   const after = await cur();
   assert.equal(after.kind, 'invoicing', 'انتقل للفوترة بدون اعتماد المشرف');
   assert.equal(Number(after.final_weight), 9.95);
-  assert.equal(await bal('worker', id, mat), 0);
+  assert.equal(await bal('worker', id, mat), await heldOf(id, mat), 'العجز يبقى في حساب العامل حتى إقفال الشهر');
   assert.equal(await bal('order', o.id, mat), 9.95);
   const stl = (await pool.query('select actual_loss::float l, status from settlements where custody_id=$1', [c.id])).rows[0];
   assert.deepEqual([stl.l, stl.status], [0.05, 'approved'], 'العجز على عامل الجودة');
@@ -443,7 +445,7 @@ test('استلام جزء من عهدة العامل للمشرف: يعود لم
   assert.equal(rc.status, 200, JSON.stringify(rc.data));
   const stl = rc.data.results[0].settlement;
   assert.deepEqual([Number(stl.weight_issued), Number(stl.returned_weight), Number(stl.actual_loss)], [7, 6.9, 0.1]);
-  assert.equal(await bal('worker', w, mat), 0);
+  assert.equal(await bal('worker', w, mat), await heldOf(w, mat), 'العجز يبقى في حساب العامل حتى إقفال الشهر');
   assert.equal(await bal('order', o.id, mat), 9.9);
   // عهدة عامة: الجزء يعود للخزنة
   const v0 = await bal('vault', null, mat);
@@ -452,7 +454,7 @@ test('استلام جزء من عهدة العامل للمشرف: يعود لم
   const gc = (await pool.query("select id from custodies where worker_id=$1 and kind='general' and status='open'", [w])).rows[0].id;
   assert.equal((await call('POST', `/sup/custody/${gc}/partial-return`, { weight: '2' })).status, 200);
   assert.equal(await bal('vault', null, mat), v0 - 3);
-  assert.equal(await bal('worker', w, mat), 3);
+  assert.equal(+(await bal('worker', w, mat) - await heldOf(w, mat)).toFixed(4), 3);
   // حركة مسجلة في الدفتر
   assert.ok((await pool.query("select 1 from gold_ledger where kind='partial_return' and custody_id=$1", [gc])).rowCount);
 });
@@ -541,7 +543,7 @@ test('تعديل العهدة المفتوحة للمدير فقط: قبل وب�
   assert.equal(await bal('vault', null, mat), v1 - 6);
   assert.equal((await call('POST', `/sup/custodies/${gc}/reverse`, { reason: 'خطأ' })).status, 200);
   assert.equal(await bal('vault', null, mat), v1, 'الإلغاء يشمل التعديل');
-  assert.equal(await bal('worker', w, mat), 0);
+  assert.equal(await bal('worker', w, mat), await heldOf(w, mat), 'العجز يبقى في حساب العامل حتى إقفال الشهر');
 });
 
 test('المكائن: التسليم والتحويل إليها يُسجل فوراً بدون قبول، والمشرف يستلم منها', async () => {
@@ -578,7 +580,7 @@ test('المكائن: التسليم والتحويل إليها يُسجل فو
   const nc = (await pool.query("select id, worker_id, weight_issued::float w, worker_ack_at from custodies where worker_id=$1 and order_id=$2 and status='open'", [m, o2.id])).rows[0];
   assert.deepEqual([nc.worker_id, nc.w, !!nc.worker_ack_at], [m, 7.9, true]);
   assert.equal((await pool.query("select status from custody_transfers where id=$1", [tr.data.id])).rows[0].status, 'accepted');
-  assert.equal(await bal('worker', w, mat), 0);
+  assert.equal(await bal('worker', w, mat), await heldOf(w, mat), 'العجز يبقى في حساب العامل حتى إقفال الشهر');
   assert.equal(Number((await pool.query('select actual_loss from settlements where custody_id=$1', [c2.id])).rows[0].actual_loss), 0.1, 'الفرق عجز على العامل');
   // الاستلام من المكينة
   const rc = await call('POST', '/sup/receive', { worker_id: m, items: [{ custody_id: nc.id, returned_weight: '7.9', advance: false }] });
@@ -650,7 +652,7 @@ test('تحويل العهدة لعامل آخر: نفس المرحلة (إعاد
   assert.equal(ag.status, 200, JSON.stringify(ag.data));
   const g2 = (await pool.query("select purpose, weight_issued::float w, worker_ack_at from custodies where id=$1", [ag.data.custody_id])).rows[0];
   assert.deepEqual([g2.purpose, g2.w, !!g2.worker_ack_at], ['لحام', 5.9, true]);
-  assert.equal(await bal('worker', A.id, mat), 0);
+  assert.equal(await bal('worker', A.id, mat), await heldOf(A.id, mat), 'العجز يبقى في حساب العامل حتى إقفال الشهر');
   assert.equal(await bal('worker', B.id, mat), 15.9);
   assert.equal(Number((await pool.query('select actual_loss from settlements where custody_id=$1', [gc])).rows[0].actual_loss), 0.1);
   // الخامات لا تُحوّل
@@ -876,4 +878,62 @@ test('تخفيض ذهب الطلب المسجل بالزيادة: يرجع لل�
   assert.equal(await bal('vault', null, mat), v0 + 89.44);
   const log = (await pool.query("select note from order_stage_log where order_id=$1 and event='note' order by id desc limit 1", [o.id])).rows[0].note;
   assert.match(log, /تخفيض ذهب الطلب 89.44/);
+});
+
+test('العجز يبقى في حساب العامل حتى إقفال الشهر: الزيادة تُسحب من عهده الأخرى ثم من عجزه المعلق، والإقفال يثبّت العجز عليه', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '500', note: 'رصيد' });
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('heldW',$1,'عامل المعلق','worker','HW1') returning id", [hashPassword('Ss#2026xx')])).rows[0].id;
+  const mk = async (t) => {
+    const o = (await call('POST', '/orders', { title: t, product_type: 'خاتم', karat: 21, material_id: mat })).data;
+    for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0].h; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
+    await call('POST', `/admin/stages/${(await pool.query('select current_stage_id s from orders where id=$1', [o.id])).rows[0].s}/rate`, { rate_percent: '0', note: 'x' });
+    return (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: o.id, weight: '10' }] })).data.custodies[0];
+  };
+  const recon = async () => (await call('GET', '/inventory/reconciliation')).data.ok;
+  // 1) عجز 1 جم: يبقى في رصيد العامل
+  const c1 = await mk('معلق 1');
+  const r1 = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c1.id, returned_weight: '9' }] });
+  assert.equal(r1.status, 200, JSON.stringify(r1.data));
+  assert.equal(r1.data.results[0].settlement.status, 'approved');
+  assert.equal(await bal('worker', w, mat), 1, 'العجز لم يخرج من حسابه');
+  assert.equal(await bal('loss_abnormal', null, mat) >= 0, true);
+  assert.equal(await recon(), true, 'المطابقة سليمة مع العجز المعلق');
+  // 2) زيادة 0.4 بدون عهدة أخرى: تُغطى من عجزه المعلق بلا مراجعة
+  const c2 = await mk('معلق 2');
+  const r2 = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c2.id, returned_weight: '10.4' }] });
+  assert.equal(r2.status, 200, JSON.stringify(r2.data));
+  assert.equal(r2.data.results[0].settlement.status, 'approved', 'لا مراجعة');
+  assert.equal(Number(r2.data.results[0].settlement.held_offset), 0.4);
+  assert.equal(await bal('worker', w, mat), 0.6);
+  // 3) زيادة 0.5 مع عهدة عامة 2 جم: تُسحب من العهدة العامة أولاً
+  await call('POST', '/inventory/gold/to-worker', { worker_id: w, material_id: mat, weight: '2', purpose: 'إضافات', loss_rate_percent: '0' });
+  const c3 = await mk('معلق 3');
+  const r3 = await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c3.id, returned_weight: '10.5' }] });
+  assert.equal(r3.status, 200, JSON.stringify(r3.data));
+  assert.equal(Number(r3.data.results[0].settlement.held_offset), 0);
+  const g = (await pool.query("select (weight_issued - weight_used)::float l from custodies where worker_id=$1 and kind='general' and status='open'", [w])).rows[0];
+  assert.equal(g.l, 1.5, 'خُصمت الزيادة من العهدة العامة');
+  assert.equal(await bal('worker', w, mat), 2.1, 'عامة 1.5 + عجز معلق 0.6');
+  // 4) زيادة أكبر من كل ما لديه: مراجعة كما كانت
+  const c4 = await mk('معلق 4');
+  assert.equal((await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c4.id, returned_weight: '13' }] })).status, 400, 'تحتاج ملاحظة ومراجعة');
+  await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: c4.id, returned_weight: '10' }] });
+  // ملخص العجز الشهري: 1 − 0.4 = 0.6
+  const month = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 7);
+  const la = (await call('GET', `/admin/loss-advances?month=${month}`)).data;
+  const h = la.held.find((x) => x.worker_id === w);
+  assert.equal(Number(h.held), 0.6);
+  assert.equal(Number(la.workers.find((x) => x.worker_id === w).charged), 0.6, 'على حسابه في الشهر');
+  // 5) إقفال الشهر: يثبّت العجز ويخرج من رصيده
+  const lossAb0 = await bal('loss_abnormal', null, mat);
+  const fx = await call('POST', '/admin/loss-advances/fix', { month, worker_id: w });
+  assert.equal(fx.status, 200, JSON.stringify(fx.data));
+  assert.equal(await bal('worker', w, mat), 1.5, 'بقيت العهدة العامة فقط');
+  assert.equal(+(await bal('loss_abnormal', null, mat) - lossAb0).toFixed(4), 0.6, 'ثُبّت غير طبيعي (المسموح 0%)');
+  assert.equal(await recon(), true);
+  assert.equal((await call('POST', `/sup/settlements/${r1.data.results[0].settlement.id}/reverse`, { reason: 'x' })).status, 409, 'لا تصحيح بعد التثبيت');
+  assert.equal((await call('GET', `/admin/loss-advances?month=${month}`)).data.held.filter((x) => x.worker_id === w).length, 0);
+  const cl = (await call('GET', `/admin/loss-advances?month=${month}`)).data.closings.find((x) => x.worker_id === w);
+  assert.equal(Number(cl.abnormal), 0.6);
 });

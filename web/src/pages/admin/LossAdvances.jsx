@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { fmtW, fmtMoney, fmtDT } from '../../format.js';
-import { Badge, Btn, Card, Input, Loader, Page, Table, useAction, useFetch, askConfirm } from '../../ui.jsx';
+import { Badge, Btn, Card, Input, Loader, Page, Table, useAction, useFetch, askConfirm, showAlert } from '../../ui.jsx';
 
 const thisMonth = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 7);
 
@@ -25,6 +25,20 @@ export default function LossAdvances() {
     if (!pending && !await askConfirm(`تسجيل سلفة ${fmtMoney(value(w))} على ${w.full_name} لشهر ${month}؟`)) return;
     run(async () => { await api.post('/admin/loss-advances', { worker_id: w.worker_id, month, price_per_gram: price, include_pending: pending }); reload(); }, 'تم تسجيل السلفة').catch(() => {});
   };
+  // تثبيت العجز المعلق في حساب العامل (أو كل العمال) لهذا الشهر
+  const held = data.held || [];
+  const heldOf = (wid) => held.filter((h) => h.worker_id === wid && h.month === month);
+  const fix = async (w) => {
+    const all = !w;
+    const ended = month < thisMonth();
+    const msg = all ? `تثبيت عجز شهر ${month} على كل العمال والمكائن؟ يخرج العجز المعلق من حساباتهم إلى العجز (الطبيعي حتى المسموح، والباقي غير طبيعي).` : `تثبيت عجز شهر ${month} على ${w.full_name}؟`;
+    if (!await askConfirm(`${msg}${ended ? '' : '\n\n⚠ الشهر لم ينتهِ بعد — أي عجز بعد التثبيت يبقى معلقاً حتى تثبيت جديد.'}`, { title: 'إقفال عجز الشهر', ok: 'نعم، ثبّت' })) return;
+    run(async () => {
+      const r = await api.post('/admin/loss-advances/fix', { month, ...(all ? {} : { worker_id: w.worker_id }) });
+      reload();
+      if (r.skipped?.length) showAlert(`لم يُثبَّت لبعض العمال:\n${r.skipped.map((x) => x.reason).join('\n')}`);
+    }, 'تم تثبيت العجز').catch(() => {});
+  };
   const cancel = async (a) => { if (await askConfirm('إلغاء هذه السلفة؟')) run(async () => { await api.del(`/admin/loss-advances/${a.id}`); reload(); }, 'تم الإلغاء').catch(() => {}); };
   return (
     <Page title="سلف العجز" subtitle="إجمالي عجز الشهر ناقص المسموح (الوزن المستلم × نسبة مهنة العامل) يبقى على حسابه، ثم يُسجَّل سلفة تُخصم من الراتب"
@@ -37,6 +51,19 @@ export default function LossAdvances() {
         <div className="gold-stat"><div className="gold-stat-top"><span>القيمة التقديرية</span><b>{fmtMoney(data.workers.reduce((a, w) => a + value(w), 0))}</b></div></div>
         <div className="gold-stat total"><div className="gold-stat-top"><span>سلف مسجلة</span><b>{data.advances.length} · {fmtMoney(data.advances.reduce((a, x) => a + Number(x.amount), 0))}</b></div></div>
       </div>
+      {held.length > 0 && (
+        <Card className="mb" title={`العجز المعلق في حسابات العمال (${held.length})`} actions={can('loss.advances', 'loss.approve') && held.some((h) => h.month === month) && <Btn size="sm" loading={busy} onClick={() => fix(null)}>تثبيت عجز الشهر للكل</Btn>}>
+          <div className="small text-body-secondary mb-2">العجز يبقى في حساب العامل/الماكينة بعد الاستلام، وأي زيادة لاحقة تُخصم منه. عند إقفال الشهر يُثبَّت عليه ويخرج من حسابه.</div>
+          <Table rows={held} columns={[
+            ['العامل / الماكينة', (h) => <Link className="link" to={`/sup/workers/${h.worker_id}`}>{h.kind === 'machine' ? '⚙ ' : ''}<b>{h.full_name}</b> <span className="text-body-secondary small">{h.employee_no}</span></Link>],
+            ['الشهر', 'month'], ['العيار', 'material_name'], ['التسويات', 'settlements'],
+            ['العجز المعلق', (h) => <b className={`n ${Number(h.held) > 0 ? 'text-danger' : ''}`}>{fmtW(h.held)}</b>],
+            ['المسموح', (h) => <span className="n">{fmtW(h.allowed)}</span>],
+            ['', (h) => (h.under_review > 0 ? <Badge tone="warn">{h.under_review} تحت المراجعة</Badge>
+              : can('loss.advances', 'loss.approve') && h.month === month && <Btn size="sm" kind="ghost" loading={busy} onClick={() => fix({ worker_id: h.worker_id, full_name: h.full_name })}>تثبيت عليه</Btn>)],
+          ]} />
+        </Card>
+      )}
       <Card pad={false}>
         <Table rows={data.workers} empty="لا يوجد عجز في هذا الشهر" columns={[
           ['العامل', (w) => <Link className="link" to={`/sup/workers/${w.worker_id}`}><b>{w.full_name}</b> <span className="text-body-secondary small">{w.employee_no}</span></Link>],
@@ -44,6 +71,7 @@ export default function LossAdvances() {
           ['إجمالي العجز', (w) => <span className="n">{fmtW(w.actual)}</span>],
           ['المسموح', (w) => <span className="n">{fmtW(w.allowed)}</span>],
           ['على حساب العامل', (w) => <b className={`n ${Number(w.charged) > 0 ? 'text-danger' : ''}`}>{fmtW(w.charged)}</b>],
+          ['الحالة', (w) => (heldOf(w.worker_id).length ? <Badge tone="warn">معلق في حسابه</Badge> : (data.closings || []).some((k) => k.worker_id === w.worker_id) ? <Badge tone="ok">مثبت</Badge> : '—')],
           ['صافي عيار 24', (w) => <span className="n">{fmtW(w.charged_pure)}</span>],
           ['القيمة', (w) => (Number(w.charged) > 0 ? fmtMoney(adv(w) ? adv(w).amount : value(w)) : '—')],
           ['', (w) => {

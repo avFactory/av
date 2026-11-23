@@ -134,6 +134,17 @@ async function piecesLeft(db, c) {
   return Math.max(0, Number(c.pieces || 0) - used);
 }
 
+/**
+ * عجز الشهر المعلق في حساب العامل (لم يُثبَّت بعد) لعيار معين:
+ * رصيد العامل في الدفتر − المتبقي في عهده المفتوحة. يُستخدم لتغطية زيادة الوزن عند الاستلام.
+ */
+export async function heldPool(db, workerId, materialId) {
+  const r = (await db.query(`select
+      coalesce((select balance from gold_balances where loc_type='worker' and loc_ref=$1 and material_id=$2), 0)
+      - coalesce((select sum(weight_issued - weight_used) from custodies where worker_id=$1 and material_id=$2 and status='open'), 0) as pool`, [workerId, materialId])).rows[0];
+  return Math.max(0, Math.round(Number(r.pool) * 10000) / 10000);
+}
+
 /** معاينة حساب العجز قبل التأكيد (نفس دالة قاعدة البيانات) */
 export async function preview(db, custodyId, returnedGross, scrap, stonesW, added = '0') {
   const c = (await db.query('select * from custodies where id=$1', [custodyId])).rows[0];
@@ -198,24 +209,46 @@ export async function receive(db, req, body) {
       usedNow.set(sid, (usedNow.get(sid) || 0) + w);
       additions.push({ src, w, pieces: a.pieces != null && a.pieces !== '' ? int(a.pieces, 'عدد القطع', { min: 0 }) : 0 });
     }
-    const added = (Math.round(additions.reduce((t, a) => t + a.w, 0) * 10000) / 10000).toFixed(4);
-    const p = await preview(db, c.id, it.returned_weight, it.scrap_weight, it.stones_weight, added);
+    let added = (Math.round(additions.reduce((t, a) => t + a.w, 0) * 10000) / 10000).toFixed(4);
+    let p = await preview(db, c.id, it.returned_weight, it.scrap_weight, it.stones_weight, added);
+    // زيادة الوزن عن المسلَّم: تُسحب تلقائياً من عهده الأخرى (العامة ثم الخامات) بنفس العيار
+    if (Number(p.gain_weight) > 0 && it.additions === undefined && c.order_id) {
+      let gain = Number(p.gain_weight);
+      const srcs = (await db.query(`select c.*, f.name as finding_name from custodies c left join findings f on f.id=c.finding_id
+        where c.worker_id=$1 and c.status='open' and c.material_id=$2 and c.id<>$3 and (c.kind='general' or c.finding_id is not null) and c.weight_issued > c.weight_used
+        order by (c.finding_id is null) desc, c.issued_at for update of c`, [workerId, c.material_id, c.id])).rows;
+      for (const src of srcs) {
+        if (gain <= 0) break;
+        const take = Math.min(gain, Number(src.weight_issued) - Number(src.weight_used));
+        if (!src.finding_id) src.finding_name = `العهدة العامة${src.purpose ? ` (${src.purpose})` : ''}`;
+        additions.push({ src, w: Math.round(take * 10000) / 10000, pieces: 0 });
+        gain = Math.round((gain - take) * 10000) / 10000;
+      }
+      if (additions.length) {
+        added = (Math.round(additions.reduce((t, a) => t + a.w, 0) * 10000) / 10000).toFixed(4);
+        p = await preview(db, c.id, it.returned_weight, it.scrap_weight, it.stones_weight, added);
+      }
+    }
+    // ما بقي من الزيادة يُغطى من عجز الشهر المعلق في حساب العامل (الذهب الذي نقص سابقاً عاد)
+    let heldOffset = 0;
+    if (Number(p.gain_weight) > 0 && Number(p.gain_weight) <= (await heldPool(db, workerId, c.material_id)) + 1e-9) heldOffset = Number(p.gain_weight);
     // العجز يُسجَّل تلقائياً ويبقى الزائد على حساب العامل (يُحسب على إجمالي شغل الشهر).
     // المراجعة فقط عند زيادة الوزن عن المسلَّم (حالة غير طبيعية تحتاج ملاحظة).
     // أو إذا طلب المشرف صراحةً إحالة الحالة للمراجعة (review: true)
     // عجز كبير عند الاستلام من شاشة المشرف (أكثر من 10% أو 1 جم): غالباً خطأ إدخال ← ملاحظة إلزامية وإحالة للمراجعة
     const bigLoss = it.guard_big_loss === true && Number(p.actual_loss) > Math.max(1, Number(p.issued) * 0.1);
-    const needsReview = Number(p.gain_weight) > 0 || it.review === true || bigLoss;
+    const uncoveredGain = Number(p.gain_weight) > 0 && !heldOffset;
+    const needsReview = uncoveredGain || it.review === true || bigLoss;
     const reason = str(it.reason, 'سبب العجز');
-    if (needsReview && !reason) throw bad(`العهدة ${c.custody_no}: ${Number(p.gain_weight) > 0 ? 'الوزن المستلم أكبر من المسلَّم' : bigLoss ? `عجز كبير ${Number(p.actual_loss).toFixed(3)} جم من ${Number(p.issued).toFixed(3)} — تأكد من الوزن` : 'الإحالة للمراجعة'} - سجّل ملاحظة`, { custody_id: c.id, calc: p });
+    if (needsReview && !reason) throw bad(`العهدة ${c.custody_no}: ${uncoveredGain ? 'الوزن المستلم أكبر من المسلَّم' : bigLoss ? `عجز كبير ${Number(p.actual_loss).toFixed(3)} جم من ${Number(p.issued).toFixed(3)} — تأكد من الوزن` : 'الإحالة للمراجعة'} - سجّل ملاحظة`, { custody_id: c.id, calc: p });
 
     const st = (await db.query(
       `insert into settlements(settlement_no, custody_id, receive_batch_id, weight_issued, returned_weight, gross_returned, stones_weight, scrap_weight,
-         actual_loss, allowed_loss, normal_loss, abnormal_loss, gain_weight, rate_snapshot, pieces_returned, status, reason, notes, received_by, idempotency_key)
-       values (next_doc_no('STL'),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *`,
+         actual_loss, allowed_loss, normal_loss, abnormal_loss, gain_weight, rate_snapshot, pieces_returned, status, reason, notes, received_by, idempotency_key, loss_held, held_offset)
+       values (next_doc_no('STL'),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *`,
       [c.id, batch.id, p.issued, p.returned, p.gross, p.stones, p.scrap, p.actual_loss, p.allowed_loss, p.normal_loss, p.abnormal_loss,
        p.gain_weight, c.loss_rate_snapshot, it.pieces_returned != null && it.pieces_returned !== '' ? int(it.pieces_returned, 'عدد القطع', { min: 0 }) : await piecesLeft(db, c),
-       needsReview ? 'pending_review' : 'approved', reason, str(it.notes, 'ملاحظات'), req.user.id, key ? `${key}:${idx}` : null]
+       needsReview ? 'pending_review' : 'approved', reason, str(it.notes, 'ملاحظات'), req.user.id, key ? `${key}:${idx}` : null, Number(p.actual_loss) > 0 || heldOffset > 0, heldOffset.toFixed(4)]
     )).rows[0];
 
     const base = { material_id: c.material_id, order_id: c.order_id, custody_id: c.id, settlement_id: st.id, worker_id: workerId, stage_id: c.stage_id, batch_id: batch.id, user_id: req.user.id };
@@ -228,29 +261,25 @@ export async function receive(db, req, body) {
       // استُهلكت عهدة الخامات بالكامل: تُغلق تلقائياً
       if (Number(u.weight_used) >= Number(u.weight_issued)) await db.query("update custodies set status='closed', closed_at=now(), work_state='finished', finished_at=coalesce(finished_at, now()) where id=$1", [a.src.id]);
     }
-    await ledger.postIf(db, { ...base, kind: 'gain_pending', weight: p.gain_weight, from: ['variance', null], to: ['worker', workerId], reason });
+    if (uncoveredGain) await ledger.postIf(db, { ...base, kind: 'gain_pending', weight: p.gain_weight, from: ['variance', null], to: ['worker', workerId], reason });
     // عهدة الطلب يعود ذهبها لرصيد الطلب، وعهدة الخامات لمخزون الخامات، والعهدة العامة للخزنة
     await ledger.postIf(db, { ...base, kind: c.order_id ? 'return' : c.finding_id ? 'findings_return' : 'general_return', weight: p.returned, from: ['worker', workerId],
       to: c.order_id ? ['order', c.order_id] : c.finding_id ? ['findings', c.finding_id] : ['vault', null] });
     if (c.finding_id) await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, note, created_by) values ($1,'return',$2,$3,$4,$5,$6)`,
       [c.finding_id, st.pieces_returned || 0, p.returned, c.id, `إرجاع من العامل (${st.settlement_no})`, req.user.id]);
     await ledger.postIf(db, { ...base, kind: 'scrap_return', weight: p.scrap, from: ['worker', workerId], to: ['scrap', null] });
-    await ledger.postIf(db, { ...base, kind: 'normal_loss', weight: p.normal_loss, from: ['worker', workerId], to: ['loss_normal', null] });
-    if (Number(p.abnormal_loss) > 0) {
-      // عجز غير طبيعي: إن تجاوز حد المراجعة يبقى معلقاً، وإلا يعتمد مباشرة
-      await ledger.post(db, { ...base, kind: needsReview ? 'abnormal_pending' : 'abnormal_loss', weight: p.abnormal_loss, from: ['worker', workerId], to: [needsReview ? 'loss_suspense' : 'loss_abnormal', null], reason });
-    }
+    // العجز لا يخرج من حساب العامل الآن: يبقى في رصيده (معلقاً) ويُثبَّت عليه عند إقفال الشهر
 
     await db.query(
       `update custodies set status=$2, closed_at=case when $2='closed' then now() else null end, work_state='finished',
          finished_at=coalesce(finished_at, now()) where id=$1`,
       [c.id, needsReview ? 'under_review' : 'closed']
     );
-    await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `استلام ${p.returned} جم${Number(added) ? ` (منها خامات مضافة ${added} جم: ${additions.map((a) => a.src.finding_name).join('، ')})` : ''} + بقايا ${p.scrap} - عجز ${p.actual_loss} (${st.settlement_no})`, false, workerId);
+    await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `استلام ${p.returned} جم${Number(added) ? ` (منها خامات مضافة ${added} جم: ${additions.map((a) => a.src.finding_name).join('، ')})` : ''} + بقايا ${p.scrap} - عجز ${p.actual_loss}${heldOffset ? ` (زيادة ${heldOffset} جم غُطيت من عجز الشهر المعلق)` : Number(p.actual_loss) > 0 ? ' يبقى في حساب العامل حتى إقفال الشهر' : ''} (${st.settlement_no})`, false, workerId);
 
     let advanced = null;
     if (needsReview) {
-      await notifyPerm(db, 'loss.review', { kind: 'loss', title: `${Number(p.gain_weight) > 0 ? `زيادة وزن ${p.gain_weight}` : `عجز ${p.actual_loss}`} جم - ${label}`, body: reason, link: '/sup/review' });
+      await notifyPerm(db, 'loss.review', { kind: 'loss', title: `${uncoveredGain ? `زيادة وزن ${p.gain_weight}` : `عجز ${p.actual_loss}`} جم - ${label}`, body: reason, link: '/sup/review' });
     } else if (it.advance !== false && c.order_id) {
       advanced = await tryAdvance(db, req, c.order_id);
     }
@@ -301,7 +330,7 @@ export async function review(db, req, id, body) {
   if (body.decision === 'approve') {
     if (!has(req, 'loss.approve')) throw forbidden('اعتماد العجز غير الطبيعي يتطلب صلاحية الاعتماد - أحِل الحالة للتحقيق');
     const c = (await db.query('select * from custodies where id=$1', [st.custody_id])).rows[0];
-    if (Number(st.abnormal_loss) > 0)
+    if (Number(st.abnormal_loss) > 0 && !st.loss_held)
       await ledger.post(db, { kind: 'abnormal_loss_approved', material_id: c.material_id, weight: st.abnormal_loss, from: ['loss_suspense', null], to: ['loss_abnormal', null], order_id: c.order_id, custody_id: c.id, settlement_id: st.id, worker_id: c.worker_id, stage_id: c.stage_id, reason: notes, user_id: req.user.id });
     await db.query("update settlements set status='resolved', review_decision='accept_loss', reviewed_by=$2, reviewed_at=now(), review_notes=$3, resolved_by=$2, resolved_at=now() where id=$1", [id, req.user.id, notes]);
     const adv = await closeAfterReview(db, req, st);
@@ -330,9 +359,10 @@ export async function investigate(db, req, id, body) {
   if (Number(recovered) > Number(st.abnormal_loss)) throw bad('الوزن المسترد أكبر من العجز غير الطبيعي');
   const c = (await db.query('select * from custodies where id=$1', [st.custody_id])).rows[0];
   const base = { material_id: c.material_id, order_id: c.order_id, custody_id: c.id, settlement_id: st.id, worker_id: c.worker_id, stage_id: c.stage_id, reason: result, user_id: req.user.id };
-  await ledger.postIf(db, { ...base, kind: 'loss_recovered', weight: recovered, from: ['loss_suspense', null], to: ['scrap', null] });
+  // العجز المعلق في حساب العامل: المسترد يخرج من رصيده للبقايا، والباقي يُثبَّت عند إقفال الشهر
+  await ledger.postIf(db, { ...base, kind: 'loss_recovered', weight: recovered, from: [st.loss_held ? 'worker' : 'loss_suspense', st.loss_held ? c.worker_id : null], to: ['scrap', null] });
   const remaining = await sub(db, st.abnormal_loss, recovered);
-  await ledger.postIf(db, { ...base, kind: 'abnormal_loss_approved', weight: remaining, from: ['loss_suspense', null], to: ['loss_abnormal', null] });
+  if (!st.loss_held) await ledger.postIf(db, { ...base, kind: 'abnormal_loss_approved', weight: remaining, from: ['loss_suspense', null], to: ['loss_abnormal', null] });
   await db.query(
     `update settlements set status='resolved', review_decision=$2, investigation_result=$3, recovered_weight=$4, resolved_by=$5, resolved_at=now(),
        reviewed_by=coalesce(reviewed_by,$5), reviewed_at=coalesce(reviewed_at, now()) where id=$1`,
@@ -350,6 +380,7 @@ export async function reverseSettlement(db, req, id, reasonIn) {
   const st = (await db.query('select * from settlements where id=$1 for update', [id])).rows[0];
   if (!st) throw notFound('التسوية غير موجودة');
   if (st.status === 'reversed') throw conflict('التسوية مصححة مسبقاً');
+  if (st.loss_fixed_at) throw conflict('عجز هذه التسوية ثُبّت على العامل بإقفال الشهر — لا يمكن تصحيحها');
   const c = (await db.query('select * from custodies where id=$1 for update', [st.custody_id])).rows[0];
   const order = c.order_id ? await lockOrder(db, c.order_id) : null;
   const later = !order ? { rowCount: 0 } : await db.query("select 1 from custodies where order_id=$1 and issued_at > $2 and status <> 'reversed' limit 1", [c.order_id, st.received_at]);
