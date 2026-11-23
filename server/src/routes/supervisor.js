@@ -1,3 +1,4 @@
+import { workerStatement } from '../lib/workerStatement.js';
 import { heldLossSummary } from '../lib/workerLoss.js';
 import { Router } from 'express';
 import { orderThumb } from '../lib/orderThumb.js';
@@ -384,6 +385,31 @@ async function movementsQuery(req) {
     order by g.id desc limit ${Math.min(Number(f.limit) || 500, 5000)}`;
   return many(sql, params);
 }
+
+/** كشف حساب العامل بالذهب: مدين (مسلَّم له) / دائن (مستلم منه) والرصيد — وتصديره Excel */
+const stmtArgs = (req) => {
+  const d = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+  return { from: d(req.query.from), to: d(req.query.to), materialId: req.query.material ? int(req.query.material) : null };
+};
+r.get('/workers/:id/statement', requirePerm('workers.view', 'custody.issue', 'custody.receive'), async (req, res) => {
+  const st = await workerStatement(pool, int(req.params.id), stmtArgs(req), KIND_LABELS);
+  if (!st) throw notFound('العامل غير موجود');
+  res.json(st);
+});
+r.get('/workers/:id/statement.xlsx', requirePerm('workers.view', 'custody.issue', 'custody.receive'), async (req, res) => {
+  const st = await workerStatement(pool, int(req.params.id), stmtArgs(req), KIND_LABELS);
+  if (!st) throw notFound('العامل غير موجود');
+  const n = (v) => (v == null || v === '' ? '' : Number(v));
+  const rows = [
+    ...(st.from ? [{ created_at: null, movement_no: '', label: `رصيد افتتاحي قبل ${st.from}`, party: '', order_no: '', material_name: st.opening.map((o) => `${o.name}: ${Number(o.weight).toFixed(3)}`).join(' · '), debit: null, credit: null, balance: '', balance_pure: st.opening_pure }] : []),
+    ...st.rows,
+    { created_at: null, movement_no: '', label: 'الإجمالي', party: '', order_no: '', material_name: st.totals.balances.map((b) => `${b.name}: ${Number(b.weight).toFixed(3)}`).join(' · '), debit: st.totals.debit, credit: st.totals.credit, balance: '', balance_pure: st.totals.balance_pure },
+  ];
+  await sendXlsx(res, `كشف حساب ${st.worker.full_name}`, [
+    ['التاريخ', (x) => (x.created_at ? new Date(x.created_at).toISOString().slice(0, 16).replace('T', ' ') : '')], ['رقم الحركة', 'movement_no'], ['البيان', 'label'], ['الطرف', 'party'],
+    ['الطلب', 'order_no'], ['العيار', 'material_name'], ['مدين (له)', (x) => n(x.debit)], ['دائن (منه)', (x) => n(x.credit)], ['الرصيد', (x) => n(x.balance)], ['الرصيد صافي 24', (x) => n(x.balance_pure)],
+  ], rows, `worker-statement-${st.worker.employee_no || st.worker.id}.xlsx`);
+});
 
 r.get('/movements', requirePerm('custody.view_all', 'inventory.view', 'reports.view'), async (req, res) => {
   res.json(await movementsQuery(req));

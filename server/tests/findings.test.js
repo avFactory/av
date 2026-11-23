@@ -1020,3 +1020,35 @@ test('أولوية كل منتج (ليس مستعجلاً/مستعجل/مستع�
   assert.equal((await tw('GET', `/orders/labels?ids=${a.id}`)).status, 403);
   assert.equal((await tw('POST', `/w/orders/${a.id}/priority`, { priority: 1 })).status, 403);
 });
+
+test('كشف حساب العامل: مدين (المسلَّم له والمحوّل إليه) ودائن (المستلم منه والمحوّل منه) والرصيد والإجمالي وتصدير Excel', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '300', note: 'رصيد' });
+  const mkW = async (u) => { const id = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ($1,$2,$1,'worker',$1) returning id", [u, hashPassword('Ss#2026xx')])).rows[0].id; let ck = '';
+    const go = async (m, p, body) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+    await go('POST', '/auth/login', { username: u, password: 'Ss#2026xx' }); return { id, go }; };
+  const A = await mkW('stA'), B = await mkW('stB');
+  await call('POST', '/inventory/gold/to-worker', { worker_id: A.id, material_id: mat, weight: '20', purpose: 'عامة', loss_rate_percent: '0' });
+  const gc = (await pool.query("select id from custodies where worker_id=$1 and kind='general' and status='open'", [A.id])).rows[0].id;
+  await A.go('POST', `/w/custody/${gc}/ack`, {});
+  // تحويل جزء 5 جم لـ B
+  const tr = await A.go('POST', `/w/custody/${gc}/transfer`, { to_worker_id: B.id, weight: '5', portion: 'part' });
+  assert.equal((await B.go('POST', `/w/transfers/${tr.data.id}/accept`, { weight: '5' })).status, 200);
+  // استلام جزء 3 جم من A للخزنة
+  assert.equal((await call('POST', `/sup/custody/${gc}/partial-return`, { weight: '3' })).status, 200);
+  const st = (await call('GET', `/sup/workers/${A.id}/statement`)).data;
+  assert.equal(Number(st.totals.debit), 20);
+  assert.equal(Number(st.totals.credit), 8, '5 محوّل + 3 مستلم');
+  assert.equal(Number(st.totals.balances[0].weight), 12);
+  assert.equal(Number(st.totals.balance_pure), +(12 * 21 / 24).toFixed(4));
+  assert.ok(st.rows.some((r) => r.credit && r.party.includes('stB')), 'الطرف في التحويل');
+  assert.equal(Number(st.rows[st.rows.length - 1].balance), 12, 'الرصيد بعد آخر حركة');
+  const stB = (await call('GET', `/sup/workers/${B.id}/statement`)).data;
+  assert.ok(stB.rows.some((r) => r.debit && r.party.includes('stA')), 'محوّل له من عامل آخر = مدين');
+  // فترة: رصيد افتتاحي
+  const tomorrow = new Date(Date.now() + 86400e3 + 3 * 3600e3).toISOString().slice(0, 10);
+  const stF = (await call('GET', `/sup/workers/${A.id}/statement?from=${tomorrow}`)).data;
+  assert.equal(stF.rows.length, 0); assert.equal(Number(stF.opening[0].weight), 12);
+  const x = await fetch(base + `/api/sup/workers/${A.id}/statement.xlsx`, { headers: { cookie } });
+  assert.equal(x.status, 200); assert.match(x.headers.get('content-type'), /spreadsheet/);
+});

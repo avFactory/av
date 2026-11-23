@@ -1061,3 +1061,15 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .prio-chips .chip.prio-warning.on { background: #ffc107; border-color: #ffc107; color: #000; }
 .prio-chips .chip.prio-danger.on { background: #dc3545; border-color: #dc3545; color: #fff; }
 .prio-badge { font-size: .72rem; display: inline-block; width: fit-content; align-self: flex-start; }
+
+/* كشف حساب العامل */
+.worker-stmt .stmt-table th { white-space: nowrap; font-size: .82rem; color: var(--bs-secondary-color); }
+.worker-stmt .stmt-total td { border-top: 2px solid var(--bs-border-color); background: var(--bs-tertiary-bg); }
+.worker-stmt .stmt-final td { background: rgba(168, 134, 79, .12); font-size: 1rem; padding: 12px; }
+.print-only { display: none; }
+@media print {
+  .print-only { display: block; }
+  body:has(.worker-stmt) .wk-nav, body:has(.worker-stmt) .tabs, body:has(.worker-stmt) .stats, body:has(.worker-stmt) .page-h, body:has(.worker-stmt) .sup-actions { display: none !important; }
+  .worker-stmt { border: 0 !important; box-shadow: none !important; }
+  .worker-stmt .text-success, .worker-stmt .text-danger { color: #000 !important; }
+}

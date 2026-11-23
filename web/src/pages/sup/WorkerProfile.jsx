@@ -1,3 +1,4 @@
+import WorkerStatement from '../../components/WorkerStatement.jsx';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api.js';
@@ -52,7 +53,7 @@ export default function WorkerProfile() {
         {can('custody.issue') && <LinkBtn kind="primary" size="lg" to={`/sup/issue?worker=${w.id}`}>تسليم ذهب</LinkBtn>}
         {can('custody.receive') && open.length > 0 && <LinkBtn kind="dark" size="lg" to={`/sup/receive?worker=${w.id}`}>استلام ذهب ({open.length})</LinkBtn>}
       </>}>
-      <div className="grid g4 mb">
+      <div className="grid g4 mb no-print">
         <Stat label="الذهب في عهدته الآن" value={fmtW(open.reduce((s, c) => s + Number(c.weight_issued), 0))} unit="جم" tone="gold" sub={balances.map((b) => `${b.name}: ${fmtW(b.balance)}`).join(' · ')} />
         {heldTotal !== 0 && <Stat label="عجز معلق في حسابه" value={fmtW(heldTotal)} unit="جم" tone={heldTotal > 0 ? 'bad' : 'ok'} to="/admin/loss-advances" sub={`${held.map((h) => `${h.month} · ${h.material_name}: ${fmtW(h.held)}`).join(' · ')} — يُثبَّت بإقفال الشهر`} />}
         <Stat label="إجمالي ما استلمه" value={fmtW(totals.received_total)} unit="جم" />
@@ -65,7 +66,7 @@ export default function WorkerProfile() {
       </div>
       <Tabs value={tab} onChange={setTab} tabs={[
         ['open', `الطلبات المسندة / لديه (${open.length + assigned.length})`], ['working', `يعمل عليها (${working.length})`], ['finished', `منتهية بانتظار الاستلام (${finished.length})`],
-        ['review', `تحت المراجعة (${review.length})`], ['closed', `منتهية ومسلمة (${closed.length})`], ['stones', 'الأحجار لديه'], ['recent', 'آخر الحركات'],
+        ['review', `تحت المراجعة (${review.length})`], ['closed', `منتهية ومسلمة (${closed.length})`], ['stones', 'الأحجار لديه'], ['recent', 'كشف الحساب'],
       ]} />
       {can('custody.receive') && <ReturnRequests worker={w.id} />}
       {tr && <TransferModal custody={tr} base="/sup" onClose={() => setTr(null)} onDone={reload} />}
@@ -90,7 +91,7 @@ export default function WorkerProfile() {
       {tab === 'review' && <div className="card"><Table rows={review} columns={closedCols} empty="لا يوجد" /></div>}
       {tab === 'closed' && <div className="card"><Table rows={closed} columns={closedCols} empty="لا يوجد" /></div>}
       {tab === 'stones' && <div className="card"><Table rows={stones} empty="لا توجد أحجار في عهدته" columns={[['الدفعة', 'lot_no'], ['النوع', 'stone_type'], ['الطلب', 'order_no'], ['قيراط', (s) => <span className="n">{s.carats}</span>], ['العدد', 'count']]} /></div>}
-      {tab === 'recent' && <div className="card"><Table rows={recent} columns={[['رقم الحركة', 'movement_no'], ['النوع', (m) => KINDS[m.kind] || m.kind], ['الطلب', 'order_no'], ['المرحلة', 'stage_name'], ['الوزن', (m) => <span className="n">{fmtW(m.weight)}</span>], ['التاريخ', (m) => fmtDT(m.created_at)]]} /></div>}
+      {tab === 'recent' && <WorkerStatement worker={w} />}
       <ReasonModal open={!!stRev} title={`إرجاع العهدة للعامل (تصحيح التسوية ${stRev?.settlement_no || ''}) — يُلغى الاستلام والعجز ويعود الذهب كاملاً لعهدته`} label="سبب التصحيح (مثال: خطأ في إدخال الوزن)" danger busy={busy} onClose={() => setStRev(null)}
         onSubmit={(reason) => run(async () => { await api.post(`/sup/settlements/${stRev.settlement_id}/reverse`, { reason }); setStRev(null); setTab('open'); reload(); }, 'تم التصحيح — الذهب عاد لعهدة العامل، استلمه من جديد بالوزن الصحيح')} />
       <ReasonModal open={!!rev} title="إلغاء تسليم خاطئ (حركة عكسية)" label="سبب الإلغاء" danger busy={busy} onClose={() => setRev(null)} onSubmit={doReverse} />
