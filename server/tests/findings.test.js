@@ -1052,3 +1052,36 @@ test('كشف حساب العامل: مدين (المسلَّم له والمحو
   const x = await fetch(base + `/api/sup/workers/${A.id}/statement.xlsx`, { headers: { cookie } });
   assert.equal(x.status, 200); assert.match(x.headers.get('content-type'), /spreadsheet/);
 });
+
+test('استيراد صور منتجات كمسودات مخفية من ZIP: كل صورة منتج، والصور بنفس البادئة لمنتج واحد، وملف products.json', async () => {
+  const JSZip = (await import('jszip')).default;
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const z = new JSZip();
+  z.file('r0001_0.png', PNG); z.file('r0001_1.png', PNG); z.file('r0002_0.png', PNG); z.file('fake.jpg', Buffer.from('<html>x</html>'));
+  const send = async (zipBuf, extra = {}) => {
+    const fd = new FormData(); fd.append('file', new Blob([zipBuf], { type: 'application/zip' }), 'products.zip');
+    for (const [k, v] of Object.entries(extra)) fd.append(k, v);
+    const r = await fetch(base + '/api/catalog/products/import-draft', { method: 'POST', headers: { cookie }, body: fd });
+    return { status: r.status, data: await r.json() };
+  };
+  const r = await send(await z.generateAsync({ type: 'nodebuffer' }), { product_type: 'تعليقة', name_prefix: 'إطار تجربة', karats: '18' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.created, 2, 'r0001 بصورتين + r0002');
+  assert.ok(r.data.skipped.some((x) => /ليست صورة/.test(x.reason)), 'ملف ليس صورة يُتخطى');
+  const ps = (await pool.query("select p.id, p.name, p.active, p.karats, p.sku, (select count(*)::int from product_media m where m.product_id=p.id) n from products p where p.name like 'إطار تجربة%' order by p.id")).rows;
+  assert.deepEqual(ps.map((p) => [p.active, p.n, p.karats]), [[false, 2, [18]], [false, 1, [18]]], 'مخفية بصورها');
+  assert.match(ps[0].sku, /^PR\d+/);
+  // لا تظهر في المتجر
+  const pub = await (await fetch(base + '/api/public/products?limit=200')).json();
+  assert.ok(!(pub.products || []).some((x) => ps.some((p) => p.id === x.id)), 'المسودات لا تظهر في المتجر');
+  // products.json: نوع ووزن واسم لكل منتج
+  const z2 = new JSZip(); z2.file('a.png', PNG); z2.file('b.png', PNG);
+  z2.file('products.json', JSON.stringify([{ images: ['a.png'], product_type: 'خاتم', approx_weight: 1.2 }, { images: ['b.png'], name: 'عقد الوردة', product_type: 'عقد' }]));
+  const r2 = await send(await z2.generateAsync({ type: 'nodebuffer' }));
+  assert.equal(r2.status, 200, JSON.stringify(r2.data));
+  const q = (await pool.query('select name, product_type, approx_weight::float w, sku from products where id = any($1::int[]) order by id', [r2.data.products.map((p) => p.id)])).rows;
+  assert.equal(q[0].product_type, 'خاتم'); assert.equal(q[0].w, 1.2); assert.match(q[0].sku, /^RIN/);
+  assert.equal(q[1].name, 'عقد الوردة');
+  const bad = await send(Buffer.from('not a zip'));
+  assert.equal(bad.status, 400);
+});

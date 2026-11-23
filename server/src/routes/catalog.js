@@ -1,4 +1,6 @@
 // المنتجات وقواعد أجور التصنيع
+import fs from 'node:fs';
+import { importDraftZip } from '../lib/productImport.js';
 import { Router } from 'express';
 import { pool, tx, many, one } from '../db.js';
 import { requirePerm } from '../lib/auth.js';
@@ -79,6 +81,20 @@ async function setMainMedia(db, productId, body, newIds) {
       select id, row_number() over (order by (id = $2) desc, sort, id) as rn from product_media where product_id = $1) x
     where m.id = x.id`, [productId, main]);
 }
+
+/** استيراد منتجات كمسودات مخفية من ملف ZIP للصور (المدير يكمل التفاصيل ثم يظهرها في المتجر) */
+r.post('/products/import-draft', requirePerm('products.manage'), upload.single('file'), async (req, res) => {
+  if (!req.file || !/\.zip$/i.test(req.file.originalname)) throw bad('ارفع ملف ZIP للصور');
+  try {
+    const opts = { product_type: str(req.body.product_type, 'نوع القطعة'), name_prefix: str(req.body.name_prefix, 'بادئة الاسم'), karats: arr(req.body.karats).map((k) => int(k, 'العيار')) };
+    const out = await tx(async (db) => {
+      const r2 = await importDraftZip(db, req, req.file.path, opts);
+      await audit(db, req, 'product.import_draft', 'product', null, { created: r2.created, skipped: r2.skipped.length, file: req.file.originalname });
+      return r2;
+    });
+    res.json(out);
+  } finally { fs.unlink(req.file.path, () => {}); }
+});
 
 r.post('/products', requirePerm('products.manage'), upload.array('files', 20), async (req, res) => {
   res.json(await tx(async (db) => {

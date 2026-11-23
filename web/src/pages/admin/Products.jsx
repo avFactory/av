@@ -3,13 +3,15 @@ import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { COLORS, METHODS, fmtW, fmtMoney } from '../../format.js';
 import BullionPick from '../../components/BullionPick.jsx';
-import { Btn, Field, Input, Loader, Modal, Page, Select, Table, Textarea, useAction, useFetch, Badge, FilePicker, askConfirm } from '../../ui.jsx';
+import { Btn, Field, Input, Loader, Modal, Page, Select, Table, Textarea, useAction, useFetch, Badge, FilePicker, askConfirm, showAlert } from '../../ui.jsx';
 
 const AV = { available: 'متوفر', made_to_order: 'حسب الطلب', unavailable: 'غير متوفر' };
 
 export default function Products() {
   const { lookups } = useAuth();
   const { data, reload } = useFetch('/catalog/products');
+  const [show, setShow] = useState('all');
+  const [imp, setImp] = useState(null);
   const [f, setF] = useState(null);
   const [run, busy] = useAction();
   const { data: types } = useFetch('/catalog/product-types');
@@ -42,10 +44,22 @@ export default function Products() {
       return r;
     }, 'تم حذف المنتج').catch(() => {});
   };
+  const doImport = () => run(async () => {
+    const fd = new FormData();
+    fd.append('file', imp.file); fd.append('product_type', imp.product_type || ''); fd.append('name_prefix', imp.name_prefix || '');
+    for (const k of imp.karats || []) fd.append('karats', k);
+    const r = await api.post('/catalog/products/import-draft', fd);
+    setImp(null); setShow('off'); reload();
+    await showAlert(`أُضيف ${r.created} منتجاً كمسودة مخفية عن المتجر.${r.skipped.length ? `\nتخطّي ${r.skipped.length}: ${r.skipped.slice(0, 5).map((x) => x.reason).join('، ')}` : ''}\n\nافتح كل منتج وأكمل الاسم والنوع والوزن والأجرة، ثم فعّل «ظاهر في المتجر».`, { title: 'تم الاستيراد' });
+  });
   if (!data) return <Loader />;
   return (
-    <Page title="منتجات المتجر" actions={<Btn onClick={() => setF({ karats: [21], colors: ['yellow'], sizes: [], availability: 'made_to_order', active: true, labor_method: 'per_gram' })}>منتج جديد</Btn>}>
-      <div className="card"><Table rows={data} onRow={(p) => setF({ ...p, karats: p.karats, colors: p.colors, sizes: p.sizes, files: null })} columns={[
+    <Page title="منتجات المتجر" actions={<div className="d-flex gap-2">
+      <Btn kind="ghost" onClick={() => setImp({ product_type: 'تعليقة', karats: [21] })}>⬆ استيراد صور منتجات (مسودات)</Btn>
+      <Btn onClick={() => setF({ karats: [21], colors: ['yellow'], sizes: [], availability: 'made_to_order', active: true, labor_method: 'per_gram' })}>منتج جديد</Btn></div>}>
+      <div className="chips mb-2">{[['all', `الكل (${data.length})`], ['on', `الظاهرة في المتجر (${data.filter((p) => p.active).length})`], ['off', `المخفية / المسودات (${data.filter((p) => !p.active).length})`]].map(([k, l]) => (
+        <button key={k} type="button" className={`chip ${show === k ? 'on' : ''}`} onClick={() => setShow(k)}>{l}</button>))}</div>
+      <div className="card"><Table rows={data.filter((p) => show === 'all' || (show === 'on' ? p.active : !p.active))} onRow={(p) => setF({ ...p, karats: p.karats, colors: p.colors, sizes: p.sizes, files: null })} columns={[
         ['', (p) => (p.media[0] ? <img src={fileUrl(p.media[0].path, 400)} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }} /> : null)],
         ['رقم المنتج', 'sku'], ['الاسم', (p) => <><b>{p.name}</b>{isRestricted(p) && <div><Badge tone="warn">🔒 مخصص لعملاء محددين</Badge></div>}</>], ['النوع', 'product_type'], ['العيارات', (p) => p.karats.join('، ')], ['الألوان', (p) => p.colors.map((c) => COLORS[c]).join('، ')],
         ['الوزن', (p) => fmtW(p.final_weight || p.approx_weight)], ['الأجرة', (p) => (p.labor_method ? `${fmtMoney(p.labor_rate)} ${METHODS[p.labor_method]}` : 'حسب القواعد')], ['المخزون', 'stock_qty'],
@@ -59,6 +73,18 @@ export default function Products() {
           <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => remove(p)} title="حذف المنتج">حذف</button>
         </span>],
       ]} /></div>
+      <Modal open={!!imp} onClose={() => setImp(null)} title="استيراد صور منتجات كمسودات">
+        {imp && <div className="d-grid gap-2">
+          <div className="small text-body-secondary">ارفع ملف ZIP فيه صور المنتجات (كل صورة منتج، والصور بنفس الاسم مع _0 و _1 لنفس المنتج، أو ملف products.json). المنتجات تُضاف <b>مخفية عن المتجر</b> باسم مؤقت حتى تكمل تفاصيلها وتظهرها.</div>
+          <Field label="ملف ZIP *"><Input type="file" accept=".zip" onChange={(e) => setImp({ ...imp, file: e.target.files[0] })} /></Field>
+          <div className="grid g2">
+            <Field label="نوع القطعة الافتراضي"><Input value={imp.product_type} onChange={(e) => setImp({ ...imp, product_type: e.target.value })} /></Field>
+            <Field label="بادئة الاسم المؤقت (اختياري)"><Input value={imp.name_prefix || ''} onChange={(e) => setImp({ ...imp, name_prefix: e.target.value })} placeholder="مثال: إطار جنيه" /></Field>
+          </div>
+          <Field label="العيارات"><div className="chips">{[18, 21, 24].map((k) => <button key={k} type="button" className={`chip ${imp.karats.includes(k) ? 'on' : ''}`} onClick={() => setImp({ ...imp, karats: imp.karats.includes(k) ? imp.karats.filter((x) => x !== k) : [...imp.karats, k] })}>{k}</button>)}</div></Field>
+          <Btn loading={busy} disabled={!imp.file} onClick={doImport}>استيراد كمسودات</Btn>
+        </div>}
+      </Modal>
       <Modal open={!!f} onClose={() => setF(null)} title={f?.id ? 'تعديل منتج' : 'منتج جديد'} wide>
         {f && <>
           <div className="grid g3">
