@@ -5,6 +5,7 @@ import { fmtDT, COLORS, stoneItems } from '../../format.js';
 import { Btn, Card, Field, Loader, Textarea, useAction, useFetch, Kv, ErrorBox, FileLink } from '../../ui.jsx';
 import { useAuth } from '../../auth.jsx';
 import OrderGroupItems from '../../components/OrderGroupItems.jsx';
+import Items3D from '../../components/Items3D.jsx';
 import { t, tMat, isRtl } from '../../i18n.js';
 
 /** طلب مسند للعامل (مثل التصميم): مشاهدة التفاصيل، رفع الملفات، إنهاء المهمة */
@@ -16,7 +17,7 @@ export default function WOrder() {
   const { me } = useAuth();
   if (error) return <div className="wk-body"><ErrorBox error={error} /></div>;
   if (!data) return <Loader />;
-  const { order: o, files, custodies, log, group } = data;
+  const { order: o, files, custodies, log, group, items3d } = data;
   const isDesign = o.stage?.kind === 'design';
   const upload = (fl) => run(async () => {
     const fd = new FormData();
@@ -38,7 +39,7 @@ export default function WOrder() {
         {files.find((f) => f.mime?.startsWith('image')) && (() => { const im = files.find((f) => f.mime?.startsWith('image')); return <FileLink path={im.path} image className="wk-hero-img"><img src={fileUrl(im.path, 800)} alt={o.title} /></FileLink>; })()}
         <Kv items={[[t('الوصف'), o.title], [t('المرحلة'), t(o.stage?.name)], [t('المادة'), tMat(o.material)], o.color && [t('اللون'), t(COLORS[o.color] || o.color)], [t('الكمية'), o.quantity], [t('المقاس'), o.size], [t('الوزن التقريبي'), o.approx_weight], ...stoneItems(o), [t('ملاحظات'), o.notes]]} />
       </Card>
-      <OrderGroupItems items={group} current={o.id} />
+      {items3d ? <Items3D items={items3d} reload={reload} firstId={o.id} canMoveAll={o.stage?.kind === 'design' && !o.stage?.handles_gold} /> : <OrderGroupItems items={group} current={o.id} />}
       <Card title={t('الملفات والتصاميم')}>
         <div className="files">{files.map((f) => <FileLink key={f.id} path={f.path} image={f.mime?.startsWith('image')}>{f.mime?.startsWith('image') ? <img src={fileUrl(f.path, 400)} alt="" /> : <div className="doc">{(f.original_name || '').split('.').pop()?.toUpperCase()}</div>}<span>{f.kind === 'internal' ? `🔒 ${t('داخلية')} · ` : ''}{f.original_name}</span></FileLink>)}</div>
         {o.assigned_to_me && <label className="btn btn-outline-secondary mt">{t(isDesign ? 'رفع ملفات التصميم (صور / 3D)' : 'رفع صور التنفيذ')}<input type="file" multiple hidden onChange={(e) => e.target.files.length && upload(e.target.files)} /></label>}

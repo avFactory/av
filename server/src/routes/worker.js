@@ -82,6 +82,13 @@ r.get('/orders/:id', async (req, res) => {
              assigned_to_me: o.assigned_worker_id === req.user.id, ...stones },
     files, custodies: myCustodies, log,
     // بنود الطلب كاملة (الطلب يُعامل كقطعة واحدة)
+    // فريق 3D: كل منتجات الطلب بكل صورها وملفاتها واحتياج التصميم/الطباعة
+    items3d: is3D(req.user) ? await many(`select x.id, x.order_no, x.title, x.product_type, x.quantity, x.size, x.notes, x.color, x.needs_3d_design, x.needs_3d_print, x.d3_checked_at,
+        s.name as stage_name, s.kind as stage_kind,
+        coalesce((select jsonb_agg(jsonb_build_object('id', f.id, 'kind', f.kind, 'path', f.path, 'mime', f.mime, 'name', f.original_name) order by (f.kind='model3d'), f.id) from order_files f where f.order_id=x.id), '[]'::jsonb)
+          || coalesce((select jsonb_agg(jsonb_build_object('id', 'p' || pm.id, 'kind', 'product', 'path', pm.path, 'mime', case pm.kind when 'video' then 'video/mp4' else 'image/jpeg' end, 'name', 'صورة المنتج') order by pm.sort, pm.id) from product_media pm where pm.product_id=x.product_id), '[]'::jsonb) as files
+      from orders x left join stages s on s.id=x.current_stage_id
+      where (x.id=$1 or ($2::text is not null and x.cart_ref=$2)) and x.status not in ('cancelled','rejected') order by x.order_no`, [o.id, o.cart_ref]) : null,
     group: o.cart_ref ? await many(`select o.id, o.order_no, o.title, o.product_type, o.quantity, o.size, o.notes, o.color, o.pearl_weight::text, o.stone_weight::text, o.zircon_weight::text,
         s.name as stage_name, ${orderThumb()} as thumb
       from orders o left join stages s on s.id=o.current_stage_id where o.cart_ref=$1 and o.status not in ('cancelled','rejected') order by o.order_no`, [o.cart_ref]) : [],
@@ -254,6 +261,10 @@ r.post('/orders/:id/group-advance', async (req, res) => {
 /** صور داخلية على الطلب (فريق 3D فقط) */
 r.post('/orders/:id/internal', upload.array('files', 10), async (req, res) => {
   res.json(await tx((db) => addInternalImages(db, req, int(req.params.id))));
+});
+/** صور وملفات تصميم 3D على منتج (بند) في الطلب — فريق 3D فقط، ولا تظهر للعميل */
+r.post('/orders/:id/3d-files', upload.array('files', 20), async (req, res) => {
+  res.json(await tx((db) => addInternalImages(db, req, int(req.params.id), { model3d: true })));
 });
 
 r.post('/orders/:id/note', async (req, res) => {

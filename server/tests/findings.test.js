@@ -937,3 +937,30 @@ test('العجز يبقى في حساب العامل حتى إقفال الشه�
   const cl = (await call('GET', `/admin/loss-advances?month=${month}`)).data.closings.find((x) => x.worker_id === w);
   assert.equal(Number(cl.abnormal), 0.6);
 });
+
+test('فريق 3D: أي طلب يعرض كل منتجاته بكل صورها، ويضيف صور/ملفات 3D على كل منتج (لا تظهر للعميل)', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=18 and active")).rows[0].id;
+  const r = await call('POST', '/orders/multi', { items: [{ title: 'عقد 1', product_type: 'عقد', karat: '18' }, { title: 'عقد 2', product_type: 'عقد', karat: '18' }] });
+  const [a, b] = r.data.orders;
+  const mkUser = async (u, spec) => { await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, specialty) values ($1,$2,$1,'worker',$1,$3)", [u, hashPassword('D3d#2026xx'), spec]); let ck = '';
+    const go = async (m, p, body, form) => { const res = await fetch(base + '/api' + p, { method: m, headers: form ? { cookie: ck } : { cookie: ck, 'content-type': 'application/json' }, body: form || (body ? JSON.stringify(body) : undefined) }); const sc = res.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: res.status, data: await res.json() }; };
+    await go('POST', '/auth/login', { username: u, password: 'D3d#2026xx' }); return go; };
+  const d3 = await mkUser('d3all', 'ثري دي');
+  const tw = await mkUser('d3not', 'تلميع');
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const fd = new FormData(); fd.append('files', new Blob([PNG], { type: 'image/png' }), 'render.png'); fd.append('files', new Blob(['solid x\nendsolid x\n'], { type: 'model/stl' }), 'ring.stl');
+  const up = await d3('POST', `/w/orders/${b.id}/3d-files`, null, fd);
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+  const v = (await d3('GET', `/w/orders/${a.id}`)).data;
+  assert.equal(v.items3d.length, 2, 'كل منتجات الطلب');
+  const it = v.items3d.find((x) => x.id === b.id);
+  assert.deepEqual(it.files.map((f) => f.kind).sort(), ['model3d', 'model3d']);
+  assert.equal((await pool.query("select count(*)::int n from order_files where order_id=$1 and kind='model3d' and not customer_visible", [b.id])).rows[0].n, 2, 'لا تظهر للعميل');
+  assert.equal((await d3('POST', `/w/orders/${b.id}/3d`, { needs_design: true, needs_print: false })).status, 200);
+  assert.equal((await d3('GET', `/w/orders/${a.id}`)).data.items3d.find((x) => x.id === b.id).needs_3d_design, true);
+  // غير فريق 3D
+  const fd2 = new FormData(); fd2.append('files', new Blob([PNG], { type: 'image/png' }), 'x.png');
+  assert.equal((await tw('POST', `/w/orders/${b.id}/3d-files`, null, fd2)).status, 403);
+  assert.equal((await tw('GET', `/w/orders/${a.id}`)).status, 403);
+  void mat;
+});
