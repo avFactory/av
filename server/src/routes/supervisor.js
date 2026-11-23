@@ -60,6 +60,9 @@ r.get('/workers', requirePerm('workers.view', 'custody.issue', 'custody.receive'
     select u.id, u.full_name, u.employee_no, u.specialty, u.kind, d.name as department,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open')::int as open_count,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.work_state='finished')::int as finished_count,
+      -- وزن العهد/الطلبات المنتهية فقط (بانتظار الاستلام)
+      (select coalesce(sum(c.weight_issued - c.weight_used),0) from custodies c where c.worker_id=u.id and c.status='open' and c.work_state='finished')::numeric(16,4)::text as finished_weight,
+      (select string_agg(coalesce(o.order_no, 'عهدة عامة'), '، ' order by c.finished_at) from custodies c left join orders o on o.id=c.order_id where c.worker_id=u.id and c.status='open' and c.work_state='finished') as finished_orders,
       (select coalesce(sum(weight_issued),0) from custodies c where c.worker_id=u.id and c.status='open')::text as open_weight,
       -- الذهب الصافي (ما يعادله عيار 24) = الوزن × العيار ÷ 24
       (select coalesce(sum(c.weight_issued * m.karat / 24.0),0) from custodies c join materials m on m.id=c.material_id where c.worker_id=u.id and c.status='open')::numeric(16,4)::text as open_pure,

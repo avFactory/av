@@ -27,7 +27,7 @@ export default function WorkerPicker({ onPick, mode, searchInHeader }) {
             <span className="muted">{w.employee_no || '—'} · {w.kind === 'machine' ? 'محطة عمل' : w.specialty || w.department || 'عامل'}</span>
             <span className="small">
               {w.open_count ? <>لديه <b>{w.open_count}</b> طلب · <span dir="ltr">{fmtW(w.open_weight)}</span> جم</> : <span className="muted">لا توجد عهدة</span>}
-              {w.finished_count > 0 && <> · <b style={{ color: 'var(--ok)' }}>{w.finished_count} منتهٍ</b></>}
+              {w.finished_count > 0 && <> · <b style={{ color: 'var(--ok)' }}>{w.finished_count} منتهٍ ({fmtW(w.finished_weight)} جم)</b></>}
               {w.rejected_count > 0 ? <> · <b style={{ color: 'var(--bad)' }}>{w.rejected_count} مرفوض</b></> : w.pending_ack > 0 ? <> · <span style={{ color: 'var(--warn)' }}>{w.pending_ack} بانتظار قبوله</span></> : null}
             </span>
           </button>

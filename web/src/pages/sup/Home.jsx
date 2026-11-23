@@ -31,7 +31,9 @@ export default function SupHome() {
       <div className="grid g2 mt">
         <Card title="عمال أنهوا العمل - بانتظار الاستلام" pad={false}>
           <Table rows={ready} empty="لا يوجد" columns={[
-            ['العامل', (w) => <b>{w.full_name}</b>], ['الطلبات المنتهية', 'finished_count'], ['الذهب لديه', (w) => <span className="n">{fmtW(w.open_weight)}</span>],
+            ['العامل', (w) => <b>{w.kind === 'machine' ? '⚙ ' : ''}{w.full_name}</b>],
+            ['الطلبات المنتهية', (w) => <span>{w.finished_count}{w.finished_orders ? <span className="small text-body-secondary d-block" dir="ltr">{w.finished_orders}</span> : null}</span>],
+            ['وزن المنتهي', (w) => <b className="n">{fmtW(w.finished_weight)}</b>],
             ['', (w) => <Link className="btn btn-dark btn-sm" to={`/sup/receive?worker=${w.id}`}>استلام</Link>],
           ]} />
         </Card>
