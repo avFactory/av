@@ -1098,9 +1098,11 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .stmt-table tfoot td { border-top: 2px solid var(--bs-border-color); background: rgba(168, 134, 79, .08); font-weight: 700; padding: 9px 10px; }
 
 /* ضبط: بيان أضيق، أوزان أكبر، وهامش جانبي للكشف */
-.worker-stmt .stmt-sum { padding-inline: 20px; }
-.worker-stmt .stmt-table th:first-child, .worker-stmt .stmt-table td:first-child { padding-inline-start: 20px; }
-.worker-stmt .stmt-table th:last-child, .worker-stmt .stmt-table td:last-child { padding-inline-end: 20px; }
+@media (max-width: 700px) { .worker-stmt .stmt-sum, .worker-stmt .stmt-bar { padding-inline: 16px !important; } .worker-stmt .stmt-table th:first-child, .worker-stmt .stmt-table td:first-child { padding-inline-start: 16px !important; } .worker-stmt .stmt-table th:last-child, .worker-stmt .stmt-table td:last-child { padding-inline-end: 16px !important; } }
+.worker-stmt .stmt-sum { padding-inline: 44px; }
+.worker-stmt .stmt-bar { padding-inline: 44px; }
+.worker-stmt .stmt-table th:first-child, .worker-stmt .stmt-table td:first-child { padding-inline-start: 44px; }
+.worker-stmt .stmt-table th:last-child, .worker-stmt .stmt-table td:last-child { padding-inline-end: 44px; }
 .stmt-table .c-desc { width: 32%; max-width: 440px; }
 .stmt-table .c-desc small { max-width: 420px; }
 .stmt-table td.n { font-size: 1rem; font-weight: 600; }
