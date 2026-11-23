@@ -170,6 +170,7 @@ export default function OrderDetail() {
             {can('custody.issue') && can('custody.receive') && openCust.filter((c) => c.status === 'open' && !(pendTr || []).some((t) => t.custody_id === c.id)).map((c) => <Btn key={`t${c.id}`} kind="ghost" onClick={() => setTransfer(c)}>↪ تحويل من {c.worker_name} لعامل آخر</Btn>)}
             {inProd && o.stage_state !== 'shortage' && siblings.length < 2 && can('custody.receive', 'orders.advance') && <Btn kind="ghost" onClick={() => setShort(o)}>⚠ نقل للنواقص</Btn>}
             {(can('custody.issue') || can('orders.manage')) && inProd && <Btn kind="ghost" onClick={() => open('allocate', { source: 'vault' })}>تسجيل ذهب على الطلب</Btn>}
+            {(can('custody.issue') || can('orders.manage') || can('inventory.manage')) && ['in_production', 'approved', 'ready'].includes(o.status) && Number(orderBal) > 0 && <Btn kind="ghost" onClick={() => open('deallocate', {})}>تخفيض ذهب الطلب</Btn>}
             {can('orders.advance') && inProd && <Btn kind="ghost" onClick={() => open('assign', { worker_id: o.assigned_worker_id || '' })}>إسناد لعامل</Btn>}
             {cur?.kind === 'final_weight' && can('orders.advance') && !openCust.length && (!cur.handles_gold || custodies.some((c) => c.stage_id === cur.id && c.status === 'closed')) && <Btn onClick={() => open('final', { weight: orderBal })}>{o.final_weight ? 'تعديل الوزن النهائي' : 'تسجيل الوزن النهائي'}</Btn>}
             {cur?.kind === 'invoicing' && can('invoices.manage') && <LinkBtn kind="primary" to={`/admin/invoices?new=1&customer=${o.customer_id}&order=${o.id}`}>إصدار فاتورة الأجور</LinkBtn>}
@@ -248,6 +249,14 @@ export default function OrderDetail() {
         {tab === 'overview' && gold.length > 0 && <Card title="أرصدة ذهب الطلب" className="mt"><Kv items={gold.map((g) => [`${LOCS[g.loc_type]} - ${g.name}`, `${fmtW(g.balance, 4)} جم`])} /></Card>}
       </div>
 
+      <Modal open={modal === 'deallocate'} onClose={() => setModal(null)} title="تخفيض ذهب الطلب (إرجاع الزائد للخزنة)">
+        <div className="small text-body-secondary mb-2">رصيد الطلب الحالي (تحت التشغيل): <b dir="ltr">{fmtW(orderBal)}</b> جم. الوزن الذي تكتبه يخرج من الطلب ويرجع للخزنة بحركة موثقة.</div>
+        {customerGold.length > 0 && <div className="alert alert-warning small">إذا كان الزائد مسجلاً «من العميل» فلا تستخدم هذا — ألغِ حركة ذهب العميل الخاطئة من قائمة «ذهب مستلم من العميل» ثم سجّل الصحيح، حتى يتصحح كشف حسابه.</div>}
+        <Field label="الوزن المراد خفضه (جم) *"><WeightInput big value={f.weight || ''} onChange={setv('weight')} autoFocus /></Field>
+        {Number(f.weight) > 0 && <div className="small mb-2">يصبح ذهب الطلب: <b dir="ltr">{fmtW(Number(orderBal) - Number(f.weight))}</b> جم</div>}
+        <Field label="السبب *"><Input value={f.note || ''} onChange={setv('note')} placeholder="مثال: سُجّل وزن أكثر من الفعلي بالخطأ" /></Field>
+        <Btn loading={busy} disabled={!(Number(f.weight) > 0) || Number(f.weight) > Number(orderBal) + 1e-9 || !String(f.note || '').trim()} onClick={() => act('deallocate', f, 'تم تخفيض ذهب الطلب وإرجاع الزائد للخزنة')}>تخفيض وإرجاع للخزنة</Btn>
+      </Modal>
       <Modal open={modal === 'allocate'} onClose={() => setModal(null)} title="تسجيل ذهب على الطلب">
         <Field label="الوزن (جم)"><WeightInput big value={f.weight || ''} onChange={setv('weight')} autoFocus /></Field>
         <Field label="المصدر"><Select value={f.source} onChange={setv('source')} options={[['vault', 'من خزنة المصنع'], ['customer', 'ذهب مستلم من العميل']]} /></Field>

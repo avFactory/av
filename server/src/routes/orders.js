@@ -456,9 +456,11 @@ r.post('/:id/deallocate', requirePerm('custody.issue', 'inventory.manage', 'orde
   res.json(await tx(async (db) => {
     const o = await prod.lockOrder(db, (await groupInfo(db, int(req.params.id)))?.lead ?? int(req.params.id));
     const w = W(req.body.weight, 'الوزن');
-    await ledger.requireBalance(db, 'order', o.id, o.material_id, w, 'رصيد الطلب غير كافٍ');
-    await ledger.post(db, { kind: 'dealloc', material_id: o.material_id, weight: w, from: ['order', o.id], to: ['vault', null], order_id: o.id, reason: str(req.body.note, 'ملاحظات'), user_id: req.user.id });
-    await audit(db, req, 'order.deallocate', 'order', o.id, { weight: w });
+    const note = str(req.body.note, 'السبب', { required: true, max: 300 });
+    await ledger.requireBalance(db, 'order', o.id, o.material_id, w, 'رصيد الطلب غير كافٍ (جزء من الذهب لدى العمال؟ استلمه أولاً)');
+    await ledger.post(db, { kind: 'dealloc', material_id: o.material_id, weight: w, from: ['order', o.id], to: ['vault', null], order_id: o.id, reason: note, user_id: req.user.id });
+    await prod.logStage(db, o.id, o.current_stage_id, 'note', req.user.id, `تخفيض ذهب الطلب ${Number(w)} جم وإرجاعه للخزنة: ${note}`);
+    await audit(db, req, 'order.deallocate', 'order', o.id, { weight: w, note });
     return { ok: true };
   }));
 });

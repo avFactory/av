@@ -862,3 +862,18 @@ test('المطابقة اليومية تحت الصب: القائم − الأك
   assert.equal((await call('DELETE', `/casting/daily/${r.data.id}`)).status, 200);
   assert.equal((await call('GET', '/casting/daily')).data.rows.length, 1);
 });
+
+test('تخفيض ذهب الطلب المسجل بالزيادة: يرجع للخزنة بسبب إلزامي ولا يتجاوز رصيد الطلب', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=18 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '200', note: 'رصيد' });
+  const o = (await call('POST', '/orders', { title: 'تخفيض', product_type: 'خاتم', karat: 18, material_id: mat })).data;
+  await call('POST', `/orders/${o.id}/allocate`, { source: 'vault', weight: '99.44' });
+  const v0 = await bal('vault', null, mat);
+  assert.equal((await call('POST', `/orders/${o.id}/deallocate`, { weight: '50' })).status, 400, 'السبب إلزامي');
+  assert.equal((await call('POST', `/orders/${o.id}/deallocate`, { weight: '100', note: 'x' })).status, 400, 'أكثر من رصيد الطلب');
+  assert.equal((await call('POST', `/orders/${o.id}/deallocate`, { weight: '89.44', note: 'سُجل أكثر من الفعلي' })).status, 200);
+  assert.equal(await bal('order', o.id, mat), 10);
+  assert.equal(await bal('vault', null, mat), v0 + 89.44);
+  const log = (await pool.query("select note from order_stage_log where order_id=$1 and event='note' order by id desc limit 1", [o.id])).rows[0].note;
+  assert.match(log, /تخفيض ذهب الطلب 89.44/);
+});
