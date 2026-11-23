@@ -1097,6 +1097,19 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .stmt-table .empty { text-align: center; padding: 28px; color: var(--bs-secondary-color); }
 .stmt-table tfoot td { border-top: 2px solid var(--bs-border-color); background: rgba(168, 134, 79, .08); font-weight: 700; padding: 9px 10px; }
 
+/* ضبط: بيان أضيق، أوزان أكبر، وهامش جانبي للكشف */
+.worker-stmt .stmt-sum { padding-inline: 20px; }
+.worker-stmt .stmt-table th:first-child, .worker-stmt .stmt-table td:first-child { padding-inline-start: 20px; }
+.worker-stmt .stmt-table th:last-child, .worker-stmt .stmt-table td:last-child { padding-inline-end: 20px; }
+.stmt-table .c-desc { width: 32%; max-width: 440px; }
+.stmt-table .c-desc small { max-width: 420px; }
+.stmt-table td.n { font-size: 1rem; font-weight: 600; }
+.stmt-table td.n.bal { font-size: 1.05rem; font-weight: 800; }
+.stmt-table td.n.pure { font-weight: 500; }
+.stmt-table th.n { text-align: end; }
+.stmt-table tfoot td.n { font-size: 1.05rem; }
+.stmt-print .stmt-table td.n { font-size: 12px; } .stmt-print .stmt-table td.n.bal { font-size: 12.5px; }
+
 /* كشف حساب العامل — نسخة الطباعة (A4 أفقي) */
 .stmt-print { max-width: 1100px; margin: 0 auto; padding: 18px; color: #111; background: #fff; font-size: 12px; }
 .stmt-print .sp-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #a8864f; padding-bottom: 10px; margin-bottom: 12px; }
