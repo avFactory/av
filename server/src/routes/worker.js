@@ -229,7 +229,7 @@ r.post('/orders/:id/finish', async (req, res) => {
   }));
 });
 
-r.post('/orders/:id/files', upload.array('files', 10), async (req, res) => {
+r.post('/orders/:id/files', upload.array('files', 20), async (req, res) => {
   res.json(await tx(async (db) => {
     const o = await canSeeOrder(db, req, int(req.params.id));
     const files = await registerFiles(db, req.files, req.user.id);
@@ -273,7 +273,7 @@ r.post('/orders/:id/group-advance', async (req, res) => {
 });
 
 /** صور داخلية على الطلب (فريق 3D فقط) */
-r.post('/orders/:id/internal', upload.array('files', 10), async (req, res) => {
+r.post('/orders/:id/internal', upload.array('files', 20), async (req, res) => {
   res.json(await tx((db) => addInternalImages(db, req, int(req.params.id))));
 });
 /** صور وملفات تصميم 3D على منتج (بند) في الطلب — فريق 3D فقط، ولا تظهر للعميل */

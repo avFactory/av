@@ -561,11 +561,11 @@ r.post('/:id/undeliver', requirePerm('orders.manage'), async (req, res) => {
 });
 
 /** صور داخلية على الطلب (فريق 3D فقط) — لا تظهر للعميل */
-r.post('/:id/internal', requirePerm('orders.view'), upload.array('files', 10), async (req, res) => {
+r.post('/:id/internal', requirePerm('orders.view'), upload.array('files', 20), async (req, res) => {
   res.json(await tx((db) => addInternalImages(db, req, int(req.params.id))));
 });
 
-r.post('/:id/files', requirePerm('orders.manage', 'design.manage', 'orders.advance'), upload.array('files', 10), async (req, res) => {
+r.post('/:id/files', requirePerm('orders.manage', 'design.manage', 'orders.advance'), upload.array('files', 20), async (req, res) => {
   res.json(await tx(async (db) => {
     const o = await prod.lockOrder(db, int(req.params.id));
     const kind = oneOf(req.body.kind || 'other', ['reference', 'sketch', 'model3d', 'design', 'execution', 'other'], 'نوع الملف');

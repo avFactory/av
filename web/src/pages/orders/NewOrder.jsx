@@ -120,7 +120,7 @@ export default function NewOrder() {
               <Field label="مسار الإنتاج"><Select value={it.route_id} onChange={(e) => setItem(i, { route_id: e.target.value })} placeholder="تلقائي حسب نوع المنتج" options={routeOpts} /></Field>
             </div>
             <Field label="ملاحظات" className="mt"><Textarea value={it.notes} onChange={(e) => setItem(i, { notes: e.target.value })} /></Field>
-            <div className="mt"><FilePicker label="صور المنتج (مرجع للتصنيع — لا تظهر للعميل)" value={it.images} onChange={(v) => setItem(i, { images: v })} accept="image/*" max={10} globalPaste hint="صورة القطعة أو الرسمة أو صورة من العميل — اضغط على الصورة لتكبيرها" /></div>
+            <div className="mt"><FilePicker label="صور المنتج (مرجع للتصنيع — لا تظهر للعميل)" value={it.images} onChange={(v) => setItem(i, { images: v })} accept="image/*" max={20} globalPaste hint="صورة القطعة أو الرسمة أو صورة من العميل — اضغط على الصورة لتكبيرها" /></div>
           </Card>
         )))}
         <button type="button" className="add-item-btn" onClick={addItem}>＋ إضافة منتج آخر لنفس الطلب</button>
