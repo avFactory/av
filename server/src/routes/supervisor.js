@@ -416,6 +416,15 @@ r.get('/movements', requirePerm('custody.view_all', 'inventory.view', 'reports.v
 });
 
 export const KIND_LABELS = {
+  partial_return: 'استلام جزئي من العامل',
+  custody_adjust: 'تعديل العهدة',
+  customer_gold_payment: 'سداد ذهب من العميل',
+  findings_in: 'إدخال خامات',
+  findings_issue: 'صرف خامات للعامل',
+  findings_return: 'إرجاع خامات من العامل',
+  shortage_return: 'إرجاع ذهب النواقص',
+  shortage_split: 'نقل ذهب النواقص',
+  group_merge: 'دمج ذهب بنود الطلب',
   allocate: 'تخصيص من الخزنة للطلب', customer_gold_in: 'ذهب مستلم من العميل', stock_in: 'إضافة للخزنة', stock_out: 'صرف من الخزنة',
   issue: 'تسليم للعامل', return: 'استلام من العامل', general_issue: 'عهدة عامة من الخزنة للعامل', general_return: 'إرجاع عهدة عامة للخزنة', scrap_return: 'بقايا مستردة', normal_loss: 'عجز طبيعي',
   abnormal_pending: 'عجز غير طبيعي (معلق)', abnormal_loss: 'عجز غير طبيعي', abnormal_loss_approved: 'اعتماد عجز غير طبيعي',

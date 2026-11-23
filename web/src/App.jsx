@@ -24,6 +24,7 @@ const Log = L(() => import('./pages/sup/Log.jsx'));
 const Batch = L(() => import('./pages/sup/Batch.jsx'));
 const Scan = L(() => import('./pages/sup/Scan.jsx'));
 const D3Work = L(() => import('./pages/worker/D3Work.jsx'));
+const WorkerStatementPrint = L(() => import('./pages/sup/WorkerStatementPrint.jsx'));
 const Casting = L(() => import('./pages/sup/Casting.jsx'));
 const DailyCheck = L(() => import('./pages/sup/DailyCheck.jsx'));
 const Orders = L(() => import('./pages/orders/Orders.jsx'));
@@ -112,6 +113,7 @@ export default function App() {
         <Route path="/print/batch/:id" element={S(<Batch print />)} />
         <Route path="/print/labels" element={me?.is_3d ? S(<Labels />) : S(<Labels />, ['orders.view'])} />
         <Route path="/print/invoice/:id" element={S(<InvoiceView print />)} />
+        <Route path="/print/worker-statement/:id" element={S(<WorkerStatementPrint />, ['workers.view', 'custody.issue', 'custody.receive'])} />
 
         <Route element={<Guard staff><StaffLayout /></Guard>}>
           <Route path="/sup" element={S(<SupHome />, ['custody.issue', 'custody.receive', 'custody.view_all'])} />

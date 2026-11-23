@@ -1062,14 +1062,66 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .prio-chips .chip.prio-danger.on { background: #dc3545; border-color: #dc3545; color: #fff; }
 .prio-badge { font-size: .72rem; display: inline-block; width: fit-content; align-self: flex-start; }
 
-/* كشف حساب العامل */
-.worker-stmt .stmt-table th { white-space: nowrap; font-size: .82rem; color: var(--bs-secondary-color); }
-.worker-stmt .stmt-total td { border-top: 2px solid var(--bs-border-color); background: var(--bs-tertiary-bg); }
-.worker-stmt .stmt-final td { background: rgba(168, 134, 79, .12); font-size: 1rem; padding: 12px; }
-.print-only { display: none; }
+/* كشف حساب العامل — الشاشة */
+.worker-stmt { overflow: hidden; }
+.stmt-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 14px 16px; border-bottom: 1px solid var(--bs-border-color); }
+.stmt-bar label { display: grid; gap: 2px; font-size: .78rem; color: var(--bs-secondary-color); }
+.stmt-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; padding: 14px 16px; }
+.stmt-sum > div { border: 1px solid var(--bs-border-color); border-radius: 12px; padding: 10px 12px; display: grid; gap: 2px; background: var(--bs-body-bg); }
+.stmt-sum span { font-size: .78rem; color: var(--bs-secondary-color); }
+.stmt-sum b { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.stmt-sum small { font-size: .72rem; color: var(--bs-secondary-color); }
+.stmt-sum .deb b { color: #198754; } .stmt-sum .cre b { color: #b02a37; }
+.stmt-sum .fin { background: rgba(168, 134, 79, .1); border-color: rgba(168, 134, 79, .45); }
+.stmt-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+.stmt-table th { position: sticky; top: 0; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); font-weight: 600; font-size: .74rem; padding: 8px 10px; text-align: start; white-space: nowrap; border-bottom: 1px solid var(--bs-border-color); }
+.stmt-table td { padding: 7px 10px; border-bottom: 1px solid var(--bs-border-color-translucent); vertical-align: top; }
+.stmt-table tbody tr:nth-child(even) td { background: rgba(0, 0, 0, .018); }
+.stmt-table .n { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stmt-table .c-date { white-space: nowrap; width: 1%; }
+.stmt-table .c-date span { display: block; } .stmt-table .c-date small { color: var(--bs-secondary-color); font-size: .72rem; }
+.stmt-table .c-no { white-space: nowrap; width: 1%; font-size: .74rem; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; }
+.stmt-table .c-ord { white-space: nowrap; width: 1%; font-size: .78rem; }
+.stmt-table .c-k { width: 1%; text-align: center; }
+.stmt-table .kchip { display: inline-block; min-width: 28px; padding: 0 6px; border-radius: 999px; background: rgba(168, 134, 79, .15); font-weight: 700; font-size: .75rem; }
+.stmt-table .c-desc b { font-weight: 700; }
+.stmt-table .c-desc small { display: block; color: var(--bs-secondary-color); font-size: .74rem; max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stmt-table .party { display: inline-block; margin-inline-start: 6px; padding: 0 7px; border-radius: 999px; font-size: .7rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.stmt-table .party.in { background: rgba(25, 135, 84, .1); color: #146c43; } .stmt-table .party.out { background: rgba(176, 42, 55, .08); color: #9b2230; }
+.stmt-table .party.rev { background: #eee; color: #777; }
+.stmt-table .deb { color: #198754; } .stmt-table .cre { color: #b02a37; }
+.stmt-table .bal { font-weight: 700; } .stmt-table .pure { color: var(--bs-secondary-color); }
+.stmt-table tr.r-rev td { opacity: .55; } .stmt-table tr.r-fix td { background: rgba(255, 193, 7, .06); }
+.stmt-table tr.r-open td { background: var(--bs-tertiary-bg); }
+.stmt-table .sub { color: var(--bs-secondary-color); font-size: .76rem; font-weight: 400; }
+.stmt-table .empty { text-align: center; padding: 28px; color: var(--bs-secondary-color); }
+.stmt-table tfoot td { border-top: 2px solid var(--bs-border-color); background: rgba(168, 134, 79, .08); font-weight: 700; padding: 9px 10px; }
+
+/* كشف حساب العامل — نسخة الطباعة (A4 أفقي) */
+.stmt-print { max-width: 1100px; margin: 0 auto; padding: 18px; color: #111; background: #fff; font-size: 12px; }
+.stmt-print .sp-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #a8864f; padding-bottom: 10px; margin-bottom: 12px; }
+.stmt-print .sp-brand { display: flex; gap: 10px; align-items: center; }
+.stmt-print .sp-brand img { height: 46px; filter: invert(0); }
+.stmt-print .sp-brand b { display: block; font-size: 16px; } .stmt-print .sp-brand small, .stmt-print .sp-title small { color: #666; }
+.stmt-print .sp-title { text-align: end; } .stmt-print .sp-title h1 { font-size: 20px; margin: 0; }
+.stmt-print .sp-info { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; }
+.stmt-print .sp-info > div { padding: 6px 10px; border-inline-start: 1px solid #ddd; display: grid; } .stmt-print .sp-info > div:first-child { border: 0; }
+.stmt-print .sp-info span { font-size: 10px; color: #777; } .stmt-print .sp-info b { font-size: 12.5px; }
+.stmt-print .stmt-sum { padding: 0; margin-bottom: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.stmt-print .stmt-sum > div { border-color: #ddd; padding: 6px 10px; } .stmt-print .stmt-sum b { font-size: 15px; }
+.stmt-print .stmt-table { font-size: 11px; }
+.stmt-print .stmt-table th { position: static; background: #f1ece3; color: #333; font-size: 10.5px; padding: 5px 6px; }
+.stmt-print .stmt-table td { padding: 4px 6px; border-bottom: 1px solid #e6e6e6; }
+.stmt-print .stmt-table .c-desc small { max-width: none; white-space: normal; }
+.stmt-print .sp-final { margin-top: 10px; padding: 10px 12px; border: 1px solid #a8864f; border-radius: 8px; background: #faf6ef; font-size: 13px; display: flex; flex-wrap: wrap; gap: 14px; }
+.stmt-print .sp-sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 34px; }
+.stmt-print .sp-sign div { border-top: 1px solid #999; padding-top: 6px; text-align: center; color: #555; }
+.stmt-print .sp-foot { margin-top: 18px; font-size: 9.5px; color: #888; text-align: center; }
+.stmt-print tr { break-inside: avoid; } .stmt-print thead { display: table-header-group; } .stmt-print tfoot { display: table-row-group; }
 @media print {
-  .print-only { display: block; }
-  body:has(.worker-stmt) .wk-nav, body:has(.worker-stmt) .tabs, body:has(.worker-stmt) .stats, body:has(.worker-stmt) .page-h, body:has(.worker-stmt) .sup-actions { display: none !important; }
-  .worker-stmt { border: 0 !important; box-shadow: none !important; }
-  .worker-stmt .text-success, .worker-stmt .text-danger { color: #000 !important; }
+  @page { size: A4 landscape; margin: 9mm; }
+  .stmt-print { padding: 0; max-width: none; }
+  .stmt-print .stmt-table tbody tr:nth-child(even) td { background: #fafafa; }
+  .stmt-print .deb, .stmt-print .stmt-sum .deb b { color: #146c43 !important; } .stmt-print .cre, .stmt-print .stmt-sum .cre b { color: #9b2230 !important; }
+  .stmt-print { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

@@ -3,7 +3,7 @@
 const r4 = (x) => Math.round(Number(x) * 10000) / 10000;
 
 export async function workerStatement(db, workerId, { from = null, to = null, materialId = null } = {}, labels = {}) {
-  const w = (await db.query('select id, full_name, employee_no, kind, specialty from users where id=$1', [workerId])).rows[0];
+  const w = (await db.query('select u.id, u.full_name, u.employee_no, u.kind, u.specialty, d.name as department from users u left join departments d on d.id=u.department_id where u.id=$1', [workerId])).rows[0];
   if (!w) return null;
   const mine = `((g.to_type='worker' and g.to_ref=$1) or (g.from_type='worker' and g.from_ref=$1)) and ($4::int is null or g.material_id=$4)`;
   const dir = `case when g.to_type='worker' and g.to_ref=$1 then 1 else -1 end`;
