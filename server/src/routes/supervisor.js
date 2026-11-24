@@ -366,7 +366,7 @@ async function movementsQuery(req) {
   const where = [];
   const add = (sql, v) => { params.push(v); where.push(sql.replace('?', `$${params.length}`)); };
   if (f.worker_id) add('g.worker_id = ?', int(f.worker_id));
-  if (f.order) add('o.order_no ilike ?', `%${f.order}%`);
+  if (f.order) add('g.order_id in (select id from orders where order_no ilike ?)', `%${f.order}%`);
   if (f.kind) add('g.kind = ?', String(f.kind));
   if (f.stage_id) add('g.stage_id = ?', int(f.stage_id));
   if (f.from) add('g.created_at >= ?::date', String(f.from));
@@ -378,11 +378,11 @@ async function movementsQuery(req) {
            coalesce(o.order_no, case when c.kind = 'general' then 'عهدة عامة' end) as order_no, w.full_name as worker_name, s.name as stage_name, m.name as material_name, u.full_name as user_name,
            st.settlement_no, st.status as settlement_status, st.abnormal_loss::text, st.actual_loss::text, c.custody_no, c.notes,
            exists (select 1 from gold_ledger r where r.reverses_id=g.id) as reversed
-    from gold_ledger g left join orders o on o.id=g.order_id left join users w on w.id=g.worker_id left join stages s on s.id=g.stage_id
+    from (select * from gold_ledger g ${where.length ? 'where ' + where.join(' and ') : ''} order by g.id desc limit ${Math.min(Number(f.limit) || 500, 5000)}) g
+    left join orders o on o.id=g.order_id left join users w on w.id=g.worker_id left join stages s on s.id=g.stage_id
     join materials m on m.id=g.material_id left join users u on u.id=g.created_by left join settlements st on st.id=g.settlement_id
     left join custodies c on c.id=g.custody_id
-    ${where.length ? 'where ' + where.join(' and ') : ''}
-    order by g.id desc limit ${Math.min(Number(f.limit) || 500, 5000)}`;
+    order by g.id desc`;
   return many(sql, params);
 }
 

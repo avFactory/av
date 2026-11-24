@@ -124,7 +124,10 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
   if (f.status) add('o.status = ?', String(f.status));
   if (f.stage_id) add('o.current_stage_id = ?', int(f.stage_id));
   if (f.customer_id) add('o.customer_id = ?', int(f.customer_id));
-  if (f.q) add('(o.order_no ilike ? or o.title ilike ? or c.shop_name ilike ?)', `%${f.q}%`);
+  if (f.q) add('(o.order_no ilike ? or o.cart_ref ilike ? or o.title ilike ? or c.shop_name ilike ?)', `%${f.q}%`);
+  // صفحات: الأحدث أولاً، و«تحميل المزيد» يطلب ما قبل آخر رقم ظاهر
+  if (f.before_id) add('o.id < ?', int(f.before_id));
+  const limit = Math.min(Math.max(Number(f.limit) || 500, 1), 2000);
   if (f.late) where.push("o.due_date < current_date and o.status not in ('delivered','cancelled','rejected')");
   res.json(await many(`
     select o.id, o.order_no, o.cart_ref, o.customer_id, o.title, o.status, o.quantity, o.due_date, o.created_at, o.source, o.design_status, o.stage_state,
@@ -134,7 +137,7 @@ r.get('/', requirePerm('orders.view'), async (req, res) => {
     from orders o left join customers c on c.id=o.customer_id left join stages s on s.id=o.current_stage_id
     join materials m on m.id=o.material_id left join users w on w.id=o.assigned_worker_id left join customer_branches br on br.id=o.branch_id
     ${where.length ? 'where ' + where.join(' and ') : ''}
-    order by o.id desc limit 500`, params));
+    order by o.id desc limit ${limit}`, params));
 });
 
 export async function orderDetail(db, id) {

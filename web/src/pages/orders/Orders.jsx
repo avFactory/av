@@ -30,7 +30,23 @@ export default function Orders() {
   const [sp, setSp] = useSearchParams();
   const [q, setQ] = useState('');
   const f = { status: sp.get('status') || '', stage_id: sp.get('stage_id') || '', late: sp.get('late') || '', q };
-  const { data } = useFetch(`/orders${qs(f)}`, { live: ['orders'] });
+  const PAGE = 300;
+  const { data: first } = useFetch(`/orders${qs({ ...f, limit: PAGE })}`, { live: ['orders'] });
+  // «تحميل المزيد»: صفحات أقدم تُضاف تحت الأحدث (مناسب لآلاف الطلبات)
+  const [more, setMore] = useState({ key: '', rows: [], done: false });
+  const fkey = qs(f);
+  const extra = more.key === fkey ? more.rows : [];
+  const data = first ? [...first, ...extra.filter((x) => !first.some((y) => y.id === x.id))] : null;
+  const canMore = first && first.length === PAGE && !(more.key === fkey && more.done);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const last = data[data.length - 1]?.id;
+      const r = await api.get(`/orders${qs({ ...f, limit: PAGE, before_id: last })}`);
+      setMore({ key: fkey, rows: [...extra, ...r], done: r.length < PAGE });
+    } finally { setLoadingMore(false); }
+  };
   const set = (k, v) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); setSp(n); };
   const [sel, setSel] = useState([]);
   const [open, setOpen] = useState({});
@@ -78,6 +94,12 @@ export default function Orders() {
             (g) => (can('orders.manage') && g.items.some((o) => ['pending_review', 'approved'].includes(o.status))
               ? <span onClick={(e) => e.stopPropagation()}><Btn size="sm" loading={busy} onClick={() => startAll(g)}>بدء إنتاج الطلب</Btn></span> : ''))],
         ]} /></div>
+      )}
+      {data && (
+        <div className="d-flex justify-content-between align-items-center mt-2 small text-body-secondary">
+          <span>يُعرض {data.length} بند{canMore ? ' (الأحدث أولاً)' : ''}</span>
+          {canMore && <Btn kind="ghost" loading={loadingMore} onClick={loadMore}>تحميل المزيد ↓</Btn>}
+        </div>
       )}
     </Page>
   );

@@ -317,12 +317,20 @@ r.get('/reconciliation', requirePerm('inventory.view', 'reports.view', 'custody.
   // فحص 2: لا أرصدة سالبة في أي موقع داخلي
   const negatives = await many(`select loc_type, loc_ref, m.name, balance::text from gold_balances b join materials m on m.id=b.material_id
                                 where balance < 0 and loc_type not in ('external','variance')`);
+  // فحص 4: الأرصدة الجاهزة تطابق دفتر الحركات كاملاً
+  const balanceDrift = await many(`with raw as (
+      select loc_type, loc_ref, material_id, sum(w) b from (
+        select to_type loc_type, to_ref loc_ref, material_id, weight w from gold_ledger
+        union all select from_type, from_ref, material_id, -weight from gold_ledger) x group by 1,2,3)
+    select coalesce(r.loc_type, t.loc_type) loc_type, coalesce(r.loc_ref, t.loc_ref) loc_ref, coalesce(r.material_id, t.material_id) material_id, coalesce(r.b,0)::text ledger, coalesce(t.balance,0)::text cached
+    from raw r full join gold_balance_totals t on t.loc_type=r.loc_type and t.loc_ref is not distinct from r.loc_ref and t.material_id=r.material_id
+    where coalesce(r.b,0) <> coalesce(t.balance,0)`);
   // فحص 3: معادلة كل تسوية
   const badSettlements = await many(`select settlement_no from settlements where status <> 'reversed' and returned_weight + scrap_weight + actual_loss <> weight_issued`);
   const fmt = (x) => Object.fromEntries(Object.entries(x).map(([k, v]) => [k, typeof v === 'string' && /^-?\d/.test(v) ? Number(v).toFixed(4) : v]));
   res.json({
-    perMaterial: perMaterial.map(fmt), workerCheck, negatives, badSettlements,
-    ok: workerCheck.every((w) => w.ok) && !negatives.length && !badSettlements.length && perMaterial.every((p) => Number(p.ledger_sum) === 0),
+    perMaterial: perMaterial.map(fmt), workerCheck, negatives, badSettlements, balanceDrift,
+    ok: workerCheck.every((w) => w.ok) && !negatives.length && !badSettlements.length && !balanceDrift.length && perMaterial.every((p) => Number(p.ledger_sum) === 0),
   });
 });
 

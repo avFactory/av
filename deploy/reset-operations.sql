@@ -7,12 +7,12 @@ begin;
 truncate table
   casting_tree_orders, casting_trees,
   custody_additions, custody_transfers, custody_work_log, settlements, custodies, custody_batches,
-  finding_moves, gold_ledger,
+  finding_moves, gold_ledger, gold_balance_totals,
   invoice_lines, invoices, payments,
   gold_dealer_entries, customer_submissions, customer_entries,
   design_reviews, order_files, order_stage_log, orders,
   stone_movements, gold_supplier_entries,
-  expenses, worker_advances,
+  expenses, worker_advances, worker_loss_closings, casting_daily_checks,
   inventory_movements, stock_counts,
   notifications, outbound_messages
 restart identity;

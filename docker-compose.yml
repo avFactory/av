@@ -11,6 +11,11 @@ x-logging: &logging
 services:
   db:
     image: postgres:16-alpine
+    # ضبط الأداء لحجم كبير (آلاف الطلبات وعشرات آلاف الحركات) بقيم محافظة تناسب سيرفر 2–8 جيجا
+    command: >
+      postgres -c shared_buffers=256MB -c effective_cache_size=1GB -c work_mem=8MB -c maintenance_work_mem=128MB
+      -c random_page_cost=1.1 -c effective_io_concurrency=100 -c max_connections=100 -c wal_compression=on
+    shm_size: 256mb
     environment:
       POSTGRES_DB: goldfactory
       POSTGRES_USER: goldadmin
