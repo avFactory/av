@@ -57,7 +57,8 @@ export default function Orders() {
   }, 'تم بدء إنتاج الطلب');
   const rows = data ? groupRows(data, open) : null;
   const G = (fn, gfn) => (o) => (o.group ? gfn(o) : fn(o));
-  const sum = (items, k) => items.reduce((a, o) => a + Number(o[k] || 0), 0);
+  // قيمة مشتركة لبنود الطلب (أو القيم المختلفة مفصولة)
+  const uniq = (items, k) => [...new Set(items.map((o) => o[k]).filter(Boolean))].join('، ');
   return (
     <Page title="الطلبات وأوامر الإنتاج" actions={<>
       {sel.length > 0 && <PrintLabelsBtn ids={sel}>طباعة ملصقات ({sel.length})</PrintLabelsBtn>}
@@ -87,12 +88,18 @@ export default function Orders() {
             const ks = Object.keys(c);
             return ks.length === 1 ? <StatusBadge map={STATUS} value={ks[0]} /> : <span className="d-flex flex-wrap gap-1">{ks.map((k) => <span key={k} className="small"><StatusBadge map={STATUS} value={k} /> {c[k]}</span>)}</span>;
           })],
-          ['المرحلة', G((o) => o.stage_name || '—', () => '')], ['العامل', G((o) => o.worker_name || '—', () => '')],
+          ['المرحلة', G((o) => o.stage_name || '—', (g) => uniq(g.items, 'stage_name') || '—')], ['العامل', G((o) => o.worker_name || '—', (g) => uniq(g.items, 'worker_name') || '—')],
           ['التصميم', G((o) => (o.design_status !== 'not_required' ? <Badge tone={o.design_status === 'approved' ? 'ok' : 'warn'}>{DESIGN_STATUS[o.design_status]}</Badge> : '—'), () => '')],
-          ['الوزن', G((o) => <span className="n">{fmtW(o.final_weight || o.approx_weight)}</span>, (g) => <span className="n">{fmtW(sum(g.items, 'approx_weight'))}</span>)],
+          ['الوزن', G((o) => <span className="n">{fmtW(o.final_weight || o.approx_weight)}</span>, (g) => { const w = g.items.reduce((a, o) => a + Number(o.final_weight || o.approx_weight || 0), 0); return <span className="n">{w > 0 ? fmtW(w) : '—'}</span>; })],
           ['موعد التسليم', G((o) => (o.late ? <Badge tone="bad">{fmtDate(o.due_date)}</Badge> : fmtDate(o.due_date)),
-            (g) => (can('orders.manage') && g.items.some((o) => ['pending_review', 'approved'].includes(o.status))
-              ? <span onClick={(e) => e.stopPropagation()}><Btn size="sm" loading={busy} onClick={() => startAll(g)}>بدء إنتاج الطلب</Btn></span> : ''))],
+            (g) => {
+              const due = g.items.map((o) => o.due_date).filter(Boolean).sort()[0];
+              const late = g.items.some((o) => o.late);
+              return <span className="d-grid gap-1" onClick={(e) => e.stopPropagation()}>
+                {due ? (late ? <Badge tone="bad">{fmtDate(due)}</Badge> : fmtDate(due)) : '—'}
+                {can('orders.manage') && g.items.some((o) => ['pending_review', 'approved'].includes(o.status)) && <Btn size="sm" loading={busy} onClick={() => startAll(g)}>بدء إنتاج الطلب</Btn>}
+              </span>;
+            })],
         ]} /></div>
       )}
       {data && (
