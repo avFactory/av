@@ -1156,3 +1156,9 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .row-group b, .row-group td:nth-child(3) b { white-space: nowrap; }
 td b.child-no, .row-group td b { white-space: nowrap; }
 .one-line.md { max-width: 140px; }
+
+/* منتجات المتجر: شريط التصفية والبحث */
+.prod-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; align-items: center; }
+.prod-filters .pf-q { grid-column: 1 / -1; font-size: 1.02rem; }
+.prod-filters .pf-w { display: flex; gap: 6px; }
+.prod-filters .pf-foot { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }

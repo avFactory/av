@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { COLORS, METHODS, fmtW, fmtMoney } from '../../format.js';
@@ -10,7 +11,16 @@ const AV = { available: 'متوفر', made_to_order: 'حسب الطلب', unavai
 export default function Products() {
   const { lookups } = useAuth();
   const { data, reload } = useFetch('/catalog/products');
-  const [show, setShow] = useState('all');
+  // التصفية والبحث محفوظة في الرابط (تبقى عند الرجوع أو المشاركة)
+  const [sp, setSp] = useSearchParams();
+  const flt = Object.fromEntries(['q', 'show', 'type', 'karat', 'color', 'avail', 'cat', 'img', 'wmin', 'wmax', 'sort'].map((k) => [k, sp.get(k) || '']));
+  const show = flt.show || 'all';
+  const setFlt = (patch) => { const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(patch)) { if (v) n.set(k, v); else n.delete(k); } setSp(n, { replace: true }); setLimit(100); };
+  const setShow = (v) => setFlt({ show: v === 'all' ? '' : v });
+  const [limit, setLimit] = useState(100);
+  const list = useMemo(() => filterProducts(data || [], flt), [data, sp]); // eslint-disable-line react-hooks/exhaustive-deps
+  const allTypes = useMemo(() => [...new Set((data || []).map((p) => p.product_type).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar')), [data]);
+  const anyFilter = ['q', 'type', 'karat', 'color', 'avail', 'cat', 'img', 'wmin', 'wmax'].some((k) => flt[k]);
   const [imp, setImp] = useState(null);
   const [f, setF] = useState(null);
   const [run, busy] = useAction();
@@ -59,8 +69,21 @@ export default function Products() {
       <Btn onClick={() => setF({ karats: [21], colors: ['yellow'], sizes: [], availability: 'made_to_order', active: true, labor_method: 'per_gram' })}>منتج جديد</Btn></div>}>
       <div className="chips mb-2">{[['all', `الكل (${data.length})`], ['on', `الظاهرة في المتجر (${data.filter((p) => p.active).length})`], ['off', `المخفية / المسودات (${data.filter((p) => !p.active).length})`]].map(([k, l]) => (
         <button key={k} type="button" className={`chip ${show === k ? 'on' : ''}`} onClick={() => setShow(k)}>{l}</button>))}</div>
-      <div className="card"><Table rows={data.filter((p) => show === 'all' || (show === 'on' ? p.active : !p.active))} onRow={(p) => setF({ ...p, karats: p.karats, colors: p.colors, sizes: p.sizes, files: null })} columns={[
-        ['', (p) => (p.media[0] ? <img src={fileUrl(p.media[0].path, 400)} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }} /> : null)],
+      <div className="card card-body mb-2 prod-filters">
+        <Input className="pf-q" value={flt.q} onChange={(e) => setFlt({ q: e.target.value })} placeholder="🔍 ابحث بالاسم أو رقم المنتج أو النوع أو الوصف…" />
+        <Select value={flt.type} onChange={(e) => setFlt({ type: e.target.value })} placeholder="كل الأنواع" options={allTypes.map((t) => [t, `${t} (${data.filter((p) => p.product_type === t).length})`])} />
+        <Select value={flt.cat} onChange={(e) => setFlt({ cat: e.target.value })} placeholder="كل الأصناف" options={[['gold', 'ذهب'], ['diamond', 'ألماس مخبري'], ['pearl', 'لؤلؤ'], ['stone', 'أحجار'], ['bullion', 'سبائك / جنيهات'], ['restricted', '🔒 مخصص لعملاء']]} />
+        <Select value={flt.karat} onChange={(e) => setFlt({ karat: e.target.value })} placeholder="كل العيارات" options={[['18', 'عيار 18'], ['21', 'عيار 21'], ['24', 'عيار 24']]} />
+        <Select value={flt.color} onChange={(e) => setFlt({ color: e.target.value })} placeholder="كل الألوان" options={Object.entries(COLORS)} />
+        <Select value={flt.avail} onChange={(e) => setFlt({ avail: e.target.value })} placeholder="كل حالات التوفر" options={[...Object.entries(AV), ['in_stock', 'في المخزون (كمية > 0)']]} />
+        <Select value={flt.img} onChange={(e) => setFlt({ img: e.target.value })} placeholder="الصور والبيانات" options={[['noimg', 'بدون صورة'], ['noweight', 'بدون وزن'], ['nolabor', 'بدون أجرة خاصة'], ['draft', 'مسودات مستوردة']]} />
+        <span className="pf-w"><Input inputMode="decimal" value={flt.wmin} onChange={(e) => setFlt({ wmin: e.target.value.replace(/[^\d.]/g, '') })} placeholder="وزن من" /><Input inputMode="decimal" value={flt.wmax} onChange={(e) => setFlt({ wmax: e.target.value.replace(/[^\d.]/g, '') })} placeholder="إلى (جم)" /></span>
+        <Select value={flt.sort} onChange={(e) => setFlt({ sort: e.target.value })} placeholder="الأحدث أولاً" options={[['old', 'الأقدم أولاً'], ['name', 'الاسم (أ-ي)'], ['sku', 'رقم المنتج'], ['wdesc', 'الأثقل وزناً'], ['wasc', 'الأخف وزناً'], ['stock', 'الأكثر مخزوناً']]} />
+        <div className="pf-foot"><span className="small text-body-secondary">النتائج: <b>{list.length}</b> منتج{anyFilter ? ` من ${data.filter((p) => show === 'all' || (show === 'on' ? p.active : !p.active)).length}` : ''}</span>
+          {anyFilter && <button type="button" className="btn btn-link btn-sm p-0" onClick={() => setSp(show === 'all' ? {} : { show }, { replace: true })}>✕ مسح التصفية</button>}</div>
+      </div>
+      <div className="card"><Table rows={list.slice(0, limit)} empty="لا توجد منتجات مطابقة" onRow={(p) => setF({ ...p, karats: p.karats, colors: p.colors, sizes: p.sizes, files: null })} columns={[
+        ['', (p) => (p.media[0] ? <img src={fileUrl(p.media[0].path, 400)} alt="" style={{ width: 58, height: 58, objectFit: 'cover', borderRadius: 10, background: '#fff' }} loading="lazy" /> : null)],
         ['رقم المنتج', 'sku'], ['الاسم', (p) => <><b>{p.name}</b>{isRestricted(p) && <div><Badge tone="warn">🔒 مخصص لعملاء محددين</Badge></div>}</>], ['النوع', 'product_type'], ['العيارات', (p) => p.karats.join('، ')], ['الألوان', (p) => p.colors.map((c) => COLORS[c]).join('، ')],
         ['الوزن', (p) => fmtW(p.final_weight || p.approx_weight)], ['الأجرة', (p) => (p.labor_method ? `${fmtMoney(p.labor_rate)} ${METHODS[p.labor_method]}` : 'حسب القواعد')], ['المخزون', 'stock_qty'],
         ['التوفر', (p) => AV[p.availability]],
@@ -73,6 +96,7 @@ export default function Products() {
           <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => remove(p)} title="حذف المنتج">حذف</button>
         </span>],
       ]} /></div>
+      {list.length > limit && <div className="text-center mt-2"><Btn kind="ghost" onClick={() => setLimit(limit + 100)}>عرض المزيد ({list.length - limit} متبقٍ) ↓</Btn></div>}
       <Modal open={!!imp} onClose={() => setImp(null)} title="استيراد صور منتجات كمسودات">
         {imp && <div className="d-grid gap-2">
           <div className="small text-body-secondary">ارفع ملف ZIP فيه صور المنتجات (كل صورة منتج، والصور بنفس الاسم مع _0 و _1 لنفس المنتج، أو ملف products.json). المنتجات تُضاف <b>مخفية عن المتجر</b> باسم مؤقت حتى تكمل تفاصيلها وتظهرها.</div>
@@ -224,4 +248,40 @@ function StonesSection({ f, setF }) {
       </div>
     </div>
   );
+}
+
+/** توحيد الكتابة العربية للبحث (أ/إ/آ، ى/ي، ة/ه) */
+const norm = (t) => String(t || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u0652]/g, '');
+const isRestricted0 = (p) => (p.allowed_customer_ids || []).length > 0 || (p.allowed_tier_ids || []).length > 0;
+
+/** تصفية وترتيب منتجات المتجر */
+function filterProducts(data, f) {
+  const words = norm(f.q).split(/\s+/).filter(Boolean);
+  const w = (p) => Number(p.final_weight || p.approx_weight || 0);
+  const cat = (p) => ({
+    diamond: Array.isArray(p.diamonds) && p.diamonds.length > 0, pearl: Number(p.pearl_weight) > 0, stone: Number(p.stone_weight) > 0 || Number(p.zircon_weight) > 0,
+    bullion: !!p.bullion_type, restricted: isRestricted0(p),
+    gold: !(Array.isArray(p.diamonds) && p.diamonds.length) && !(Number(p.pearl_weight) > 0) && !p.bullion_type,
+  });
+  let r = data.filter((p) => {
+    if (f.show === 'on' && !p.active) return false;
+    if (f.show === 'off' && p.active) return false;
+    if (words.length) { const hay = norm(`${p.name} ${p.sku} ${p.product_type} ${p.description || ''}`); if (!words.every((x) => hay.includes(x))) return false; }
+    if (f.type && p.product_type !== f.type) return false;
+    if (f.karat && !(p.karats || []).map(Number).includes(Number(f.karat))) return false;
+    if (f.color && !(p.colors || []).includes(f.color)) return false;
+    if (f.avail === 'in_stock' ? !(Number(p.stock_qty) > 0) : f.avail && p.availability !== f.avail) return false;
+    if (f.cat && !cat(p)[f.cat]) return false;
+    if (f.img === 'noimg' && (p.media || []).length) return false;
+    if (f.img === 'noweight' && w(p) > 0) return false;
+    if (f.img === 'nolabor' && p.labor_method) return false;
+    if (f.img === 'draft' && !/^مسودة مستوردة/.test(p.description || '')) return false;
+    if (f.wmin && w(p) < Number(f.wmin)) return false;
+    if (f.wmax && w(p) > Number(f.wmax)) return false;
+    return true;
+  });
+  const by = { old: (a, b) => a.id - b.id, name: (a, b) => a.name.localeCompare(b.name, 'ar'), sku: (a, b) => String(a.sku).localeCompare(String(b.sku)),
+    wdesc: (a, b) => w(b) - w(a), wasc: (a, b) => w(a) - w(b), stock: (a, b) => Number(b.stock_qty) - Number(a.stock_qty) }[f.sort] || ((a, b) => b.id - a.id);
+  r = [...r].sort(by);
+  return r;
 }
