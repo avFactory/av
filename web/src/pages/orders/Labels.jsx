@@ -77,7 +77,9 @@ export default function Labels() {
   if (!rows) return <Loader />;
   return (
     <div className={`labels-page${opts.h < 30 ? ' labels-sm' : ''}`} style={{ padding: 16, '--lw': `${opts.w}mm`, '--lh': `${opts.h}mm`, '--lq': `${Math.min(27, opts.h - (opts.h < 30 ? 3 : 4))}mm` }}>
-      {roll && !zebra && <style>{'@media print { @page { size: ' + opts.w + 'mm ' + opts.h + 'mm; margin: 0; } html, body { margin: 0 !important; padding: 0 !important; } .labels-page { padding: 0 !important; } .labels { display: block !important; } .label { border: 0 !important; border-radius: 0 !important; } .label:not(:last-child) { break-after: page; page-break-after: always; } }'}</style>}
+      {/* بدون هوامش للصفحة: لا يضيف المتصفح التاريخ والعنوان والرابط حول الملصق (من أي جهاز، حتى بدون إعداد Zebra) */}
+      <style>{'@media print { @page { margin: 0; } html, body { margin: 0 !important; } }'}</style>
+      {roll && (!zebra || !cfg.device || sp.get('embed') === '1') && <style>{'@media print { @page { size: ' + opts.w + 'mm ' + opts.h + 'mm; margin: 0; } html, body { margin: 0 !important; padding: 0 !important; } .labels-page { padding: 0 !important; } .labels { display: block !important; } .label { border: 0 !important; border-radius: 0 !important; } .label:not(:last-child) { break-after: page; page-break-after: always; } }'}</style>}
       <div className="no-print mb d-grid gap-2">
         <div className="btn-group" role="group" style={{ justifySelf: 'start' }}>
           <button type="button" className={`btn ${!zebra ? 'btn-dark' : 'btn-outline-secondary'}`} onClick={() => setCfg((c) => ({ ...c, mode: 'browser' }))}>طباعة عادية (المتصفح)</button>
