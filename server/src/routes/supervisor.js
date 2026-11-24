@@ -408,7 +408,17 @@ r.get('/workers/:id/statement.xlsx', requirePerm('workers.view', 'custody.issue'
   await sendXlsx(res, `كشف حساب ${st.worker.full_name}`, [
     ['التاريخ', (x) => (x.created_at ? new Date(x.created_at).toISOString().slice(0, 16).replace('T', ' ') : '')], ['رقم الحركة', 'movement_no'], ['البيان', 'label'], ['الطرف', 'party'],
     ['الطلب', 'order_no'], ['العيار', 'material_name'], ['مدين (له)', (x) => n(x.debit)], ['دائن (منه)', (x) => n(x.credit)], ['الرصيد', (x) => n(x.balance)], ['الرصيد صافي 24', (x) => n(x.balance_pure)],
-  ], rows, `worker-statement-${st.worker.employee_no || st.worker.id}.xlsx`);
+  ], rows, `worker-statement-${st.worker.employee_no || st.worker.id}.xlsx`, {
+    info: [
+      [st.worker.kind === 'machine' ? 'الماكينة' : 'العامل', st.worker.full_name],
+      ['الرقم', st.worker.employee_no || '—'],
+      ['التخصص / القسم', [st.worker.specialty, st.worker.department].filter(Boolean).join(' · ') || '—'],
+      ['الفترة', st.from || st.to ? `${st.from || 'البداية'} — ${st.to || 'اليوم'}` : 'كل الفترات'],
+      ['الرصيد النهائي', `${st.totals.balances.map((b) => `${Number(b.weight).toFixed(3)} جم ${b.name}`).join(' · ') || '0.000'} = ${Number(st.totals.balance_pure).toFixed(3)} جم صافي عيار 24`],
+    ],
+    widths: [18, 18, 34, 22, 18, 14, 14, 14, 14, 16],
+    downloadName: `كشف حساب ${st.worker.full_name}${st.worker.employee_no ? ` ${st.worker.employee_no}` : ''}.xlsx`,
+  });
 });
 
 r.get('/movements', requirePerm('custody.view_all', 'inventory.view', 'reports.view'), async (req, res) => {

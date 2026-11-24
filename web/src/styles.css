@@ -1130,6 +1130,7 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
 .stmt-print .sp-info { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; }
 .stmt-print .sp-info > div { padding: 6px 10px; border-inline-start: 1px solid #ddd; display: grid; } .stmt-print .sp-info > div:first-child { border: 0; }
 .stmt-print .sp-info span { font-size: 10px; color: #777; } .stmt-print .sp-info b { font-size: 12.5px; }
+.stmt-print .sp-info > div:first-child b { font-size: 20px; line-height: 1.2; }
 .stmt-print .stmt-sum { padding: 0; margin-bottom: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .stmt-print .stmt-sum > div { border-color: #ddd; padding: 6px 10px; } .stmt-print .stmt-sum b { font-size: 15px; }
 .stmt-print .stmt-table { font-size: 11px; }
