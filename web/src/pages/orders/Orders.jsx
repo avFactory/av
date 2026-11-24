@@ -77,18 +77,18 @@ export default function Orders() {
             (g) => { const ids = g.items.map((o) => o.id); const all = ids.every((i) => sel.includes(i)); return <input type="checkbox" checked={all} onClick={(e) => e.stopPropagation()} onChange={(e) => setSel((s) => (e.target.checked ? [...new Set([...s, ...ids])] : s.filter((x) => !ids.includes(x))))} />; })],
           ['', G((o) => (o.thumb ? <img src={fileUrl(o.thumb, 400)} alt="" className="order-thumb" loading="lazy" /> : <span className="order-thumb empty" aria-hidden="true">◇</span>),
             (g) => { const t = g.items.find((o) => o.thumb)?.thumb; return t ? <img src={fileUrl(t, 400)} alt="" className="order-thumb" loading="lazy" /> : <span className="order-thumb empty" aria-hidden="true">◇</span>; })],
-          ['رقم الطلب', G((o) => <b className={o.child ? 'child-no' : ''}>{o.child && <span aria-hidden="true">↳ </span>}{o.order_no}</b>,
-            (g) => <span className="d-inline-flex align-items-center gap-2"><span className="grp-caret" aria-hidden="true">{g.open ? '▾' : '◂'}</span><b>{g.ref}</b><Badge tone="gold">{g.items.length} بنود</Badge></span>)],
-          ['الوصف', G((o) => o.title, (g) => <span className="small">{g.items.map((o) => `${o.title} ×${o.quantity}`).join('، ')}</span>)],
-          ['العميل', G((o) => (o.shop_name ? <>{o.shop_name}{o.branch_name && <div className="small text-body-secondary">{o.branch_name}</div>}</> : <span className="muted">داخلي</span>),
-            (g) => (g.items[0].shop_name ? <>{g.items[0].shop_name}{g.items[0].branch_name && <div className="small text-body-secondary">{g.items[0].branch_name}</div>}</> : <span className="muted">داخلي</span>))],
-          ['المادة', G((o) => o.material_name, (g) => [...new Set(g.items.map((o) => o.material_name))].join('، '))],
+          ['رقم الطلب', G((o) => <b className={`text-nowrap ${o.child ? 'child-no' : ''}`}>{o.child && <span aria-hidden="true">↳ </span>}{o.order_no}</b>,
+            (g) => <span className="d-inline-flex align-items-center gap-2"><span className="grp-caret" aria-hidden="true">{g.open ? '▾' : '◂'}</span><b className="text-nowrap">{g.ref}</b><Badge tone="gold">{g.items.length} بنود</Badge></span>)],
+          ['الوصف', G((o) => <span className="one-line" title={o.title}>{o.title}</span>, (g) => { const t = g.items.map((o) => `${o.title} ×${o.quantity}`).join('، '); return <span className="one-line small" title={t}>{t}</span>; })],
+          ['العميل', G((o) => (o.shop_name ? <span className="one-line md" title={`${o.shop_name}${o.branch_name ? ` — ${o.branch_name}` : ''}`}>{o.shop_name}{o.branch_name && <span className="small text-body-secondary"> · {o.branch_name}</span>}</span> : <span className="muted">داخلي</span>),
+            (g) => (g.items[0].shop_name ? <span className="one-line md" title={`${g.items[0].shop_name}${g.items[0].branch_name ? ` — ${g.items[0].branch_name}` : ''}`}>{g.items[0].shop_name}{g.items[0].branch_name && <span className="small text-body-secondary"> · {g.items[0].branch_name}</span>}</span> : <span className="muted">داخلي</span>))],
+          ['المادة', G((o) => <span className="one-line sm" title={o.material_name}>{o.material_name}</span>, (g) => { const t = [...new Set(g.items.map((o) => o.material_name))].join('، '); return <span className="one-line sm" title={t}>{t}</span>; })],
           ['الحالة', G((o) => <StatusBadge map={STATUS} value={o.status} />, (g) => {
             const c = {}; g.items.forEach((o) => { c[o.status] = (c[o.status] || 0) + 1; });
             const ks = Object.keys(c);
             return ks.length === 1 ? <StatusBadge map={STATUS} value={ks[0]} /> : <span className="d-flex flex-wrap gap-1">{ks.map((k) => <span key={k} className="small"><StatusBadge map={STATUS} value={k} /> {c[k]}</span>)}</span>;
           })],
-          ['المرحلة', G((o) => o.stage_name || '—', (g) => uniq(g.items, 'stage_name') || '—')], ['العامل', G((o) => o.worker_name || '—', (g) => uniq(g.items, 'worker_name') || '—')],
+          ['المرحلة', G((o) => <span className="one-line sm" title={o.stage_name || ''}>{o.stage_name || '—'}</span>, (g) => <span className="one-line sm" title={uniq(g.items, 'stage_name')}>{uniq(g.items, 'stage_name') || '—'}</span>)], ['العامل', G((o) => o.worker_name || '—', (g) => uniq(g.items, 'worker_name') || '—')],
           ['التصميم', G((o) => (o.design_status !== 'not_required' ? <Badge tone={o.design_status === 'approved' ? 'ok' : 'warn'}>{DESIGN_STATUS[o.design_status]}</Badge> : '—'), () => '')],
           ['الوزن', G((o) => <span className="n">{fmtW(o.final_weight || o.approx_weight)}</span>, (g) => { const w = g.items.reduce((a, o) => a + Number(o.final_weight || o.approx_weight || 0), 0); return <span className="n">{w > 0 ? fmtW(w) : '—'}</span>; })],
           ['موعد التسليم', G((o) => (o.late ? <Badge tone="bad">{fmtDate(o.due_date)}</Badge> : fmtDate(o.due_date)),

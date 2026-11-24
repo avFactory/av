@@ -1149,3 +1149,10 @@ tr.row-current td { background: color-mix(in srgb, var(--gold-soft, #f3ead9) 60%
   .stmt-print .deb, .stmt-print .stmt-sum .deb b { color: #146c43 !important; } .stmt-print .cre, .stmt-print .stmt-sum .cre b { color: #9b2230 !important; }
   .stmt-print { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* قائمة الطلبات: الوصف والمادة والمرحلة سطر واحد (والباقي …) حتى لا تكبر الصفوف */
+.one-line { display: block; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.one-line.sm { max-width: 110px; }
+.row-group b, .row-group td:nth-child(3) b { white-space: nowrap; }
+td b.child-no, .row-group td b { white-space: nowrap; }
+.one-line.md { max-width: 140px; }
