@@ -258,6 +258,10 @@ a.stat:hover { border-color: var(--gold); color: inherit; }
   .shell { display: block; }
   .page { padding: 0; max-width: none; }
   .card { box-shadow: none; border-color: #ccc; break-inside: avoid; }
+  /* البطاقات التي فيها جداول طويلة تُقسم بين الصفحات (وإلا انتقل الجدول كاملاً للصفحة التالية وبقيت الأولى فارغة) */
+  .card:has(table), .card:has(.table-responsive), .table-responsive { break-inside: auto; overflow: visible !important; }
+  table thead { display: table-header-group; }
+  table tr { break-inside: avoid; }
   .table th { background: #f1f1f1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   a { text-decoration: none; }
 }
@@ -1167,3 +1171,11 @@ td b.child-no, .row-group td b { white-space: nowrap; }
 .login-or { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.55); font-size: .85rem; margin: 2px 0; }
 .login-or::before, .login-or::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,.18); }
 .login-bio { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; }
+
+/* طباعة سجل العمليات: ورقة أفقية وخط أصغر، والرقم والتاريخ بلا التفاف */
+@media print {
+  body:has(.log-table) { font-size: 10px; }
+  .log-table table td, .log-table table th { padding: 3px 5px !important; }
+  .log-table table td:nth-child(1), .log-table table td:nth-child(2), .log-table table td:nth-child(7) { white-space: nowrap; }
+}
+

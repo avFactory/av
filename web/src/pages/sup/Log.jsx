@@ -24,7 +24,7 @@ export default function Log() {
         <div className="hrow gap" style={{ alignSelf: 'end' }}><Btn type="submit">تطبيق</Btn><Btn type="button" kind="ghost" onClick={() => { const e = { worker_id: '', order: '', kind: '', stage_id: '', from: '', to: '' }; setF(e); setApplied(e); }}>مسح</Btn></div>
       </form>
       {!data ? <Loader /> : (
-        <div className="card"><Table rows={data} rowClass={(m) => (m.reversed || m.kind === 'reversal' ? 'row-warn' : '')} columns={[
+        <div className="card log-table"><style>{'@media print { @page { size: A4 landscape; margin: 8mm; } }'}</style><Table rows={data} rowClass={(m) => (m.reversed || m.kind === 'reversal' ? 'row-warn' : '')} columns={[
           ['الحركة', 'movement_no'], ['التاريخ', (m) => fmtDT(m.created_at)], ['النوع', (m) => KINDS[m.kind] || m.kind], ['الطلب', 'order_no'], ['العامل', 'worker_name'],
           ['المرحلة', 'stage_name'], ['المادة', 'material_name'], ['الوزن', (m) => <span className="n">{fmtW(m.weight, 4)}</span>],
           ['من → إلى', (m) => <span className="small">{LOCS[m.from_type]} ← {LOCS[m.to_type]}</span>],
