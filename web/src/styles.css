@@ -1179,3 +1179,12 @@ td b.child-no, .row-group td b { white-space: nowrap; }
   .log-table table td:nth-child(1), .log-table table td:nth-child(2), .log-table table td:nth-child(7) { white-space: nowrap; }
 }
 
+
+/* حاسبة الزركون */
+.zc-table th { white-space: nowrap; font-weight: 600; }
+.zc-table td { vertical-align: middle; }
+.zc-table input { min-width: 90px; text-align: left; font-size: 1.05rem; }
+.zc-out { font-size: 1.1rem; font-weight: 600; white-space: nowrap; }
+.zc-total { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 16px 20px; border-top: 3px double var(--bs-body-color); font-size: 1.25rem; font-weight: 700; }
+.zc-total b { font-size: 1.6rem; }
+@media print { .zc-table input { border: 0; padding: 0; } }

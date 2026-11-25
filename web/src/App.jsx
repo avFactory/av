@@ -27,6 +27,7 @@ const D3Work = L(() => import('./pages/worker/D3Work.jsx'));
 const WorkerStatementPrint = L(() => import('./pages/sup/WorkerStatementPrint.jsx'));
 const Casting = L(() => import('./pages/sup/Casting.jsx'));
 const DailyCheck = L(() => import('./pages/sup/DailyCheck.jsx'));
+const ZirconCalc = L(() => import('./pages/sup/ZirconCalc.jsx'));
 const Orders = L(() => import('./pages/orders/Orders.jsx'));
 const OrderDetail = L(() => import('./pages/orders/OrderDetail.jsx'));
 const NewOrder = L(() => import('./pages/orders/NewOrder.jsx'));
@@ -126,6 +127,7 @@ export default function App() {
           <Route path="/sup/batch/:id" element={S(<Batch />)} />
           <Route path="/sup/scan" element={S(<Scan />, ['scan.use', 'orders.view'])} />
           <Route path="/sup/casting" element={S(<Casting />, ['custody.issue', 'custody.receive', 'orders.advance'])} />
+          <Route path="/sup/zircon" element={S(<ZirconCalc />, ['custody.issue', 'custody.receive', 'orders.advance'])} />
           <Route path="/sup/daily-check" element={S(<DailyCheck />, ['custody.issue', 'custody.receive', 'orders.advance'])} />
           <Route path="/orders" element={S(<Orders />, ['orders.view'])} />
           <Route path="/orders/new" element={S(<NewOrder />, ['orders.manage'])} />
