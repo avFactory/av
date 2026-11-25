@@ -36,7 +36,7 @@ export default function Workers() {
         ['الذهب في عهدته (جم)', (w) => <span className="n">{fmtW(w.open_weight)}</span>, { className: 'n' }],
         ['الصافي عيار 24 (جم)', (w) => <span className="n fw-semibold">{fmtW(w.open_pure)}</span>, { className: 'n' }],
         ['عجز معلق في حسابه', (w) => (Number(w.held_loss) ? <span className={`n ${Number(w.held_loss) > 0 ? 'text-danger' : ''}`}>{fmtW(w.held_loss)}</span> : '—'), { className: 'n' }],
-        ['بانتظار القبول', (w) => (w.rejected_count ? <Badge tone="bad">{w.rejected_count} مرفوض</Badge> : w.pending_ack ? <Badge tone="warn">{w.pending_ack}</Badge> : '—')],
+        ['بانتظار القبول', (w) => (w.rejected_count ? <Badge tone="bad">{w.rejected_count} مرفوض</Badge> : w.pending_ack ? <Badge tone="warn">{w.pending_ack} · <span dir="ltr">{fmtW(w.pending_weight)}</span> جم</Badge> : '—')],
         ['تحت المراجعة', (w) => (w.review_count ? <Badge tone="bad">{w.review_count}</Badge> : '—')],
       ]} /></div>
     </Page>

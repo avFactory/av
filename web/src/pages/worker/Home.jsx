@@ -14,11 +14,17 @@ export default function WHome() {
   const { data: held } = useFetch('/w/held', { live: ['settlements', 'gold_ledger'] });
   if (!data) return <Loader />;
   const { custodies, tasks } = data;
-  const total = custodies.filter((c) => c.status === 'open').reduce((s, c) => s + Number(c.weight_issued), 0);
+  // ذهبي = العهد التي قبلتها فقط؛ المسلَّم لي ولم أقبله بعد يظهر منفصلاً ولا يُحسب عليّ
+  const open = custodies.filter((c) => c.status === 'open');
+  const total = open.filter((c) => c.worker_ack_at).reduce((s, c) => s + Number(c.weight_issued), 0);
+  const pending = open.filter((c) => !c.worker_ack_at).reduce((s, c) => s + Number(c.weight_issued), 0);
   return (
     <div className="wk-body">
       <div className="card card-body">
-        <div className="hrow between"><span className="muted">{t('الذهب في عهدتي')}</span><b dir="ltr" style={{ fontSize: '1.4rem' }}>{fmtW(total)} {t('جم')}</b></div>
+        <div className="hrow between"><span className="muted">{t('الذهب في عهدتي')}</span><b dir="ltr" data-w="mine" style={{ fontSize: '1.4rem' }}>{fmtW(total)} {t('جم')}</b></div>
+        {pending > 0 && (
+          <div className="hrow between small mt-2 pt-2 border-top"><span className="text-warning">{t('بانتظار قبولك (لا يُحسب عليك قبل القبول)')}</span><b dir="ltr" data-w="pending">{fmtW(pending)} {t('جم')}</b></div>
+        )}
         {Number(held?.held) !== 0 && held && (
           <Link to="/w/losses" className="hrow between small mt-2 pt-2 border-top" style={{ color: 'inherit', textDecoration: 'none' }}>
             <span className={Number(held.held) > 0 ? 'text-danger' : ''}>{t('عجز الشهر في حسابي (يُثبَّت نهاية الشهر)')}</span><b dir="ltr">{fmtW(held.held)} {t('جم')}</b>

@@ -105,7 +105,7 @@ export async function moveToShortage(db, req, orderId, body) {
       const avail = Number(custody.weight_issued) - Number(custody.weight_used);
       if (Number(weight) > avail + 1e-9) throw bad(`الوزن أكبر من المتبقي في عهدة العامل (${avail.toFixed(3)} جم)`);
       await db.query('update custodies set weight_used = weight_used + $2, pieces = greatest(0, pieces - $3) where id=$1', [custody.id, weight, qty]);
-      await ledger.post(db, { kind: 'shortage_return', material_id: target.material_id, weight, from: ['worker', custody.worker_id], to: ['order', target.id], order_id: target.id, custody_id: custody.id, worker_id: custody.worker_id, stage_id: custody.stage_id, reason: `سحب ${qty} قطعة للنواقص: ${reason}`, user_id: req.user.id });
+      await ledger.post(db, { kind: 'shortage_return', material_id: target.material_id, weight, from: [custody.worker_ack_at ? 'worker' : 'transit', custody.worker_id], to: ['order', target.id], order_id: target.id, custody_id: custody.id, worker_id: custody.worker_id, stage_id: custody.stage_id, reason: `سحب ${qty} قطعة للنواقص: ${reason}`, user_id: req.user.id });
       await logStage(db, src, custody.stage_id, 'note', req.user.id, `سحب ${qty} قطعة (${weight} جم) من عهدة العامل للنواقص → ${newNo}`, false, custody.worker_id);
       await notifyUsers(db, [custody.worker_id], { kind: 'custody', title: `سحب ${qty} قطعة (${weight} جم) من عهدتك للنواقص`, body: `${item.order_no}: ${reason}`, link: '/w' });
     } else {

@@ -33,7 +33,8 @@ r.get('/summary', SUP, async (_req, res) => {
       (select count(*) from custodies where status='open' and worker_ack_at is null)::int as pending_ack,
       (select count(*) from custodies where status='open' and worker_ack_at is null and worker_rejected_at is not null)::int as rejected,
       (select count(*) from settlements where status in ('pending_review','investigating'))::int as abnormal,
-      (select coalesce(sum(weight_issued),0) from custodies where status='open')::text as with_workers_weight,
+      (select coalesce(sum(weight_issued - weight_used),0) from custodies where status='open' and worker_ack_at is not null)::text as with_workers_weight,
+      (select coalesce(sum(weight_issued - weight_used),0) from custodies where status='open' and worker_ack_at is null)::text as pending_weight,
       (select count(distinct worker_id) from custodies where status='open')::int as active_workers`);
   res.json(row);
 });
@@ -64,9 +65,11 @@ r.get('/workers', requirePerm('workers.view', 'custody.issue', 'custody.receive'
       -- وزن العهد/الطلبات المنتهية فقط (بانتظار الاستلام)
       (select coalesce(sum(c.weight_issued - c.weight_used),0) from custodies c where c.worker_id=u.id and c.status='open' and c.work_state='finished')::numeric(16,4)::text as finished_weight,
       (select string_agg(coalesce(o.order_no, 'عهدة عامة'), '، ' order by c.finished_at) from custodies c left join orders o on o.id=c.order_id where c.worker_id=u.id and c.status='open' and c.work_state='finished') as finished_orders,
-      (select coalesce(sum(weight_issued),0) from custodies c where c.worker_id=u.id and c.status='open')::text as open_weight,
+      -- ذهب العامل = العهد التي قبلها فقط؛ غير المقبولة تظهر منفصلة (بانتظار قبوله)
+      (select coalesce(sum(c.weight_issued - c.weight_used),0) from custodies c where c.worker_id=u.id and c.status='open' and c.worker_ack_at is not null)::numeric(16,4)::text as open_weight,
+      (select coalesce(sum(c.weight_issued - c.weight_used),0) from custodies c where c.worker_id=u.id and c.status='open' and c.worker_ack_at is null)::numeric(16,4)::text as pending_weight,
       -- الذهب الصافي (ما يعادله عيار 24) = الوزن × العيار ÷ 24
-      (select coalesce(sum(c.weight_issued * m.karat / 24.0),0) from custodies c join materials m on m.id=c.material_id where c.worker_id=u.id and c.status='open')::numeric(16,4)::text as open_pure,
+      (select coalesce(sum((c.weight_issued - c.weight_used) * m.karat / 24.0),0) from custodies c join materials m on m.id=c.material_id where c.worker_id=u.id and c.status='open' and c.worker_ack_at is not null)::numeric(16,4)::text as open_pure,
       (select count(*) from settlements s join custodies c on c.id=s.custody_id where c.worker_id=u.id and s.status in ('pending_review','investigating'))::int as review_count,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.worker_ack_at is null)::int as pending_ack,
       (select count(*) from custodies c where c.worker_id=u.id and c.status='open' and c.worker_ack_at is null and c.worker_rejected_at is not null)::int as rejected_count,
@@ -428,6 +431,8 @@ r.get('/movements', requirePerm('custody.view_all', 'inventory.view', 'reports.v
 export const KIND_LABELS = {
   partial_return: 'استلام جزئي من العامل',
   custody_adjust: 'تعديل العهدة',
+  custody_accept: 'قبول العامل للعهدة',
+  custody_pending: 'عهدة بانتظار قبول العامل',
   customer_gold_payment: 'سداد ذهب من العميل',
   findings_in: 'إدخال خامات',
   findings_issue: 'صرف خامات للعامل',

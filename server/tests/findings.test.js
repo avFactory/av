@@ -20,6 +20,8 @@ const call = async (method, path, body) => {
 const n = (x) => Number(Number(x).toFixed(4));
 const bal = async (type, ref, mat) => n((await pool.query('select coalesce(sum(balance),0) b from gold_balances where loc_type=$1 and loc_ref is not distinct from $2 and material_id=$3', [type, ref, mat])).rows[0].b);
 // عجز الشهر المعلق في حساب العامل (لم يُثبَّت بإقفال الشهر)
+// قبول العامل للعهدة (يدخل الذهب حسابه عند القبول فقط)
+const ack = (id) => pool.query('update custodies set worker_ack_at=now() where id=$1', [id]);
 const heldOf = async (w, mat) => n((await pool.query(`select coalesce(sum(st.actual_loss - coalesce(st.recovered_weight,0)),0) h from settlements st join custodies c on c.id=st.custody_id where c.worker_id=$1 and c.material_id=$2 and st.loss_held and st.loss_fixed_at is null and st.status <> 'reversed'`, [w, mat])).rows[0].h);
 
 before(async () => {
@@ -45,7 +47,11 @@ test('خامات المصنع: سلسال 1 جم يُضاف على طلب 5 جم
   assert.equal(iss.status, 200, JSON.stringify(iss.data));
   const fc = iss.data.custodies[0].custody_id;
   assert.equal(await bal('findings', f.id, mat), 7, 'نقصت الخامات');
-  assert.equal(await bal('worker', w, mat), 3, 'أصبحت ذهباً لدى العامل');
+  assert.equal(await bal('worker', w, mat), 0, 'لا يدخل حساب العامل قبل قبوله');
+  assert.equal(await bal('transit', w, mat), 3, 'بانتظار قبوله');
+  await ack(fc);
+  assert.equal(await bal('worker', w, mat), 3, 'أصبحت ذهباً لدى العامل بعد القبول');
+  assert.equal(await bal('transit', w, mat), 0);
   assert.equal((await call('POST', '/findings/issue', { worker_id: w, items: [{ finding_id: f.id, pieces: 1, weight: '50' }] })).status, 400, 'لا صرف أكثر من الرصيد');
   // طلب: بعد الصب 5 جم يُسلّم للعامل لإضافة سلسال
   await call('POST', '/inventory/gold/in', { material_id: mat, weight: '100', note: 'رصيد' });
@@ -54,6 +60,7 @@ test('خامات المصنع: سلسال 1 جم يُضاف على طلب 5 جم
   for (let i = 0; i < 6 && !d.order.handles_gold; i++) { await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'اختبار' }); d = (await call('GET', `/orders/${o.id}`)).data; }
   await call('POST', `/admin/stages/${d.order.current_stage_id}/rate`, { rate_percent: '0', note: 'x' });
   const ic = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: o.id, weight: '5' }] })).data.custodies[0].id;
+  await ack(ic);
   assert.equal(await bal('worker', w, mat), 8);
   // عهد الخامات لدى العامل لاختيارها عند الاستلام
   const wf = (await call('GET', `/findings/worker/${w}`)).data;
@@ -210,6 +217,7 @@ test('الطلب متعدد المنتجات قطعة واحدة: صرف بوز�
   assert.equal(iss.data.custodies.length, 1);
   const cus = iss.data.custodies[0];
   assert.deepEqual([cus.order_id, Number(cus.weight_issued), cus.pieces], [a.id, 10, 5]);
+  await ack(cus.id);
   assert.equal(await bal('worker', w, mat), 10);
   assert.equal((await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: a.id, weight: '1' }, { order_id: b.id, weight: '1' }] })).status, 400, 'لا تكرار للطلب');
   // استلام بوزن واحد ← البندان ينتقلان معاً
@@ -243,6 +251,7 @@ test('النواقص وسحب الطلب من العامل', async () => {
   // الطلب كامل لدى العامل بوزن 30
   const cus = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: ring.id, weight: '30' }] })).data.custodies[0];
   assert.equal(cus.pieces, 30);
+  await ack(cus.id);
   // اتضح عدم توفر الروبتشن: سحب 10 عقود روبتشن (8 جم) من العامل إلى النواقص
   assert.equal((await call('POST', `/orders/${rob.id}/shortage`, { kind: 'chain', weight: '8' })).status, 400, 'البيان إلزامي');
   const sh = await call('POST', `/orders/${rob.id}/shortage`, { kind: 'chain', weight: '8', reason: 'لا يوجد روبتشن 45 سم' });
@@ -288,13 +297,15 @@ test('النواقص وسحب الطلب من العامل', async () => {
   assert.equal(p.status, 200, JSON.stringify(p.data));
   assert.equal((await stage(ring.id)).quantity, 6);
   assert.equal((await stage(p.data.order_id)).quantity, 4);
-  assert.equal(await bal('worker', w2, mat), 17);
+  assert.equal(await bal('worker', w2, mat), 0, 'لم يقبل بعد: لا يمس حسابه');
+  assert.equal(await bal('transit', w2, mat), 17, 'السحب من الذهب بانتظار قبوله');
   // سحب الطلب من العامل (غائب): وزن وسبب، والطلب يبقى في مرحلته بدون عامل
   const before = (await stage(ring.id)).current_stage_id;
   assert.equal((await call('POST', `/sup/custody/${cus2.id}/withdraw`, { returned_weight: '17' })).status, 400, 'السبب إلزامي');
   const wd = await call('POST', `/sup/custody/${cus2.id}/withdraw`, { returned_weight: '17', reason: 'العامل غائب' });
   assert.equal(wd.status, 200, JSON.stringify(wd.data));
   assert.equal(await bal('worker', w2, mat), 0);
+  assert.equal(await bal('transit', w2, mat), 0, 'السحب أنهى الانتظار');
   assert.equal((await stage(ring.id)).current_stage_id, before, 'لم ينتقل');
   assert.equal((await pool.query('select assigned_worker_id from orders where id=$1', [ring.id])).rows[0].assigned_worker_id, null);
 });
@@ -402,11 +413,14 @@ test('مرحلة الجودة يديرها عاملها: تسليم تلقائي
   assert.ok(c, 'سُلِّم تلقائياً لوليد');
   assert.equal(c.worker_closes, true);
   assert.equal(Number(c.weight_issued), 10);
-  assert.equal(await bal('worker', id, mat), 10);
+  assert.equal(await bal('worker', id, mat), 0, 'قبل القبول لا يدخل حسابه');
+  assert.equal(await bal('transit', id, mat), 10);
   // القبول بوزن الميزان
   assert.equal((await W('POST', `/w/custody/${c.id}/ack`, {})).status, 400, 'الوزن إلزامي');
   assert.equal((await W('POST', `/w/custody/${c.id}/ack`, { weight: '9.5' })).status, 400, 'وزن مختلف ← يرفض ويبلغ المشرف');
   assert.equal((await W('POST', `/w/custody/${c.id}/ack`, { weight: '10' })).status, 200);
+  assert.equal(await bal('worker', id, mat), 10, 'دخل حسابه بالقبول');
+  assert.equal(await bal('transit', id, mat), 0);
   await W('POST', `/w/custody/${c.id}/start`, {});
   assert.equal((await W('POST', `/w/custody/${c.id}/finish`, {})).status, 400, 'الوزن النهائي إلزامي');
   const fin = await W('POST', `/w/custody/${c.id}/finish`, { weight: '9.95' });
@@ -432,6 +446,7 @@ test('استلام جزء من عهدة العامل للمشرف: يعود لم
   const st = (await pool.query('select current_stage_id from orders where id=$1', [o.id])).rows[0].current_stage_id;
   await call('POST', `/admin/stages/${st}/rate`, { rate_percent: '0', note: 'x' });
   const cus = (await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: o.id, weight: '10' }] })).data.custodies[0];
+  await ack(cus.id);
   assert.equal((await call('POST', `/sup/custody/${cus.id}/partial-return`, { weight: '10' })).status, 400, 'الكل ← استلام كامل');
   assert.equal((await call('POST', `/sup/custody/${cus.id}/partial-return`, { weight: '0' })).status, 400);
   const pr = await call('POST', `/sup/custody/${cus.id}/partial-return`, { weight: '3', note: 'ذهب زائد' });
@@ -454,7 +469,8 @@ test('استلام جزء من عهدة العامل للمشرف: يعود لم
   const gc = (await pool.query("select id from custodies where worker_id=$1 and kind='general' and status='open'", [w])).rows[0].id;
   assert.equal((await call('POST', `/sup/custody/${gc}/partial-return`, { weight: '2' })).status, 200);
   assert.equal(await bal('vault', null, mat), v0 - 3);
-  assert.equal(+(await bal('worker', w, mat) - await heldOf(w, mat)).toFixed(4), 3);
+  assert.equal(+(await bal('worker', w, mat) - await heldOf(w, mat)).toFixed(4), 0, 'لم يقبل العهدة العامة بعد');
+  assert.equal(await bal('transit', w, mat), 3, 'الجزء خرج من الانتظار لا من حسابه');
   // حركة مسجلة في الدفتر
   assert.ok((await pool.query("select 1 from gold_ledger where kind='partial_return' and custody_id=$1", [gc])).rowCount);
 });
@@ -520,7 +536,8 @@ test('تعديل العهدة المفتوحة للمدير فقط: قبل وب�
   const v0 = await bal('vault', null, mat);
   const e1 = await call('PUT', `/sup/custodies/${cus.id}`, { gross_weight: '12', reason: 'خطأ وزن' });
   assert.equal(e1.status, 200, JSON.stringify(e1.data));
-  assert.equal(await bal('worker', w, mat), 12);
+  assert.equal(await bal('worker', w, mat), 0, 'قبل القبول لا شيء في حسابه');
+  assert.equal(await bal('transit', w, mat), 12, 'المعدّل بانتظار قبوله');
   assert.equal(await bal('vault', null, mat), v0 - 2);
   assert.equal(Number((await W('GET', '/w/tasks')).data.custodies.find((c) => c.id === cus.id).weight_issued), 12, 'العامل يرى الوزن الجديد');
   // بعد القبول: إنقاص إلى 11.5 (الفرق يعود لرصيد الطلب)
@@ -1084,4 +1101,73 @@ test('استيراد صور منتجات كمسودات مخفية من ZIP: ك�
   assert.equal(q[1].name, 'عقد الوردة');
   const bad = await send(Buffer.from('not a zip'));
   assert.equal(bad.status, 400);
+});
+
+test('الذهب لا يدخل حساب العامل إلا بقبوله، ولا يخرج منه إلا بقبول الطرف الآخر', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '200', note: 'رصيد' });
+  const mkW = async (u, no) => (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, must_change_password) values ($1,$2,$1,'worker',$3,false) returning id", [u, hashPassword('Ack#2026xx'), no])).rows[0].id;
+  const a = await mkW('ackA', 'AK1'), b = await mkW('ackB', 'AK2');
+  const client = async (u) => {
+    let ck = '';
+    const f = async (m, p, body) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; };
+    await f('POST', '/auth/login', { username: u, password: 'Ack#2026xx' });
+    return f;
+  };
+  const A = await client('ackA'), B = await client('ackB');
+  const o = (await call('POST', '/orders', { title: 'خاتم قبول', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat })).data;
+  for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0].h; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
+  await call('POST', `/admin/stages/${(await pool.query('select current_stage_id s from orders where id=$1', [o.id])).rows[0].s}/rate`, { rate_percent: '0', note: 'x' });
+  const recon = async () => { const r = (await call('GET', '/inventory/reconciliation')).data; return r.ok && r.transitCheck.every((x) => x.ok); };
+
+  // 1) التسليم: لا يدخل حساب العامل قبل قبوله
+  const c = (await call('POST', '/sup/issue', { worker_id: a, items: [{ order_id: o.id, weight: '10' }] })).data.custodies[0];
+  assert.equal(await bal('worker', a, mat), 0);
+  assert.equal(await bal('transit', a, mat), 10);
+  assert.equal(Number((await call('GET', '/sup/workers')).data.find((w) => w.id === a).open_weight), 0, 'لا يظهر في ذهب العامل');
+  assert.equal(Number((await call('GET', '/sup/workers')).data.find((w) => w.id === a).pending_weight), 10, 'يظهر بانتظار قبوله');
+  assert.equal((await call('GET', `/sup/workers/${a}/statement`)).data.rows.length, 0, 'كشف حسابه خالٍ قبل القبول');
+  assert.equal(await recon(), true);
+  // 2) القبول: يدخل حسابه، ويظهر في كشفه مديناً من ذهب الطلب
+  assert.equal((await A('POST', `/w/custody/${c.id}/ack`, {})).status, 200);
+  assert.equal(await bal('worker', a, mat), 10);
+  assert.equal(await bal('transit', a, mat), 0);
+  const st = (await call('GET', `/sup/workers/${a}/statement`)).data;
+  assert.deepEqual([st.rows.length, st.rows[0].kind, Number(st.rows[0].debit), st.rows[0].party], [1, 'custody_accept', 10, 'من ذهب الطلب']);
+  assert.equal(await recon(), true);
+  // 3) تحويل للعامل الثاني: لا ينقص من الأول حتى يقبل الثاني
+  const t = await A('POST', `/w/custody/${c.id}/transfer`, { to_worker_id: b, weight: '10', mode: 'same_stage' });
+  assert.equal(t.status, 200, JSON.stringify(t.data));
+  assert.equal(await bal('worker', a, mat), 10, 'باقٍ في حساب الأول');
+  assert.equal(await bal('worker', b, mat), 0, 'لم يدخل حساب الثاني');
+  const acc = await B('POST', `/w/transfers/${t.data.id}/accept`, { weight: '10' });
+  assert.equal(acc.status, 200, JSON.stringify(acc.data));
+  assert.equal(await bal('worker', a, mat), 0, 'خرج من الأول بقبول الثاني');
+  assert.equal(await bal('worker', b, mat), 10, 'دخل حساب الثاني بقبوله');
+  assert.equal(await bal('transit', b, mat), 0);
+  assert.equal(await recon(), true);
+  // 4) عهدة عامة يرفضها العامل: لا تُستلم منه، والإلغاء يعيدها للخزنة دون أن تمس حسابه
+  const v0 = await bal('vault', null, mat);
+  await call('POST', '/inventory/gold/to-worker', { worker_id: a, material_id: mat, weight: '5', purpose: 'لحام', loss_rate_percent: '0' });
+  const gc = (await pool.query("select id from custodies where worker_id=$1 and kind='general' and status='open'", [a])).rows[0].id;
+  assert.equal(await bal('worker', a, mat), 0);
+  assert.equal((await A('POST', `/w/custody/${gc}/reject`, { reason: 'الوزن 4.5 فقط' })).status, 200);
+  assert.equal((await call('POST', '/sup/receive', { worker_id: a, items: [{ custody_id: gc, returned_weight: '4.5' }] })).status, 409, 'المرفوضة لا تُستلم');
+  assert.equal((await call('POST', `/sup/custodies/${gc}/reverse`, { reason: 'خطأ وزن' })).status, 200);
+  assert.deepEqual([await bal('vault', null, mat), await bal('worker', a, mat), await bal('transit', a, mat)], [v0, 0, 0]);
+  // 5) إلغاء تسليم بعد القبول: يخرج من حسابه بالعكس
+  await call('POST', '/inventory/gold/to-worker', { worker_id: a, material_id: mat, weight: '3', purpose: 'لحام', loss_rate_percent: '0' });
+  const gc2 = (await pool.query("select id from custodies where worker_id=$1 and kind='general' and status='open'", [a])).rows[0].id;
+  await A('POST', `/w/custody/${gc2}/ack`, {});
+  assert.equal(await bal('worker', a, mat), 3);
+  assert.equal((await call('POST', `/sup/custodies/${gc2}/reverse`, { reason: 'خطأ' })).status, 200);
+  assert.deepEqual([await bal('vault', null, mat), await bal('worker', a, mat), await bal('transit', a, mat)], [v0, 0, 0]);
+  // 6) الاستلام من عامل لم يضغط قبول (سلّم القطع فعلياً) = قبول ضمني موثّق
+  await call('POST', '/inventory/gold/to-worker', { worker_id: a, material_id: mat, weight: '2', purpose: 'لحام', loss_rate_percent: '0' });
+  const gc3 = (await pool.query("select id from custodies where worker_id=$1 and kind='general' and status='open'", [a])).rows[0].id;
+  assert.equal((await call('POST', '/sup/receive', { worker_id: a, items: [{ custody_id: gc3, returned_weight: '2' }] })).status, 200);
+  assert.deepEqual([await bal('worker', a, mat), await bal('transit', a, mat)], [0, 0]);
+  assert.equal((await pool.query("select count(*)::int n from custody_work_log where custody_id=$1 and event='ack' and reason like 'قبول ضمني%'", [gc3])).rows[0].n, 1);
+  assert.equal(await recon(), true);
 });

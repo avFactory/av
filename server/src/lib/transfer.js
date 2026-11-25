@@ -26,6 +26,7 @@ export async function createTransfer(db, req, custodyId, body) {
   const portion = body.portion === 'part' ? 'part' : 'full';
   const mode = !c.order_id || portion === 'part' ? 'same_stage' : body.mode === 'same_stage' ? 'same_stage' : 'next_stage';
   if (isOwner && !c.worker_ack_at) throw conflict('اقبل العهدة أولاً');
+  if (c.worker_rejected_at && !c.worker_ack_at) throw conflict('العامل رفض استلام هذه العهدة — صحّح التسليم أو ألغِه أولاً');
   const toId = int(body.to_worker_id, 'العامل');
   if (toId === c.worker_id) throw bad('اختر عاملاً آخر');
   const to = await getWorker(db, toId);
@@ -93,7 +94,7 @@ export async function acceptTransfer(db, req, transferId, body, opts = {}) {
   if (gain > 0 && !c.order_id) throw conflict(`الوزن أكبر من العهدة العامة لدى ${fromName} — تواصل مع المشرف`);
   if (gain > 0) {
     const srcs = (await db.query(`select id, (weight_issued - weight_used)::numeric(16,4) as avail from custodies
-      where worker_id=$1 and status='open' and material_id=$2 and id<>$3 and (kind='general' or finding_id is not null) and weight_issued > weight_used
+      where worker_id=$1 and status='open' and worker_rejected_at is null and material_id=$2 and id<>$3 and (kind='general' or finding_id is not null) and weight_issued > weight_used
       order by (finding_id is null) desc, issued_at`, [t.from_worker, c.material_id, c.id])).rows;
     for (const s of srcs) {
       if (gain <= 0) break;

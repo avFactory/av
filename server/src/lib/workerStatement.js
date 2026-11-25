@@ -14,7 +14,10 @@ export async function workerStatement(db, workerId, { from = null, to = null, ma
       o.order_no, coalesce(o.title, '') as title, s.name as stage_name, rv.kind as reverses_kind,
       exists (select 1 from gold_ledger x where x.reverses_id=g.id) as reversed,
       -- الطرف الآخر: عامل آخر في التحويل، أو الطلب/الخزنة
-      case when g.to_type='worker' and g.to_ref=$1 then g.from_type else g.to_type end as other_type
+      -- قبول عهدة: مصدرها الحقيقي هو مصدر التسليم الأصلي (الطلب/الخزنة/الخامات)
+      case when g.to_type='worker' and g.to_ref=$1 then (case when g.from_type='transit'
+             then coalesce((select x.from_type from gold_ledger x where x.custody_id=g.custody_id and x.to_type='transit' and x.from_type<>'worker' order by x.id limit 1), 'transit')
+             else g.from_type end) else g.to_type end as other_type
     from gold_ledger g join materials m on m.id=g.material_id left join orders o on o.id=g.order_id left join stages s on s.id=g.stage_id
     left join gold_ledger rv on rv.id=g.reverses_id
     where ${mine} and ($2::date is null or g.created_at >= ($2::date)::timestamptz) and ($3::date is null or g.created_at < ($3::date + 1)::timestamptz)
@@ -39,7 +42,7 @@ export async function workerStatement(db, workerId, { from = null, to = null, ma
       && ((g.dir > 0 && t.to_worker === workerId) || (g.dir < 0 && t.from_worker === workerId)));
     const party = tr ? (g.dir > 0 ? `محوّل من ${tr.from_name}` : `محوّل إلى ${tr.to_name}`)
       : g.dir > 0 ? (g.other_type === 'vault' ? 'من الخزنة' : g.other_type === 'order' ? 'من ذهب الطلب' : g.other_type === 'findings' ? 'من الخامات' : g.other_type === 'variance' ? 'فروقات' : '')
-        : ({ vault: 'إلى الخزنة', order: 'إلى ذهب الطلب', findings: 'إلى الخامات', scrap: 'بقايا', loss_normal: 'عجز طبيعي', loss_abnormal: 'عجز غير طبيعي', loss_suspense: 'عجز تحت المراجعة' }[g.other_type] || '');
+        : ({ vault: 'إلى الخزنة', order: 'إلى ذهب الطلب', findings: 'إلى الخامات', scrap: 'بقايا', loss_normal: 'عجز طبيعي', loss_abnormal: 'عجز غير طبيعي', loss_suspense: 'عجز تحت المراجعة', transit: 'بانتظار قبوله' }[g.other_type] || '');
     out.push({ ...g, label, party, debit: g.dir > 0 ? g.weight : null, credit: g.dir < 0 ? g.weight : null, balance: b.toFixed(4), balance_pure: pure.toFixed(4) });
   }
   const balances = [...bal].filter(([, v]) => Math.abs(v) > 1e-9);

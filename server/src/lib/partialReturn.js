@@ -20,7 +20,7 @@ export async function partialReturn(db, req, custodyId, body, opts = {}) {
   const label = c.order_id ? (await db.query('select order_no from orders where id=$1', [c.order_id])).rows[0].order_no : c.finding_name || `عهدة عامة${c.purpose ? ` (${c.purpose})` : ''}`;
   const to = c.order_id ? ['order', c.order_id] : c.finding_id ? ['findings', c.finding_id] : ['vault', null];
   const mv = await ledger.post(db, {
-    kind: 'partial_return', material_id: c.material_id, weight: w, from: ['worker', c.worker_id], to,
+    kind: 'partial_return', material_id: c.material_id, weight: w, from: [c.worker_ack_at ? 'worker' : 'transit', c.worker_id], to, // قبل قبوله: من الانتظار لا من حسابه
     order_id: c.order_id, custody_id: c.id, worker_id: c.worker_id, stage_id: c.stage_id,
     reason: `استلام جزئي من العهدة ${c.custody_no}${note ? `: ${note}` : ''}`, user_id: req.user.id,
   });

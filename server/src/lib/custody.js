@@ -112,7 +112,7 @@ export async function issue(db, req, body) {
       [order.id, workerId, req.user.id, stage.id, order.material_id, net, gross, stones, pieces, rate, batch.id,
        str(it.notes, 'ملاحظات'), key ? `${key}:${idx}` : null, sig ? new Date() : null]
     )).rows[0];
-    await ledger.post(db, { kind: 'issue', material_id: order.material_id, weight: net, from: ['order', order.id], to: ['worker', workerId], order_id: order.id, custody_id: c.id, worker_id: workerId, stage_id: stage.id, batch_id: batch.id, user_id: req.user.id });
+    await ledger.post(db, { kind: 'issue', material_id: order.material_id, weight: net, from: ['order', order.id], to: [c.worker_ack_at ? 'worker' : 'transit', workerId], order_id: order.id, custody_id: c.id, worker_id: workerId, stage_id: stage.id, batch_id: batch.id, user_id: req.user.id });
     await db.query("update orders set assigned_worker_id=$2, stage_state='waiting', updated_at=now() where id=$1", [order.id, workerId]);
     // تسليم جديد في مرحلة الجودة والوزن النهائي يُلغي أي وزن نهائي سابق (سيتغير الوزن) - يُسجَّل من جديد بعد الاستلام
     if (stage.kind === 'final_weight') await db.query('update orders set final_weight=null, final_gold_weight=null where id = any($1::int[]) and final_weight is not null', [grp ? grp.ids : [order.id]]);
@@ -125,6 +125,18 @@ export async function issue(db, req, body) {
   if (!body.silent) await notifyUsers(db, [workerId], { kind: 'custody', title: `بانتظار قبولك: ${created.length} طلب`, body: created.map((c) => `${c.order_no}: ${c.weight_issued} جم`).join('، ') + ' — افتح مهامك واضغط قبول الاستلام', link: '/w' });
   await audit(db, req, 'custody.issue', 'custody_batch', batch.id, { worker: worker.full_name, items: created.map((c) => ({ custody: c.custody_no, order: c.order_no, weight: c.weight_issued })) });
   return { batch_id: batch.id, batch_no: batch.batch_no, custodies: created };
+}
+
+/**
+ * الذهب المسلَّم لا يدخل حساب العامل إلا بقبوله. إذا لم يضغط قبول لكنه سلّم القطع فعلياً (استلام/استخدام)
+ * يُعدّ ذلك قبولاً ضمنياً يُسجَّل في سجل العهدة. العهدة التي رفضها لا تُقبل ضمنياً - تُصحَّح أو تُلغى.
+ */
+export async function implicitAck(db, req, c, why) {
+  if (c.worker_ack_at) return;
+  if (c.worker_rejected_at) throw conflict(`العامل رفض استلام العهدة ${c.custody_no} (${c.worker_reject_reason || ''}) — عدّل وزن التسليم أو ألغِه أولاً`);
+  await db.query('update custodies set worker_ack_at=now(), ack_ip=$2 where id=$1', [c.id, req.ip]);
+  await db.query("insert into custody_work_log(custody_id, event, user_id, reason) values ($1,'ack',$2,$3)", [c.id, req.user.id, why]);
+  c.worker_ack_at = new Date();
 }
 
 /** قطع عهدة الخامات المتبقية (المصروفة − المضافة على طلبات) */
@@ -141,7 +153,7 @@ async function piecesLeft(db, c) {
 export async function heldPool(db, workerId, materialId) {
   const r = (await db.query(`select
       coalesce((select balance from gold_balances where loc_type='worker' and loc_ref=$1 and material_id=$2), 0)
-      - coalesce((select sum(weight_issued - weight_used) from custodies where worker_id=$1 and material_id=$2 and status='open'), 0) as pool`, [workerId, materialId])).rows[0];
+      - coalesce((select sum(weight_issued - weight_used) from custodies where worker_id=$1 and material_id=$2 and status='open' and worker_ack_at is not null), 0) as pool`, [workerId, materialId])).rows[0];
   return Math.max(0, Math.round(Number(r.pool) * 10000) / 10000);
 }
 
@@ -190,6 +202,7 @@ export async function receive(db, req, body) {
     if (!c) throw notFound('العهدة غير موجودة');
     if (c.worker_id !== workerId) throw bad(`العهدة ${c.custody_no} ليست لدى هذا العامل`);
     if (c.status !== 'open') throw conflict(`العهدة ${c.custody_no} تم استلامها مسبقاً - لا يمكن تكرار تسجيل الوزن`);
+    await implicitAck(db, req, c, 'قبول ضمني: سلّم العامل القطع للاستلام قبل الضغط على قبول');
     const order = c.order_id ? await lockOrder(db, c.order_id) : null;
     const label = order ? order.order_no : `عهدة عامة${c.purpose ? ' - ' + c.purpose : ''}`;
 
@@ -201,6 +214,7 @@ export async function receive(db, req, body) {
       const sid = int(a.source_custody_id, 'عهدة الخامات');
       const src = (await db.query('select c.*, f.name as finding_name from custodies c left join findings f on f.id=c.finding_id where c.id=$1 for update of c', [sid])).rows[0];
       if (!src || src.worker_id !== workerId || src.status !== 'open' || (!src.finding_id && src.kind !== 'general')) throw bad('عهدة الإضافة غير صالحة لهذا العامل');
+      await implicitAck(db, req, src, 'قبول ضمني: استخدم العامل منها على طلب');
       if (!src.finding_id) src.finding_name = `العهدة العامة${src.purpose ? ` (${src.purpose})` : ''}`;
       if (src.material_id !== c.material_id) throw bad(`عيار "${src.finding_name}" يختلف عن عيار الطلب ${label}`);
       const w = Number(W(a.weight, `وزن ${src.finding_name}`));
@@ -215,10 +229,11 @@ export async function receive(db, req, body) {
     if (Number(p.gain_weight) > 0 && it.additions === undefined && c.order_id) {
       let gain = Number(p.gain_weight);
       const srcs = (await db.query(`select c.*, f.name as finding_name from custodies c left join findings f on f.id=c.finding_id
-        where c.worker_id=$1 and c.status='open' and c.material_id=$2 and c.id<>$3 and (c.kind='general' or c.finding_id is not null) and c.weight_issued > c.weight_used
+        where c.worker_id=$1 and c.status='open' and c.worker_rejected_at is null and c.material_id=$2 and c.id<>$3 and (c.kind='general' or c.finding_id is not null) and c.weight_issued > c.weight_used
         order by (c.finding_id is null) desc, c.issued_at for update of c`, [workerId, c.material_id, c.id])).rows;
       for (const src of srcs) {
         if (gain <= 0) break;
+        await implicitAck(db, req, src, 'قبول ضمني: غطّت زيادة وزن طلب');
         const take = Math.min(gain, Number(src.weight_issued) - Number(src.weight_used));
         if (!src.finding_id) src.finding_name = `العهدة العامة${src.purpose ? ` (${src.purpose})` : ''}`;
         additions.push({ src, w: Math.round(take * 10000) / 10000, pieces: 0 });
@@ -423,7 +438,7 @@ export async function reverseIssue(db, req, id, reasonIn) {
   if (c.status !== 'open') throw conflict('لا يمكن إلغاء عهدة تم استلامها - صحّح التسوية أولاً');
   if (c.order_id) await lockOrder(db, c.order_id);
   if (Number(c.weight_used) > 0) throw conflict('أُضيف جزء من هذه الخامات على طلبات - صحّح تلك التسويات أولاً');
-  const mvs = (await db.query("select * from gold_ledger g where custody_id=$1 and settlement_id is null and kind in ('issue','general_issue','findings_issue','custody_adjust') and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)", [id])).rows;
+  const mvs = (await db.query("select * from gold_ledger g where custody_id=$1 and settlement_id is null and kind in ('issue','general_issue','findings_issue','custody_adjust','custody_accept','custody_pending') and not exists (select 1 from gold_ledger r where r.reverses_id=g.id)", [id])).rows;
   if (c.finding_id) await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, note, created_by) values ($1,'reversal',$2,$3,$4,$5,$6)`,
     [c.finding_id, c.pieces || 0, c.weight_issued, c.id, `إلغاء صرف ${c.custody_no}`, req.user.id]);
   for (const mv of mvs) await ledger.reverse(db, mv, `إلغاء تسليم ${c.custody_no}: ${reason}`, req.user.id);
@@ -457,7 +472,7 @@ export async function issueGeneral(db, req, body) {
   const c = (await db.query(`insert into custodies(custody_no, kind, purpose, order_id, worker_id, supervisor_id, stage_id, material_id, weight_issued, gross_weight, pieces,
       loss_rate_snapshot, issue_batch_id, notes, idempotency_key) values (next_doc_no('CUS'),'general',$1,null,$2,$3,null,$4,$5,$5,0,$6,$7,$8,$9) returning *`,
     [purpose, workerId, req.user.id, materialId, weight, rate, batch.id, str(body.notes, 'ملاحظات'), key ? `${key}:g` : null])).rows[0];
-  await ledger.post(db, { kind: 'general_issue', material_id: materialId, weight, from: ['vault', null], to: ['worker', workerId], custody_id: c.id, worker_id: workerId, batch_id: batch.id, reason: purpose, user_id: req.user.id });
+  await ledger.post(db, { kind: 'general_issue', material_id: materialId, weight, from: ['vault', null], to: [c.worker_ack_at ? 'worker' : 'transit', workerId], custody_id: c.id, worker_id: workerId, batch_id: batch.id, reason: purpose, user_id: req.user.id });
   if (!body.silent) await notifyUsers(db, [workerId], { kind: 'custody', title: `بانتظار قبولك: عهدة عامة ${weight} جم`, body: `${purpose} — افتح مهامك واضغط قبول الاستلام`, link: '/w' });
   await audit(db, req, 'custody.general_issue', 'custody', c.id, { worker: worker.full_name, material_id: materialId, weight, purpose, rate });
   return { custody_id: c.id, custody_no: c.custody_no, batch_id: batch.id, batch_no: batch.batch_no };

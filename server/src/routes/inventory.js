@@ -290,6 +290,7 @@ r.get('/reconciliation', requirePerm('inventory.view', 'reports.view', 'custody.
       coalesce(sum(b.balance) filter (where b.loc_type='vault'),0) as vault,
       coalesce(sum(b.balance) filter (where b.loc_type='order'),0) as orders,
       coalesce(sum(b.balance) filter (where b.loc_type='worker'),0) as workers,
+      coalesce(sum(b.balance) filter (where b.loc_type='transit'),0) as transit,
       coalesce(sum(b.balance) filter (where b.loc_type='scrap'),0) as scrap,
       coalesce(sum(b.balance) filter (where b.loc_type='finished'),0) as finished,
       coalesce(sum(b.balance) filter (where b.loc_type='findings'),0) as findings,
@@ -304,11 +305,20 @@ r.get('/reconciliation', requirePerm('inventory.view', 'reports.view', 'custody.
   // فحص 1: رصيد كل عامل في الدفتر = مجموع عهده المفتوحة + عجز الشهر المعلق في حسابه (لم يُثبَّت بعد)
   const workerCheck = await many(`
     with led as (select loc_ref as worker_id, material_id, balance from gold_balances where loc_type='worker'),
-         cus0 as (select worker_id, material_id, sum(weight_issued - weight_used) w from custodies where status='open' group by 1,2
+         cus0 as (select worker_id, material_id, sum(weight_issued - weight_used) w from custodies where status='open' and worker_ack_at is not null group by 1,2
                   union all
                   select c.worker_id, c.material_id, sum(st.actual_loss - coalesce(st.recovered_weight,0)) from settlements st join custodies c on c.id=st.custody_id
                   where st.loss_held and st.loss_fixed_at is null and st.status <> 'reversed' group by 1,2),
          cus as (select worker_id, material_id, sum(w) w from cus0 group by 1,2)
+    select coalesce(l.worker_id, c.worker_id) worker_id, u.full_name, m.name material, coalesce(l.balance,0)::text ledger, coalesce(c.w,0)::text custodies,
+           (coalesce(l.balance,0) = coalesce(c.w,0)) ok
+    from led l full join cus c on c.worker_id=l.worker_id and c.material_id=l.material_id
+    join users u on u.id=coalesce(l.worker_id, c.worker_id) join materials m on m.id=coalesce(l.material_id, c.material_id)
+    where coalesce(l.balance,0) <> 0 or coalesce(c.w,0) <> 0`);
+  // فحص 1ب: الذهب بانتظار قبول العامل = المتبقي في عهده المفتوحة التي لم يقبلها
+  const transitCheck = await many(`
+    with led as (select loc_ref as worker_id, material_id, balance from gold_balances where loc_type='transit'),
+         cus as (select worker_id, material_id, sum(weight_issued - weight_used) w from custodies where status='open' and worker_ack_at is null group by 1,2)
     select coalesce(l.worker_id, c.worker_id) worker_id, u.full_name, m.name material, coalesce(l.balance,0)::text ledger, coalesce(c.w,0)::text custodies,
            (coalesce(l.balance,0) = coalesce(c.w,0)) ok
     from led l full join cus c on c.worker_id=l.worker_id and c.material_id=l.material_id
@@ -329,8 +339,8 @@ r.get('/reconciliation', requirePerm('inventory.view', 'reports.view', 'custody.
   const badSettlements = await many(`select settlement_no from settlements where status <> 'reversed' and returned_weight + scrap_weight + actual_loss <> weight_issued`);
   const fmt = (x) => Object.fromEntries(Object.entries(x).map(([k, v]) => [k, typeof v === 'string' && /^-?\d/.test(v) ? Number(v).toFixed(4) : v]));
   res.json({
-    perMaterial: perMaterial.map(fmt), workerCheck, negatives, badSettlements, balanceDrift,
-    ok: workerCheck.every((w) => w.ok) && !negatives.length && !badSettlements.length && !balanceDrift.length && perMaterial.every((p) => Number(p.ledger_sum) === 0),
+    perMaterial: perMaterial.map(fmt), workerCheck, transitCheck, negatives, badSettlements, balanceDrift,
+    ok: workerCheck.every((w) => w.ok) && transitCheck.every((w) => w.ok) && !negatives.length && !badSettlements.length && !balanceDrift.length && perMaterial.every((p) => Number(p.ledger_sum) === 0),
   });
 });
 

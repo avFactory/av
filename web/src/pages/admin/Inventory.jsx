@@ -137,8 +137,8 @@ function Counts({ mats }) {
 function Reconciliation() {
   const { data } = useFetch('/inventory/reconciliation', { live: ['gold_ledger'] });
   if (!data) return <Loader />;
-  const cols = ['vault', 'findings', 'orders', 'workers', 'scrap', 'finished', 'loss_normal', 'loss_abnormal', 'loss_suspense', 'delivered', 'variance'];
-  const L = { vault: 'الخزنة', findings: 'خامات', orders: 'تحت التشغيل', workers: 'لدى العمال', scrap: 'بقايا', finished: 'جاهز', loss_normal: 'عجز طبيعي', loss_abnormal: 'عجز غير طبيعي', loss_suspense: 'معلق', delivered: 'مسلم', variance: 'فروقات' };
+  const cols = ['vault', 'findings', 'orders', 'transit', 'workers', 'scrap', 'finished', 'loss_normal', 'loss_abnormal', 'loss_suspense', 'delivered', 'variance'];
+  const L = { vault: 'الخزنة', findings: 'خامات', orders: 'تحت التشغيل', transit: 'بانتظار قبول العامل', workers: 'لدى العمال', scrap: 'بقايا', finished: 'جاهز', loss_normal: 'عجز طبيعي', loss_abnormal: 'عجز غير طبيعي', loss_suspense: 'معلق', delivered: 'مسلم', variance: 'فروقات' };
   return (
     <div className="grid">
       <div className={`alert ${data.ok ? 'alert-success' : 'alert-danger'}`}>{data.ok ? 'الأرصدة متطابقة: كل جرام له موقع معروف، وعهد العمال تطابق دفتر الحركات.' : 'يوجد عدم تطابق - راجع التفاصيل أدناه'}</div>
@@ -146,9 +146,14 @@ function Reconciliation() {
         <Table rows={data.perMaterial.filter((m) => Number(m.net_in) || Number(m.vault))} columns={[['المادة', 'name'], ['صافي الوارد', (m) => <b className="n">{fmtW(m.net_in)}</b>], ...cols.map((k) => [L[k], (m) => <span className="n">{fmtW(m[k])}</span>]),
           ['التطابق', (m) => (Number(m.ledger_sum) === 0 ? <Badge tone="ok">✓</Badge> : <Badge tone="bad">✗</Badge>)]]} />
       </Card>
-      <Card title="عهد العمال: رصيد الدفتر مقابل العهد المفتوحة" pad={false}>
+      <Card title="عهد العمال: رصيد الدفتر مقابل العهد المقبولة" pad={false}>
         <Table rows={data.workerCheck} empty="لا توجد عهد مفتوحة" columns={[['العامل', 'full_name'], ['المادة', 'material'], ['رصيد الدفتر', (w) => <span className="n">{fmtW(w.ledger)}</span>], ['مجموع العهد', (w) => <span className="n">{fmtW(w.custodies)}</span>], ['', (w) => (w.ok ? <Badge tone="ok">متطابق</Badge> : <Badge tone="bad">غير متطابق</Badge>)]]} />
       </Card>
+      {data.transitCheck?.length > 0 && (
+        <Card title="ذهب مسلَّم بانتظار قبول العامل (لا يدخل حسابه حتى يقبل)" pad={false}>
+          <Table rows={data.transitCheck} columns={[['العامل', 'full_name'], ['المادة', 'material'], ['بانتظار القبول', (w) => <span className="n">{fmtW(w.ledger)}</span>], ['العهد غير المقبولة', (w) => <span className="n">{fmtW(w.custodies)}</span>], ['', (w) => (w.ok ? <Badge tone="ok">متطابق</Badge> : <Badge tone="bad">غير متطابق</Badge>)]]} />
+        </Card>
+      )}
       {data.negatives.length > 0 && <div className="alert alert-danger">أرصدة سالبة: {data.negatives.map((n) => `${n.loc_type} ${n.name} ${n.balance}`).join('، ')}</div>}
     </div>
   );

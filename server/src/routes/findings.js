@@ -95,7 +95,7 @@ r.post('/issue', requirePerm('custody.issue'), async (req, res) => {
       const c = (await db.query(`insert into custodies(custody_no, kind, purpose, order_id, worker_id, supervisor_id, stage_id, material_id, weight_issued, gross_weight, pieces,
           loss_rate_snapshot, issue_batch_id, finding_id) values (next_doc_no('CUS'),'general',$1,null,$2,$3,null,$4,$5,$5,$6,0,$7,$8) returning *`,
         [purpose, workerId, req.user.id, f.material_id, weight, pieces, batch.id, f.id])).rows[0];
-      await ledger.post(db, { kind: 'findings_issue', material_id: f.material_id, weight, from: ['findings', f.id], to: ['worker', workerId], custody_id: c.id, worker_id: workerId, batch_id: batch.id, reason: purpose, user_id: req.user.id });
+      await ledger.post(db, { kind: 'findings_issue', material_id: f.material_id, weight, from: ['findings', f.id], to: [c.worker_ack_at ? 'worker' : 'transit', workerId], custody_id: c.id, worker_id: workerId, batch_id: batch.id, reason: purpose, user_id: req.user.id });
       await db.query('insert into finding_moves(finding_id, kind, pieces, weight, custody_id, note, created_by) values ($1,$2,$3,$4,$5,$6,$7)', [f.id, 'issue', -pieces, weight, c.id, worker.full_name, req.user.id]);
       out.push({ custody_id: c.id, custody_no: c.custody_no, name: f.name, pieces, weight });
     }

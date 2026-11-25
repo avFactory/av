@@ -27,6 +27,8 @@ export async function editCustody(db, req, id, body) {
 
   // مصدر العهدة: رصيد الطلب (والخزنة عند النقص)، أو مخزون الخامات، أو الخزنة
   const src = c.order_id ? ['order', c.order_id] : c.finding_id ? ['findings', c.finding_id] : ['vault', null];
+  // قبل قبول العامل: الذهب ما زال بانتظار قبوله (لا يمس حسابه)
+  const holder = [c.worker_ack_at ? 'worker' : 'transit', c.worker_id];
   const base = { material_id: c.material_id, order_id: c.order_id, custody_id: c.id, worker_id: c.worker_id, stage_id: c.stage_id, user_id: req.user.id };
   if (diff > 0) {
     const w = diff.toFixed(4);
@@ -41,10 +43,10 @@ export async function editCustody(db, req, id, body) {
     } else {
       await ledger.requireBalance(db, src[0], src[1], c.material_id, w, c.finding_id ? 'مخزون الخامات غير كافٍ' : 'رصيد الخزنة غير كافٍ');
     }
-    await ledger.post(db, { ...base, kind: 'custody_adjust', weight: w, from: src, to: ['worker', c.worker_id], reason: `تعديل العهدة ${c.custody_no} (+${w}): ${reason}` });
+    await ledger.post(db, { ...base, kind: 'custody_adjust', weight: w, from: src, to: holder, reason: `تعديل العهدة ${c.custody_no} (+${w}): ${reason}` });
   } else if (diff < 0) {
     const w = (-diff).toFixed(4);
-    await ledger.post(db, { ...base, kind: 'custody_adjust', weight: w, from: ['worker', c.worker_id], to: src, reason: `تعديل العهدة ${c.custody_no} (−${w}): ${reason}` });
+    await ledger.post(db, { ...base, kind: 'custody_adjust', weight: w, from: holder, to: src, reason: `تعديل العهدة ${c.custody_no} (−${w}): ${reason}` });
   }
   if (c.finding_id && (diff !== 0 || pieces !== c.pieces)) {
     await db.query(`insert into finding_moves(finding_id, kind, pieces, weight, custody_id, note, created_by) values ($1,$2,$3,$4,$5,$6,$7)`,

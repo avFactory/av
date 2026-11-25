@@ -4,7 +4,9 @@ const { chromium } = require('playwright');
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
 let ck = '';
 async function api(m, p, b) { const r = await fetch(BASE + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json', origin: BASE }, body: b ? JSON.stringify(b) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return r.json(); }
-const weightOf = async (page) => Number((await page.locator('.wk-body .card').first().innerText()).replace(/[^\d.]/g, ''));
+// ذهب العامل المقبول + المسلَّم له بانتظار قبوله (العهدة العامة في الاختبار لم تُقبل بعد)
+const num = async (loc) => ((await loc.count()) ? Number((await loc.first().innerText()).replace(/[^\d.]/g, '')) : 0);
+const weightOf = async (page) => (await num(page.locator('[data-w="mine"]'))) + (await num(page.locator('[data-w="pending"]')));
 async function waitWeight(page, expected, ms) {
   const end = Date.now() + ms;
   while (Date.now() < end) { if (Math.abs((await weightOf(page)) - expected) < 0.0005) return true; await page.waitForTimeout(250); }
