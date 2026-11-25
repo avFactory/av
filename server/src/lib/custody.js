@@ -5,7 +5,7 @@ import * as ledger from './ledger.js';
 import { audit } from './audit.js';
 import { notifyPerm, notifyUsers, resolveNotifs } from './notify.js';
 import { saveSignature } from './uploads.js';
-import { lockOrder, advance, goldStonesGrams, logStage } from './production.js';
+import { lockOrder, advance, goldStonesGrams, logStage, moveToWorkerStage } from './production.js';
 import { groupInfo } from './orderGroups.js';
 import { has } from './auth.js';
 
@@ -65,6 +65,11 @@ export async function issue(db, req, body) {
     const order = await lockOrder(db, int(it.order_id));
     if (order.status !== 'in_production') throw conflict(`الطلب ${order.order_no} ليس قيد التصنيع`);
     if (order.stage_state === 'shortage') throw conflict(`الطلب ${order.order_no} في النواقص`);
+    // الطلب ينتقل تلقائياً لمرحلة العامل الذي يستلمه (إن كان مسنداً لمرحلة أخرى في مسار الطلب)
+    if (!it.stage_id) {
+      const moved = await moveToWorkerStage(db, order, workerId, req.user.id, worker.full_name);
+      if (moved) { order.current_stage_id = moved.id; order.stage_seq = moved.seq; }
+    }
     const stageId = it.stage_id ? int(it.stage_id) : order.current_stage_id;
     const stage = (await db.query('select * from stages where id=$1', [stageId])).rows[0];
     if (!stage) throw bad('المرحلة غير موجودة');
@@ -113,7 +118,8 @@ export async function issue(db, req, body) {
        str(it.notes, 'ملاحظات'), key ? `${key}:${idx}` : null, sig ? new Date() : null]
     )).rows[0];
     await ledger.post(db, { kind: 'issue', material_id: order.material_id, weight: net, from: ['order', order.id], to: [c.worker_ack_at ? 'worker' : 'transit', workerId], order_id: order.id, custody_id: c.id, worker_id: workerId, stage_id: stage.id, batch_id: batch.id, user_id: req.user.id });
-    await db.query("update orders set assigned_worker_id=$2, stage_state='waiting', updated_at=now() where id=$1", [order.id, workerId]);
+    // قبول العامل = بدء العمل (التوقيع عند التسليم أو المكينة تقبل فوراً)
+    await db.query("update orders set assigned_worker_id=$2, stage_state=$3, updated_at=now() where id=$1", [order.id, workerId, c.worker_ack_at ? 'in_progress' : 'waiting']);
     // تسليم جديد في مرحلة الجودة والوزن النهائي يُلغي أي وزن نهائي سابق (سيتغير الوزن) - يُسجَّل من جديد بعد الاستلام
     if (stage.kind === 'final_weight') await db.query('update orders set final_weight=null, final_gold_weight=null where id = any($1::int[]) and final_weight is not null', [grp ? grp.ids : [order.id]]);
     await logStage(db, order.id, stage.id, 'assigned', req.user.id, `تسليم ${net} جم - ${c.custody_no}`, false, workerId);

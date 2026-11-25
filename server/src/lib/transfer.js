@@ -6,7 +6,7 @@ import { bad, conflict, forbidden, notFound, int, str, weight as W } from './htt
 import { audit } from './audit.js';
 import { notifyPerm, notifyUsers } from './notify.js';
 import { receive, issue, issueGeneral, getWorker, preview } from './custody.js';
-import { advance, lockOrder, logStage } from './production.js';
+import { advance, lockOrder, logStage, stageForWorker } from './production.js';
 import { groupInfo } from './orderGroups.js';
 import { has } from './auth.js';
 import { partialReturn } from './partialReturn.js';
@@ -120,7 +120,9 @@ export async function acceptTransfer(db, req, transferId, body, opts = {}) {
     next = { name: 'عهدة عامة' };
   } else {
     const o = await lockOrder(db, c.order_id);
-    if (!same) {
+    // العامل المستلم مسند لمرحلة أخرى: ينتقل الطلب لمرحلته تلقائياً عند التسليم له (بدل "التالية/نفس المرحلة")
+    const toStage = await stageForWorker(db, o, t.to_worker);
+    if (!same && !toStage) {
       // 2) نقل الطلب (وبقية بنوده في نفس المرحلة) للمرحلة التالية
       const stageBefore = o.current_stage_id;
       await advance(db, o, req.user.id);
@@ -137,8 +139,9 @@ export async function acceptTransfer(db, req, transferId, body, opts = {}) {
     // 3) تسليم للعامل الثاني بنفس الوزن (نفس المرحلة أو التالية)، وقبوله الآن توقيعه الإلكتروني
     is = await issue(db, req, {
       worker_id: t.to_worker, note: `تحويل من ${fromName}`, silent: true,
-      items: [{ order_id: o.id, weight: confirmed, from_vault: false, notes: `محوّل من ${fromName}${same ? ' (نفس المرحلة)' : ''}` }],
+      items: [{ order_id: o.id, weight: confirmed, from_vault: false, notes: `محوّل من ${fromName}${same && !toStage ? ' (نفس المرحلة)' : ''}` }],
     });
+    if (toStage) next = (await db.query('select s.id, s.name, s.handles_gold from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0];
   }
   const nc = is.custodies[0];
   await db.query('update custodies set worker_ack_at=now(), ack_ip=$2 where id=$1', [nc.id, req.ip]);

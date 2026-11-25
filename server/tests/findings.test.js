@@ -1171,3 +1171,46 @@ test('الذهب لا يدخل حساب العامل إلا بقبوله، ول�
   assert.equal((await pool.query("select count(*)::int n from custody_work_log where custody_id=$1 and event='ack' and reason like 'قبول ضمني%'", [gc3])).rows[0].n, 1);
   assert.equal(await recon(), true);
 });
+
+test('مرحلة الطلب تتبع العامل: التسليم أو التحويل لعامل مرحلة أخرى ينقل الطلب لمرحلته، والقبول يبدأ العمل', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '100', note: 'رصيد' });
+  const o = (await call('POST', '/orders', { title: 'خاتم مراحل', product_type: 'خاتم', karat: 21, quantity: 1, material_id: mat })).data;
+  const cur = async () => (await pool.query('select o.current_stage_id id, o.stage_seq, o.stage_state, o.route_id from orders o where o.id=$1', [o.id])).rows[0];
+  for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [o.id])).rows[0].h; i++) await call('POST', `/orders/${o.id}/advance`, { force: true, reason: 'x' });
+  const c0 = await cur();
+  // مرحلتان لاحقتان فيهما ذهب لكل منهما عامل
+  const later = (await pool.query(`select rs.seq, s.id, s.name from route_stages rs join stages s on s.id=rs.stage_id where rs.route_id=$1 and rs.seq > $2 and s.handles_gold order by rs.seq`, [c0.route_id, c0.stage_seq])).rows;
+  assert.ok(later.length >= 2, 'مرحلتان لاحقتان');
+  const mkW = async (u, st) => { const id = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no, must_change_password) values ($1,$2,$1,'worker',$1,false) returning id", [u, hashPassword('Stg#2026xx')])).rows[0].id;
+    await pool.query('insert into stage_workers values ($1,$2)', [st, id]); return id; };
+  const a = await mkW('stgA', later[0].id), b = await mkW('stgB', later[1].id);
+  for (const s of [later[0].id, later[1].id]) await call('POST', `/admin/stages/${s}/rate`, { rate_percent: '0', note: 'x' });
+  const client = async (u) => { let ck = ''; const f = async (m, p, body) => { const r = await fetch(base + '/api' + p, { method: m, headers: { cookie: ck, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    const sc = r.headers.get('set-cookie'); if (sc) ck = sc.split(';')[0]; return { status: r.status, data: await r.json() }; }; await f('POST', '/auth/login', { username: u, password: 'Stg#2026xx' }); return f; };
+  const A = await client('stgA'), B = await client('stgB');
+  // 1) المشرف يسلّم لعامل المرحلة الأولى اللاحقة: ينتقل الطلب لمرحلته تلقائياً
+  const iss = await call('POST', '/sup/issue', { worker_id: a, items: [{ order_id: o.id, weight: '10' }] });
+  assert.equal(iss.status, 200, JSON.stringify(iss.data));
+  assert.equal((await cur()).id, later[0].id, 'انتقل لمرحلة العامل');
+  assert.equal(iss.data.custodies[0].stage_id, later[0].id);
+  // 2) القبول = بدء العمل
+  assert.equal((await A('POST', `/w/custody/${iss.data.custodies[0].id}/ack`, {})).status, 200);
+  assert.equal((await pool.query('select work_state from custodies where id=$1', [iss.data.custodies[0].id])).rows[0].work_state, 'in_progress');
+  assert.equal((await cur()).stage_state, 'in_progress');
+  // 3) تحويل لعامل مرحلة أخرى (حتى لو اختار "نفس المرحلة"): ينتقل الطلب لمرحلة المستلم بقبوله
+  const t = await A('POST', `/w/custody/${iss.data.custodies[0].id}/transfer`, { to_worker_id: b, weight: '10', mode: 'same_stage' });
+  assert.equal(t.status, 200, JSON.stringify(t.data));
+  assert.equal((await cur()).id, later[0].id, 'لا تتغير قبل القبول');
+  const acc = await B('POST', `/w/transfers/${t.data.id}/accept`, { weight: '10' });
+  assert.equal(acc.status, 200, JSON.stringify(acc.data));
+  assert.equal(acc.data.stage, later[1].name);
+  const c2 = await cur();
+  assert.deepEqual([c2.id, c2.stage_state], [later[1].id, 'in_progress'], 'مرحلة المستلم وبدأ العمل');
+  assert.equal((await pool.query('select stage_id, work_state from custodies where id=$1', [acc.data.custody_id])).rows[0].stage_id, later[1].id);
+  // 4) استلام المشرف ثم التسليم لعامل المرحلة السابقة (إعادة عمل): يرجع لمرحلته
+  const rc = await call('POST', '/sup/receive', { worker_id: b, items: [{ custody_id: acc.data.custody_id, returned_weight: '10', advance: false }] });
+  assert.equal(rc.status, 200, JSON.stringify(rc.data));
+  assert.equal((await call('POST', '/sup/issue', { worker_id: a, items: [{ order_id: o.id, weight: '10' }] })).status, 200);
+  assert.equal((await cur()).id, later[0].id, 'رجع لمرحلة العامل الأول');
+});

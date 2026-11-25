@@ -180,10 +180,10 @@ test('1-16) السيناريو الكامل: من الطلب حتى التسلي
   assert.ok(tasks.custodies.some((c) => c.id === cid));
   assert.equal((await w2.get('/api/w/tasks')).custodies.length, 0, 'العامل الثاني لا يرى عهد غيره');
   assert.equal((await w2.req('POST', `/api/w/custody/${cid}/start`)).status, 404);
+  // القبول = بدء العمل (لا إيقاف مؤقت)
+  assert.equal((await pool.query('select work_state from custodies where id=$1', [cid])).rows[0].work_state, 'in_progress', 'بدأ العمل بالقبول');
   await w1.post(`/api/w/custody/${cid}/start`);
-  assert.equal((await w1.req('POST', `/api/w/custody/${cid}/pause`, {})).status, 400, 'الإيقاف يتطلب سبباً');
-  await w1.post(`/api/w/custody/${cid}/pause`, { reason: 'انقطاع الكهرباء' });
-  await w1.post(`/api/w/custody/${cid}/resume`);
+  assert.equal((await w1.req('POST', `/api/w/custody/${cid}/pause`, { reason: 'x' })).status, 404, 'لا إيقاف مؤقت');
   // 6) العامل يسجل الوزن المرتجع والبقايا وينهي المرحلة
   await w1.post(`/api/w/custody/${cid}/declare`, { returned: '99.7', scrap: '0' });
   await w1.post(`/api/w/custody/${cid}/finish`);

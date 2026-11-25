@@ -16,8 +16,6 @@ export default function WCustody() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [decl, setDecl] = useState(null);
-  const [pause, setPause] = useState(false);
-  const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [ackW, setAckW] = useState('');
   const [fin, setFin] = useState({ weight: '', weights: {}, note: '' });
@@ -110,11 +108,6 @@ export default function WCustody() {
       )}
       {c.status === 'open' && c.worker_ack_at && c.work_state !== 'finished' && (
         <>
-          <div className="grid g2">
-            {c.work_state === 'not_started' && <Btn size="xl" onClick={() => act('start', {}, 'بدأ العمل')} loading={busy}>{t('بدء العمل')}</Btn>}
-            {c.work_state === 'in_progress' && <Btn size="xl" kind="ghost" onClick={() => setPause(true)}>{t('إيقاف مؤقت')}</Btn>}
-            {c.work_state === 'paused' && <Btn size="xl" onClick={() => act('resume', {}, 'تم الاستئناف')} loading={busy}>{t('استئناف العمل')}</Btn>}
-          </div>
           {c.worker_closes ? (() => {
             const grp = (od?.group || []).length > 1 ? od.group : null;
             const total = grp ? grp.reduce((a, x) => a + (Number(fin.weights[x.id]) || 0), 0) : Number(fin.weight) || 0;
@@ -128,13 +121,13 @@ export default function WCustody() {
                 )) : <Field label={t('الوزن النهائي على الميزان (جم) *')}><WeightInput big value={fin.weight} onChange={(v) => setFin({ ...fin, weight: v })} /></Field>}
                 {grp && <div className="mb-2">{t('الإجمالي')}: <b dir="ltr">{fmtW(total)} {t('جم')}</b></div>}
                 <Field label={t(gain ? 'سبب زيادة الوزن *' : 'ملاحظة')}><Input value={fin.note} onChange={(e) => setFin({ ...fin, note: e.target.value })} /></Field>
-                <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started' || !ok || (gain && !fin.note)}
+                <Btn size="xl" kind="ok" loading={busy} disabled={!ok || (gain && !fin.note)}
                   onClick={async () => { if (await askConfirm(t('اعتماد الوزن النهائي {w} جم ونقل الطلب للفوترة؟', { w: fmtW(total) }))) act('finish', grp ? { weights: fin.weights, note: fin.note } : { weight: fin.weight, note: fin.note }, 'تم — انتقل الطلب للفوترة'); }}>{t('✓ انتهيت — نقل للفوترة')}</Btn>
               </Card>
             );
           })() : <>
           <div className="small text-body-secondary">{t('بعد الانتهاء سلّم القطعة والبقايا للمشرف، وهو يزنها ويعتمد الوزن الفعلي.')}</div>
-          <Btn size="xl" kind="ok" loading={busy} disabled={c.work_state === 'not_started'} onClick={async () => { if (await askConfirm(t('إنهاء المرحلة وتسليمها للمشرف؟'))) act('finish', {}, 'تم إنهاء المرحلة - سلّم القطعة للمشرف'); }}>{t('إنهاء المرحلة وتسليمها')}</Btn>
+          <Btn size="xl" kind="ok" loading={busy} onClick={async () => { if (await askConfirm(t('إنهاء المرحلة وتسليمها للمشرف؟'))) act('finish', {}, 'تم إنهاء المرحلة - سلّم القطعة للمشرف'); }}>{t('إنهاء المرحلة وتسليمها')}</Btn>
           </>}
         </>
       )}
@@ -142,10 +135,6 @@ export default function WCustody() {
       <Modal open={rejectOpen} onClose={() => setRejectOpen(false)} title={t('رفض استلام العهدة')}>
         <Field label={t('ما الخطأ؟ *')}><Input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder={t('مثال: الوزن الفعلي 39.5 جم')} autoFocus /></Field>
         <Btn kind="danger" disabled={!rejectReason} loading={busy} onClick={() => act('reject', { reason: rejectReason }, 'أُبلغ المشرف بالرفض').then(() => { setRejectOpen(false); setRejectReason(''); })}>{t('إرسال الرفض للمشرف')}</Btn>
-      </Modal>
-      <Modal open={pause} onClose={() => setPause(false)} title={t('إيقاف العمل')}>
-        <Field label={t('سبب الإيقاف *')}><Input value={reason} onChange={(e) => setReason(e.target.value)} autoFocus /></Field>
-        <Btn disabled={!reason} loading={busy} onClick={() => act('pause', { reason }, 'تم الإيقاف').then(() => { setPause(false); setReason(''); })}>{t('تأكيد الإيقاف')}</Btn>
       </Modal>
     </div>
   );

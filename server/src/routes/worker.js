@@ -160,10 +160,9 @@ r.post('/transfers/:id/cancel', async (req, res) => {
   res.json(await tx((db) => cancelTransfer(db, req, req.params.id)));
 });
 
+// قبول العهدة = بدء العمل تلقائياً (لا إيقاف مؤقت). "start" باقٍ فقط لتوافق التطبيقات القديمة
 const transitions = {
   start: { from: ['not_started'], to: 'in_progress' },
-  pause: { from: ['in_progress'], to: 'paused' },
-  resume: { from: ['paused'], to: 'in_progress' },
 };
 
 r.post('/custody/:id/:action', async (req, res, next) => {
@@ -173,6 +172,7 @@ r.post('/custody/:id/:action', async (req, res, next) => {
     if (c.status !== 'open') throw conflict('العهدة مغلقة');
     if (!c.worker_ack_at) throw conflict('يجب قبول استلام العهدة أولاً');
     const t = transitions[req.params.action];
+    if (c.work_state === t.to) return { ok: true, already: true }; // بدأ تلقائياً بالقبول
     if (!t.from.includes(c.work_state)) throw conflict('لا يمكن تنفيذ هذا الإجراء في الحالة الحالية');
     const reason = str(req.body.reason, 'السبب');
     if (req.params.action === 'pause' && !reason) throw bad('يجب تسجيل سبب الإيقاف');

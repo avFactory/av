@@ -35,7 +35,7 @@ async function login(page, u, p) { await page.goto(BASE + '/login'); await page.
   await login(w7, 'demo_w7', 'Demo#2026');
   await w7.locator('a.task:has-text("بانتظار قبولك")').first().click();
   await w7.screenshot({ path: SHOTS + 'accept.png', fullPage: true });
-  await w7.click('button:has-text("قبول الاستلام")'); await w7.waitForSelector('button:has-text("بدء العمل")');
+  await w7.click('button:has-text("قبول الاستلام")'); await w7.waitForSelector('button:has-text("إنهاء المرحلة وتسليمها")');
   const w8 = await newPage(browser, { width: 390, height: 844 });
   await login(w8, 'demo_w8', 'Demo#2026');
   await w8.locator('a.task:has-text("بانتظار قبولك")').first().click();

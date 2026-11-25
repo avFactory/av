@@ -210,6 +210,42 @@ export async function advance(db, order, userId, opts = {}) {
   return { stage: next };
 }
 
+/**
+ * مرحلة العامل في مسار الطلب: المرحلة (التي فيها ذهب) المسند إليها هذا العامل.
+ * null = العامل في المرحلة الحالية أصلاً أو غير مسند لأي مرحلة في المسار (يبقى الطلب كما هو).
+ * إن كان في أكثر من مرحلة: أقرب مرحلة بعد الحالية، وإلا أقرب مرحلة قبلها (إعادة عمل).
+ */
+export async function stageForWorker(db, order, workerId) {
+  const mine = (await db.query(`select rs.seq, s.* from stages s join stage_workers sw on sw.stage_id=s.id and sw.user_id=$2
+      join route_stages rs on rs.stage_id=s.id and rs.route_id=$1 where s.handles_gold order by rs.seq`, [order.route_id, workerId])).rows;
+  if (!mine.length || mine.some((s) => s.id === order.current_stage_id)) return null;
+  return mine.find((s) => s.seq > order.stage_seq) || mine[mine.length - 1];
+}
+
+/**
+ * نقل الطلب مباشرة لمرحلة العامل الذي يستلمه (بدل النقل اليدوي مرحلة مرحلة).
+ * لا يُنقل إذا عليه عهدة مفتوحة لعامل آخر. الطلب متعدد المنتجات تنتقل بنوده التي في نفس المرحلة معه.
+ */
+export async function moveToWorkerStage(db, order, workerId, userId, workerName) {
+  if (order.status !== 'in_production' || order.stage_state === 'shortage') return null;
+  const target = await stageForWorker(db, order, workerId);
+  if (!target) return null;
+  const grp = await groupInfo(db, order.id);
+  const ids = grp?.isGroup ? grp.ids : [order.id];
+  const busy = await db.query("select 1 from custodies where order_id = any($1::int[]) and status in ('open','under_review') limit 1", [ids]);
+  if (busy.rowCount) return null;
+  const from = order.current_stage_id;
+  const cur = (await db.query('select name, customer_visible from stages where id=$1', [from])).rows[0];
+  for (const id of ids) {
+    const o = id === order.id ? order : await lockOrder(db, id);
+    if (o.status !== 'in_production' || o.current_stage_id !== from) continue;
+    await logStage(db, o.id, from, 'completed', userId, `نُقل مباشرة لمرحلة "${target.name}" مع تسليمه لـ${workerName || 'العامل'}`, cur?.customer_visible);
+    await db.query(`update orders set current_stage_id=$2, stage_seq=$3, stage_state='waiting', updated_at=now() where id=$1`, [o.id, target.id, target.seq]);
+    await logStage(db, o.id, target.id, 'entered', userId, null, target.customer_visible);
+  }
+  return target;
+}
+
 /** تسجيل الوزن النهائي ومطابقته مع رصيد الذهب في الطلب */
 export async function setFinalWeight(db, req, order, grossWeight, note) {
   const stones = await embeddedStonesGrams(db, order.id);

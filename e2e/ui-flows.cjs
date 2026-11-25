@@ -79,11 +79,13 @@ async function sign(page) {
   const wk = await newPage(browser, { width: 390, height: 844 });
   await login(wk, 'demo_w6', 'Demo#2026');
   await wk.screenshot({ path: SHOTS + 'worker_home.png', fullPage: true });
-  await wk.locator('a.task:has-text("لم يبدأ"), a.task:has-text("بانتظار قبولك")').first().click();
+  await wk.locator('a.task:has-text("بانتظار قبولك"), a.task:has-text("جارٍ العمل")').first().click();
   await wk.waitForLoadState('networkidle');
-  await wk.waitForSelector('button:has-text("قبول الاستلام"), button:has-text("بدء العمل")');
-  if (await wk.locator('button:has-text("قبول الاستلام")').count()) { await wk.click('button:has-text("قبول الاستلام")'); await wk.waitForSelector('button:has-text("بدء العمل")'); }
-  await wk.click('button:has-text("بدء العمل")'); await wk.waitForTimeout(500);
+  await wk.waitForSelector('button:has-text("قبول الاستلام"), button:has-text("إنهاء المرحلة وتسليمها")');
+  // القبول = بدء العمل: لا زر "بدء العمل" ولا "إيقاف مؤقت"
+  if (await wk.locator('button:has-text("قبول الاستلام")').count()) { await wk.click('button:has-text("قبول الاستلام")'); await wk.waitForSelector('button:has-text("إنهاء المرحلة وتسليمها")'); }
+  if (await wk.locator('button:has-text("بدء العمل"), button:has-text("إيقاف مؤقت")').count()) problems.push('start/pause buttons still shown');
+  await wk.waitForTimeout(300);
   // العامل لا يسجل أوزاناً (لا يملك ميزاناً) — المشرف يعتمد الوزن الفعلي عند الاستلام
   if (await wk.locator('text=تسجيل الأوزان').count()) problems.push('worker still sees weights section');
   wk.on('dialog', (d) => d.accept());
