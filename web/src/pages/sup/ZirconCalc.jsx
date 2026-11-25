@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { fmtW } from '../../format.js';
 import { Btn, Card, Input, Page, askConfirm } from '../../ui.jsx';
 
-// حاسبة الزركون: وزن الزركون = (الوزن القائم × عدد القطع) − وزن الكيس
+// حاسبة الزركون: وزن الزركون = (الوزن القائم − وزن الكيس) × عدد القطع
 const n = (v) => Number(String(v ?? '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[٫,]/g, '.')) || 0;
 const BAG = '0.38';
 const KEY = 'zircon-calc-v1';
@@ -10,7 +10,7 @@ const row = (bag = BAG) => ({ gross: '', count: '', bag });
 const fresh = () => Array.from({ length: 7 }, () => row());
 const load = () => { try { const r = JSON.parse(localStorage.getItem(KEY)); return Array.isArray(r) && r.length ? r : fresh(); } catch { return fresh(); } };
 const filled = (r) => n(r.gross) > 0 && n(r.count) > 0;
-const zircon = (r) => n(r.gross) * n(r.count) - n(r.bag);
+const zircon = (r) => (n(r.gross) - n(r.bag)) * n(r.count);
 const dec = (v) => v.replace(/[^\d٠-٩.,٫]/g, '');
 
 export default function ZirconCalc() {
@@ -21,7 +21,7 @@ export default function ZirconCalc() {
   const count = rows.filter(filled).reduce((s, r) => s + n(r.count), 0);
   const clear = async () => { if (await askConfirm('مسح كل الصفوف والبدء من جديد؟')) setRows(fresh()); };
   return (
-    <Page title="حاسبة الزركون" subtitle="وزن الزركون = (الوزن القائم × عدد القطع) − وزن الكيس"
+    <Page title="حاسبة الزركون" subtitle="وزن الزركون = (الوزن القائم − وزن الكيس) × عدد القطع"
       actions={<div className="hrow gap no-print"><Btn kind="ghost" onClick={() => window.print()}>طباعة</Btn><Btn kind="ghost" onClick={clear}>مسح الكل</Btn></div>}>
       <Card pad={false}>
         <div className="table-responsive">
