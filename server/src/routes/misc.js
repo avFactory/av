@@ -34,7 +34,9 @@ r.get('/lookups', requireAuth, async (req, res) => {
     routes: await many('select id, name, product_type, is_default from routes where active order by id'),
     departments: await many('select id, name from departments where active order by name'),
     workers: has(req, 'worker.self') ? [] : await many("select id, full_name, employee_no, kind from users where role_code='worker' and active order by nullif(regexp_replace(coalesce(employee_no,''),'[^0-9]','','g'),'')::numeric nulls last, employee_no nulls last, full_name"),
-    customers: has(req, 'customers.view') || has(req, 'orders.manage') ? await many("select id, shop_name from customers where status='approved' order by shop_name") : [],
+    customers: has(req, 'customers.view') || has(req, 'orders.manage') ? await many(`select c.id, c.shop_name, c.branches_only,
+        coalesce((select json_agg(json_build_object('id', b.id, 'name', b.name, 'city', b.city) order by b.name) from customer_branches b where b.customer_id=c.id and b.active), '[]'::json) as branches
+      from customers c where c.status='approved' order by c.shop_name`) : [],
     tiers: await many('select id, name, color, is_default from customer_tiers order by sort_order, name'),
   });
 });

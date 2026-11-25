@@ -14,6 +14,8 @@ export default function NewOrder() {
   const { data: products } = useFetch('/catalog/products');
   // بيانات مشتركة لكل منتجات الطلب
   const [f, setF] = useState({ customer_id: '', due_date: '', design_approval_required: false, labor_method: '', labor_rate: '' });
+  // فروع العميل المختار (تظهر للاختيار إن وُجدت)
+  const cust = (lookups?.customers || []).find((c) => String(c.id) === String(f.customer_id));
   const [items, setItems] = useState([blankItem()]);
   const [openIdx, setOpenIdx] = useState(0); // المنتج المفتوح للتعديل؛ البقية مختصرة في سطر واحد
   const [run, busy] = useAction();
@@ -57,6 +59,7 @@ export default function NewOrder() {
     if (noType >= 0) { setBad(noType); document.getElementById(`bulk-${noType}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); showAlert(`اختر نوع القطعة للصورة ${noType + 1}`); return; }
     const missing = items.findIndex((x) => !x.bulk && !x.title.trim());
     if (missing >= 0) { setOpenIdx(missing); showAlert(`اكتب وصف المنتج ${missing + 1}`); return; }
+    if (cust?.branches_only && cust.branches?.length && !f.branch_id) { showAlert(`اختر فرع ${cust.shop_name}`); return; }
     run(async () => {
       const r = await api.post('/orders/multi', { ...f, items: items.map(({ images, bulk, ...x }) => ({ ...x, title: x.title || x.product_type })) });
       // صور كل منتج (مرجع للتصنيع) تُرفع على بنده بعد إنشاء الطلب
@@ -82,10 +85,18 @@ export default function NewOrder() {
       <form onSubmit={submit} className="grid">
         <Card title="بيانات الطلب">
           <div className="grid g3">
-            <Field label="العميل (اتركه فارغاً لطلب داخلي للمخزون)"><SearchSelect value={f.customer_id} onChange={(v) => setF({ ...f, customer_id: v })} emptyLabel="طلب داخلي" placeholder="ابحث باسم العميل…" options={(lookups?.customers || []).map((c) => [c.id, c.shop_name])} /></Field>
+            <Field label="العميل (اتركه فارغاً لطلب داخلي للمخزون)"><SearchSelect value={f.customer_id} onChange={(v) => setF({ ...f, customer_id: v, branch_id: '' })} emptyLabel="طلب داخلي" placeholder="ابحث باسم العميل…" options={(lookups?.customers || []).map((c) => [c.id, c.shop_name])} /></Field>
             <Field label="موعد التسليم"><Input type="date" value={f.due_date} onChange={set('due_date')} /></Field>
             <Field label=" "><label className="check"><input type="checkbox" checked={f.design_approval_required} onChange={set('design_approval_required')} /> يتطلب اعتماد العميل للتصميم قبل الصب</label></Field>
           </div>
+          {cust?.branches?.length > 0 && (
+            <Field label={`فرع ${cust.shop_name}${cust.branches_only ? ' *' : ''}`} className="mt">
+              <div className="chips">
+                {!cust.branches_only && <button type="button" className={`chip ${!f.branch_id ? 'on' : ''}`} onClick={() => setF({ ...f, branch_id: '' })}>المحل الرئيسي</button>}
+                {cust.branches.map((b) => <button key={b.id} type="button" className={`chip ${String(f.branch_id) === String(b.id) ? 'on' : ''}`} onClick={() => setF({ ...f, branch_id: b.id })}>{b.name}{b.city ? <small className="opacity-75"> · {b.city}</small> : null}</button>)}
+              </div>
+            </Field>
+          )}
         </Card>
         <BulkDrop onFiles={addBulk} count={items.filter((x) => x.bulk).length} />
         {items.some((x) => x.bulk) && (

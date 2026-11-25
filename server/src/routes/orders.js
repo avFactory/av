@@ -37,6 +37,9 @@ export const orderColor = (c) => (COLORS_OK.includes(c) ? c : null);
 async function createStaffOrder(db, req, b, opts = {}) {
   const materialId = b.material_id ? int(b.material_id) : await materialFor(db, b.karat);
   const customerId = b.customer_id ? int(b.customer_id) : null;
+  // فرع العميل (إن وُجد): يجب أن يكون من فروع نفس العميل
+  const branchId = customerId && b.branch_id ? int(b.branch_id, 'الفرع') : null;
+  if (branchId && !(await db.query('select 1 from customer_branches where id=$1 and customer_id=$2 and active', [branchId, customerId])).rowCount) throw bad('الفرع لا يتبع هذا العميل');
   const productId = b.product_id ? int(b.product_id) : null;
   const product = productId ? (await db.query('select * from products where id=$1', [productId])).rows[0] : null;
   const productType = str(b.product_type, 'نوع القطعة') || product?.product_type || null;
@@ -57,6 +60,7 @@ async function createStaffOrder(db, req, b, opts = {}) {
      b.stone_weight !== undefined ? optW(b.stone_weight, 'وزن الحجر') : product?.stone_weight ?? null, b.zircon_weight !== undefined ? optW(b.zircon_weight, 'وزن الزركون') : product?.zircon_weight ?? null,
      ...(b.bullion_type !== undefined ? bullionVals(b) : [product?.bullion_type ?? null, product?.bullion_weight ?? null]), opts.orderNo || null, opts.cartRef || null]
   )).rows[0];
+  if (branchId) { await db.query('update orders set branch_id=$2 where id=$1', [o.id, branchId]); o.branch_id = branchId; }
   await prod.logStage(db, o.id, null, 'created', req.user.id, opts.cartRef ? `إنشاء الطلب (${opts.cartRef})` : 'إنشاء الطلب', true);
   // موعد التسليم التلقائي حسب الفئة وتصنيف العميل (إن لم يُحدد يدوياً)
   await applyDueDate(db, o.id);
