@@ -290,3 +290,25 @@ test('ملف تعريف الجلسة: HttpOnly و SameSite=Lax (فتح صورة 
   const x = await fetch(base + '/api/orders', { method: 'POST', headers: { cookie: ck, origin: 'https://evil.example', 'content-type': 'application/json' }, body: '{}' });
   assert.equal(x.status, 403);
 });
+
+test('الدخول بالبصمة (Passkeys): خيارات الدخول، رفض بصمة غير مسجلة، التحدي يُستخدم مرة واحدة، والقائمة لصاحبها فقط', async () => {
+  const anon = async (p, body) => { const r = await fetch(base + '/api' + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) }); return { status: r.status, data: await r.json() }; };
+  const o = await anon('/auth/passkey/login-options');
+  assert.equal(o.status, 200);
+  assert.equal(o.data.options.userVerification, 'required', 'التحقق الحيوي إلزامي');
+  assert.ok(o.data.options.challenge && o.data.challenge_id);
+  const fake = { id: 'AAAA', rawId: 'AAAA', type: 'public-key', response: { clientDataJSON: 'e30', authenticatorData: 'AA', signature: 'AA' }, clientExtensionResults: {} };
+  const r1 = await anon('/auth/passkey/login', { challenge_id: o.data.challenge_id, response: fake });
+  assert.equal(r1.status, 404, 'بصمة غير مسجلة');
+  const r2 = await anon('/auth/passkey/login', { challenge_id: o.data.challenge_id, response: fake });
+  assert.equal(r2.status, 400, 'التحدي لا يُعاد استخدامه');
+  assert.equal((await anon('/auth/passkey/login', { challenge_id: 'not-a-uuid', response: fake })).status, 400);
+  // خيارات التسجيل تتطلب الدخول
+  assert.equal((await anon('/auth/passkeys/options')).status, 401);
+  await admin('POST', '/auth/login', { username: 'admin', password: 'Admin#2026pass' });
+  const reg = await admin('POST', '/auth/passkeys/options', {});
+  assert.equal(reg.status, 200);
+  assert.equal(reg.data.options.authenticatorSelection.residentKey, 'required');
+  assert.equal((await admin('GET', '/auth/passkeys')).data.length, 0);
+  assert.equal((await admin('DELETE', '/auth/passkeys/999999')).status, 400, 'لا يحذف بصمة غيره');
+});

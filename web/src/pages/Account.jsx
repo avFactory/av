@@ -1,3 +1,4 @@
+import PasskeyCard from '../components/PasskeyCard.jsx';
 import { useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
@@ -27,6 +28,7 @@ export default function Account() {
         <Btn className="mt" loading={busy} disabled={!f.current || !f.next} onClick={save}>{t('تغيير كلمة المرور')}</Btn>
         <p className="small muted mt">{t('بعد التغيير يتم تسجيل خروجك من أي جهاز آخر، وتبقى داخلاً على هذا الجهاز.')}</p>
       </Card>
+      <PasskeyCard />
       {me.role_code === 'worker' && <Card title={t('اللغة')} className="mt"><Btn kind="ghost" onClick={() => setPick(true)}>🌐 {langInfo().name}</Btn></Card>}
       {pick && <LangPicker onClose={() => setPick(false)} />}
     </Page>

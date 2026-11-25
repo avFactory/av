@@ -1162,3 +1162,8 @@ td b.child-no, .row-group td b { white-space: nowrap; }
 .prod-filters .pf-q { grid-column: 1 / -1; font-size: 1.02rem; }
 .prod-filters .pf-w { display: flex; gap: 6px; }
 .prod-filters .pf-foot { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
+
+/* الدخول بالبصمة */
+.login-or { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.55); font-size: .85rem; margin: 2px 0; }
+.login-or::before, .login-or::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,.18); }
+.login-bio { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; }

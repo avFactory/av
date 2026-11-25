@@ -7,6 +7,7 @@ import { notifyPerm } from '../lib/notify.js';
 import bcrypt from 'bcryptjs';
 import { upload, registerFiles } from '../lib/uploads.js';
 import { is3D } from '../lib/internalImages.js';
+import * as passkeys from '../lib/passkeys.js';
 
 // مستندات تسجيل المحل الإلزامية (صورة أو PDF لكل منها)
 export const REG_DOCS = [['cr_doc', 'cr', 'السجل التجاري'], ['vat_doc', 'vat', 'الشهادة الضريبية'], ['address_doc', 'national_address', 'العنوان الوطني']];
@@ -43,6 +44,36 @@ r.post('/login-options', async (req, res) => {
   const only = branches.length ? (await pool.query(`select c.branches_only from users u join customers c on c.id=u.customer_id
     where lower(u.username)=lower($1) and u.branch_id is null limit 1`, [username])).rows[0]?.branches_only : false;
   res.json({ branches, main: !only });
+});
+
+// ------------------------------------------------------------------ الدخول بالبصمة أو الوجه (Passkeys)
+r.post('/passkey/login-options', async (req, res) => {
+  loginThrottle(`pk:${req.ip}`, 60);
+  res.json(await tx((db) => passkeys.loginOptions(db, req)));
+});
+r.post('/passkey/login', async (req, res) => {
+  loginThrottle(`pkl:${req.ip}`, 30);
+  const u = await tx((db) => passkeys.loginVerify(db, req, req.body));
+  await createSession(res, u, req);
+  await audit(pool, { user: u, ip: req.ip }, 'login.passkey', 'user', u.id);
+  res.json({ ok: true });
+});
+r.get('/passkeys', requireAuth, async (req, res) => {
+  res.json((await pool.query('select id, device_name, created_at, last_used_at from user_passkeys where user_id=$1 order by id', [req.user.id])).rows);
+});
+r.post('/passkeys/options', requireAuth, async (req, res) => {
+  res.json(await tx((db) => passkeys.registerOptions(db, req)));
+});
+r.post('/passkeys', requireAuth, async (req, res) => {
+  const out = await tx((db) => passkeys.registerVerify(db, req, req.body));
+  await audit(pool, req, 'passkey.add', 'user', req.user.id, { device: req.body.device_name });
+  res.json(out);
+});
+r.delete('/passkeys/:id', requireAuth, async (req, res) => {
+  const d = (await pool.query('delete from user_passkeys where id=$1 and user_id=$2 returning id', [int(req.params.id), req.user.id])).rows[0];
+  if (!d) throw bad('غير موجودة');
+  await audit(pool, req, 'passkey.remove', 'user', req.user.id, { id: d.id });
+  res.json({ ok: true });
 });
 
 r.post('/logout', async (req, res) => {
