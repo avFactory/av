@@ -18,6 +18,8 @@ export async function createTransfer(db, req, custodyId, body) {
   const c = (await db.query('select * from custodies where id=$1 for update', [int(custodyId)])).rows[0];
   if (!c) throw notFound('العهدة غير موجودة');
   const isOwner = c.worker_id === req.user.id;
+  // العامل لا يحوّل لعامل آخر بنفسه: التحويل عن طريق المشرف فقط (يزن ويحوّل فوراً)
+  if (isOwner) throw forbidden('التحويل لعامل آخر عن طريق المشرف — سلّم القطع للمشرف');
   if (!isOwner && !(has(req, 'custody.issue') && has(req, 'custody.receive'))) throw forbidden();
   if (c.status !== 'open') throw conflict('العهدة ليست مفتوحة');
   if (c.finding_id) throw bad('عهدة الخامات لا تُحوّل — أرجعها للمشرف ثم تُصرف للعامل الآخر');
@@ -45,10 +47,11 @@ export async function createTransfer(db, req, custodyId, body) {
   await db.query('update custody_transfers set mode=$2, portion=$3 where id=$1', [t.id, mode, portion]); t.mode = mode; t.portion = portion;
   const no = await label(db, c.order_id);
   const from = (await db.query('select full_name from users where id=$1', [c.worker_id])).rows[0].full_name;
-  await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `تحويل ${weight} جم من ${from} إلى ${to.full_name} - بانتظار قبوله`, false, c.worker_id);
-  await notifyUsers(db, [to.id], { kind: 'custody', title: `تحويل إليك: ${no} — ${Number(weight)} جم`, body: `من ${from}: زِن القطع وأكّد الوزن ثم اقبل`, link: '/w' });
+  await logStage(db, c.order_id, c.stage_id, 'note', req.user.id, `تحويل ${weight} جم من ${from} إلى ${to.full_name} بواسطة ${req.user.full_name || 'المشرف'}`, false, c.worker_id);
+  await notifyUsers(db, [to.id], { kind: 'custody', title: `حُوّل إليك: ${no} — ${Number(weight)} جم`, body: `من ${from} — سجّله المشرف في عهدتك`, link: '/w' });
   await audit(db, req, 'custody.transfer_request', 'custody', c.id, { to: to.full_name, weight });
-  if (to.kind === 'machine') return { ...t, auto: await acceptTransfer(db, req, t.id, { weight }, { auto: true }) };
+  // تحويل المشرف يُنفَّذ فوراً بالوزن الذي وزنه (بدون انتظار قبول العامل المستلم)
+  return { ...t, auto: await acceptTransfer(db, req, t.id, { weight }, { auto: true }) };
   return t;
 }
 

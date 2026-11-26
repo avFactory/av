@@ -22,15 +22,15 @@ export function TransferModal({ custody, base = '/w', onClose, onDone }) {
   const [run, busy] = useAction();
   const list = (Array.isArray(workers) ? workers : []).filter((w) => w.id !== custody.worker_id && (!q.trim() || `${w.full_name} ${w.employee_no || ''} ${w.specialty || ''}`.includes(q.trim())));
   const toMachine = (Array.isArray(workers) ? workers : []).find((w) => String(w.id) === String(f.to_worker_id))?.kind === 'machine';
-  const submit = () => run(async () => { await api.post(`${base}/custody/${custody.id}/transfer`, part ? { ...f, mode: 'same_stage' } : f); onDone?.(); onClose(); }, toMachine ? 'تم التحويل — سُجّل الطلب على المكينة مباشرة' : 'أُرسل التحويل - بانتظار قبول العامل');
+  const submit = () => run(async () => { await api.post(`${base}/custody/${custody.id}/transfer`, part ? { ...f, mode: 'same_stage' } : f); onDone?.(); onClose(); }, toMachine ? 'تم التحويل — سُجّل الطلب على المكينة مباشرة' : 'تم التحويل — سُجّل في عهدة العامل مباشرة');
   return (
     <Modal open onClose={onClose} title={t(general ? 'تحويل العهدة العامة لعامل آخر' : 'تحويل لعامل آخر')}>
       <div className="d-grid gap-2">
         <div className="chips">{[['full', t('كل العهدة')], ['part', t('جزء منها (الباقي يبقى معك)')]].map(([k, l]) => <button key={k} type="button" className={`chip ${f.portion === k ? 'on' : ''}`} onClick={() => setF({ ...f, portion: k })}>{l}</button>)}</div>
         {!general && !part && <div className="chips">{[['next_stage', t('للمرحلة التالية')], ['same_stage', t('نفس المرحلة (إعادة إسناد)')]].map(([k, l]) => <button key={k} type="button" className={`chip ${f.mode === k ? 'on' : ''}`} onClick={() => setF({ ...f, mode: k })}>{l}</button>)}</div>}
         {part
-          ? <div className="small text-body-secondary">{t('العهدة {no} · لديك {w} جم. ينتقل الوزن الذي يؤكده العامل الثاني فقط، ويبقى الباقي في عهدتك بدون عجز.', { no: custody.custody_no || custody.order_no, w: fmtW(remaining) })}{!general && t(' يبقى الطلب في مرحلته الحالية.')}</div>
-          : <div className="small text-body-secondary">{t('العهدة {no} · المسلَّم {w} جم. العامل الثاني يزن ويؤكد الوزن ثم يقبل، والفرق يُحسب عجزاً على صاحب العهدة.', { no: custody.custody_no || custody.order_no, w: fmtW(remaining) })}{!general && t(f.mode === 'same_stage' ? ' يبقى الطلب في مرحلته الحالية.' : ' ينتقل الطلب للمرحلة التالية.')}{!general && t(' وإذا كان العامل المستلم مسنداً لمرحلة أخرى ينتقل الطلب لمرحلته تلقائياً عند قبوله.')}</div>}
+          ? <div className="small text-body-secondary">{t('العهدة {no} · لدى العامل {w} جم. ينتقل الوزن الذي تزنه فقط فوراً، ويبقى الباقي في عهدته بدون عجز.', { no: custody.custody_no || custody.order_no, w: fmtW(remaining) })}{!general && t(' يبقى الطلب في مرحلته الحالية.')}</div>
+          : <div className="small text-body-secondary">{t('العهدة {no} · المسلَّم {w} جم. زِن القطع: يُسجَّل الوزن في عهدة العامل الثاني فوراً بدون انتظار قبوله، والفرق يُحسب عجزاً على صاحب العهدة.', { no: custody.custody_no || custody.order_no, w: fmtW(remaining) })}{!general && t(f.mode === 'same_stage' ? ' يبقى الطلب في مرحلته الحالية.' : ' ينتقل الطلب للمرحلة التالية.')}{!general && t(' وإذا كان العامل المستلم مسنداً لمرحلة أخرى ينتقل الطلب لمرحلته تلقائياً.')}</div>}
         <Field label={t('الوزن على الميزان (جم) *')}><WeightInput big value={f.weight} onChange={(v) => setF({ ...f, weight: v })} autoFocus /></Field>
         {tooLow && <div className="alert alert-warning small mb-0">{t('الوزن أقل بكثير من العهدة ({w} جم). إذا تحوّل جزءاً فقط اختر «جزء منها» حتى يبقى الباقي معك بدون عجز.', { w: fmtW(remaining) })}</div>}
         {partBad && <div className="small text-danger">{t('الجزء يجب أن يكون أقل مما لديك ({w} جم) — لتحويل الكل اختر «كل العهدة»', { w: fmtW(remaining) })}</div>}
@@ -47,7 +47,7 @@ export function TransferModal({ custody, base = '/w', onClose, onDone }) {
         </Field>
         <Field label={t('ملاحظة')}><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
         {toMachine && <div className="alert alert-info small mb-0">⚙ المكينة لا تحتاج قبول: يُسجل الطلب عليها فوراً بوزنك هذا، والفرق عن عهدة العامل يُحسب عجزاً عليه. استلمه من المكينة عند الانتهاء.</div>}
-        <div className="hrow end"><Btn loading={busy} disabled={!f.to_worker_id || !(wv > 0) || tooLow || partBad} onClick={submit}>{toMachine ? 'تحويل للمكينة' : t('إرسال التحويل')}</Btn></div>
+        <div className="hrow end"><Btn loading={busy} disabled={!f.to_worker_id || !(wv > 0) || tooLow || partBad} onClick={submit}>{toMachine ? 'تحويل للمكينة' : t('تحويل الآن')}</Btn></div>
       </div>
     </Modal>
   );

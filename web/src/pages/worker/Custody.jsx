@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router-dom';
 import { api, fileUrl } from '../../api.js';
 import { fmtW, fmtDT, fmtPct, WORK_STATE, calcLoss, CUSTODY_STATUS, COLORS, stoneItems } from '../../format.js';
 import OrderGroupItems from '../../components/OrderGroupItems.jsx';
-import { TransferModal } from '../../components/TransferTools.jsx';
 import { Btn, Card, Field, Input, Loader, Textarea, WeightInput, useAction, useFetch, Badge, Kv, StatusBadge, Modal, askConfirm, FileLink } from '../../ui.jsx';
 import { t, tMat, isRtl } from '../../i18n.js';
 
@@ -20,7 +19,6 @@ export default function WCustody() {
   const [ackW, setAckW] = useState('');
   const [fin, setFin] = useState({ weight: '', weights: {}, note: '' });
   const [run, busy] = useAction();
-  const [trOpen, setTrOpen] = useState(false);
   const [ret, setRet] = useState(null);
   const { data: trs, reload: reloadTr } = useFetch('/w/transfers', { live: ['custodies', 'custody_transfers'] });
   if (!tasks) return <Loader />;
@@ -46,7 +44,9 @@ export default function WCustody() {
       </Card>
       <OrderGroupItems items={od?.group} current={c.order_id} />
       {c.status === 'open' && !c.finding_id && c.worker_ack_at && (() => {
+        // التحويل لعامل آخر صار عن طريق المشرف فقط؛ يظهر هنا فقط تحويل قديم معلق لإلغائه
         const pend = (trs?.outgoing || []).find((t) => t.custody_id === c.id);
+        if (!pend) return null;
         return (
           <Card title={`↪ ${t('تحويل لعامل آخر')}`}>
             {pend ? (
@@ -54,16 +54,10 @@ export default function WCustody() {
                 <span>{t('بانتظار قبول {name}', { name: pend.to_name })} — {fmtW(pend.weight)} {t('جم')}</span>
                 <Btn kind="ghost" size="sm" loading={busy} onClick={() => run(async () => { await api.post(`/w/transfers/${pend.id}/cancel`); reloadTr(); }, 'أُلغي التحويل')}>{t('إلغاء التحويل')}</Btn>
               </div>
-            ) : (
-              <div className="d-grid gap-2">
-                <div className="small text-body-secondary">{t('زِن وحوّل العهدة مباشرة لعامل آخر — للمرحلة التالية أو في نفس المرحلة. يتأكد هو من الوزن ويقبل، والفرق يُحسب عجزاً عليك.')}</div>
-                <Btn onClick={() => setTrOpen(true)}>{t('تحويل لعامل آخر')}</Btn>
-              </div>
-            )}
+            ) : null}
           </Card>
         );
       })()}
-      {trOpen && <TransferModal custody={c} onClose={() => setTrOpen(false)} onDone={() => { reloadTr(); reload(); }} />}
       {c.status === 'open' && c.worker_ack_at && (
         <Card title={`↩ ${t('تسليم جزء من العهدة للمشرف')}`}>
           {c.return_request ? (
