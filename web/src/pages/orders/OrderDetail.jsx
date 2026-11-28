@@ -351,6 +351,15 @@ function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove
     await api.post(`/orders/${x.id}/3d`, next); reload();
   });
   const markNone = (x) => run(async () => { await api.post(`/orders/${x.id}/3d`, { needs_design: false, needs_print: false }); reload(); });
+  // حذف منتج من الطلب (يبقى منتج واحد على الأقل)
+  const [rm, setRm] = useState(null);
+  const live = list.filter((x) => !['cancelled', 'rejected'].includes(x.status));
+  const canRemove = (x) => canManage && o.cart_ref && live.length > 1 && !['delivered', 'cancelled', 'rejected'].includes(x.status);
+  const remove = (reason) => run(async () => {
+    const r = await api.post(`/orders/${rm.id}/remove-item`, { reason });
+    setRm(null);
+    if (rm.id === o.id) nav(`/orders/${r.go_to}`, { replace: true }); else reload();
+  }, 'حُذف المنتج من الطلب');
   return (
     <Card className="mb" title={<span>منتجات الطلب {o.cart_ref && <b dir="ltr">{o.cart_ref}</b>} <span className="small text-body-secondary fw-normal">({list.length} أصناف · {pieces} قطعة)</span></span>}
       actions={<>
@@ -379,7 +388,8 @@ function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove
               </div>
               <div className="oi-side" onClick={(e) => e.stopPropagation()}>
                 <div className="d-flex gap-1 flex-wrap justify-content-end"><StatusBadge map={STATUS} value={x.status} />{x.stage_name && <Badge tone="gold">{x.stage_name}</Badge>}
-                  {onShortage && x.status === 'in_production' && <button type="button" className="chip chip-sm" onClick={() => onShortage(x)}>⚠ نواقص</button>}</div>
+                  {onShortage && x.status === 'in_production' && <button type="button" className="chip chip-sm" onClick={() => onShortage(x)}>⚠ نواقص</button>}
+                  {canRemove(x) && <button type="button" className="chip chip-sm text-danger" title="حذف المنتج من الطلب" onClick={() => setRm(x)}>🗑 حذف</button>}</div>
                 {(canManage || canMove) && !['delivered', 'cancelled', 'rejected'].includes(x.status) && (
                   <div className="d-flex justify-content-end mt-1"><PriorityChips value={x.priority} busy={busy} onChange={(p) => run(async () => { await api.post(`/orders/${x.id}/priority`, { priority: p }); reload(); }, 'تم تحديد الأولوية')} /></div>
                 )}
@@ -397,6 +407,7 @@ function OrderItems({ o, siblings, canManage, busy, onSplit, onStartAll, canMove
           );
         })}
       </div>
+      <ReasonModal open={!!rm} title={rm ? `حذف ${rm.product_type || rm.title} (${rm.order_no}) من الطلب` : ''} label="سبب الحذف (يبقى في السجل، وذهبه ينتقل لبقية الطلب)" danger busy={busy} onClose={() => setRm(null)} onSubmit={remove} />
       {canSplit && <div className="small text-body-secondary mt-2">التقسيم يفصل جزءاً من كمية هذا البند في بند مستقل بمساره الخاص (مثلاً جزء يحتاج صب وجزء لا) — متاح قبل بدء الإنتاج.</div>}
     </Card>
   );

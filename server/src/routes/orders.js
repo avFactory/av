@@ -252,7 +252,8 @@ r.get('/:id', requirePerm('orders.view'), async (req, res) => {
         r.name as route_name, case when o.stage_state='shortage' then '⚠ النواقص' else s.name end as stage_name, ${orderThumb()} as thumb,
         coalesce((select json_agg(json_build_object('shape', s2.name, 'size', l2.size_label, 'color', l2.color, 'clarity', l2.clarity, 'carats', (d->>'carats')::numeric, 'count', (d->>'count')::int))
           from jsonb_array_elements(o.diamonds) d join stone_lots l2 on l2.id=(d->>'lot_id')::int left join stone_shapes s2 on s2.id=l2.shape_id), '[]') as diamond_details
-      from orders o left join routes r on r.id=o.route_id left join stages s on s.id=o.current_stage_id where o.cart_ref=$1 order by o.order_no`, [o.cart_ref]) : [];
+      from orders o left join routes r on r.id=o.route_id left join stages s on s.id=o.current_stage_id
+      where o.cart_ref=$1 and (o.status not in ('cancelled','rejected') or o.id=$2) order by o.order_no`, [o.cart_ref, o.id]) : [];
   res.json({ order: o, stages, log, files, custodies, gold, goldFlow, customerGold, designs, stones, invoices, stonesGrams: stonesG, suggestedLabor: labor, siblings, group: grp?.isGroup ? { lead: grp.lead, ids: grp.ids } : null });
 });
 
@@ -427,6 +428,41 @@ r.post('/:id/cancel', requirePerm('orders.manage'), async (req, res) => {
     await prod.logStage(db, o.id, o.current_stage_id, 'status', req.user.id, `إلغاء: ${reason}`, true);
     await audit(db, req, 'order.cancel', 'order', o.id, { reason });
     return { ok: true };
+  }));
+});
+
+/**
+ * حذف منتج من طلب متعدد المنتجات: يُلغى البند (يبقى في السجل) ويختفي من الطلب.
+ * ذهبه ينتقل لبقية الطلب (البند القائد الجديد) إن كان بنفس العيار، وإلا يعود للخزنة. لا حذف والطلب لدى عامل.
+ */
+r.post('/:id/remove-item', requirePerm('orders.manage'), async (req, res) => {
+  res.json(await tx(async (db) => {
+    const o = await prod.lockOrder(db, int(req.params.id));
+    const reason = str(req.body.reason, 'سبب الحذف', { required: true });
+    if (!o.cart_ref) throw bad('الطلب منتج واحد — استخدم «إلغاء» لإلغاء الطلب كاملاً');
+    if (['delivered', 'cancelled', 'rejected'].includes(o.status)) throw conflict('هذا المنتج مغلق');
+    const g = await groupInfo(db, o.id);
+    const rest = (await db.query("select id, order_no, material_id from orders where cart_ref=$1 and id<>$2 and status not in ('cancelled','rejected') order by id", [o.cart_ref, o.id])).rows;
+    if (!rest.length) throw conflict('آخر منتج في الطلب — استخدم «إلغاء» لإلغاء الطلب كاملاً');
+    const busy = await db.query("select 1 from custodies where order_id = any($1::int[]) and status in ('open','under_review') limit 1", [g?.ids || [o.id]]);
+    if (busy.rowCount) throw conflict('الطلب لدى عامل الآن — استلمه أولاً ثم احذف المنتج');
+    const inv = await db.query(`select 1 from invoice_lines l join invoices i on i.id=l.invoice_id where (l.order_id=$1 or $1 = any(l.covers)) and i.status='issued' limit 1`, [o.id]);
+    if (inv.rowCount) throw conflict('المنتج مفوتر — ألغِ الفاتورة أو أصدر إشعاراً دائناً أولاً');
+    const newLead = rest[0];
+    const bals = (await db.query("select material_id, balance::text from gold_balances where loc_type='order' and loc_ref=$1 and balance > 0", [o.id])).rows;
+    for (const b of bals) {
+      if (b.material_id === newLead.material_id) {
+        await ledger.post(db, { kind: 'group_merge', material_id: b.material_id, weight: b.balance, from: ['order', o.id], to: ['order', newLead.id], order_id: newLead.id, reason: `حذف ${o.order_no} من الطلب: ذهبه لبقية الطلب`, user_id: req.user.id });
+      } else {
+        await ledger.post(db, { kind: 'dealloc', material_id: b.material_id, weight: b.balance, from: ['order', o.id], to: ['vault', null], order_id: o.id, reason: `حذف المنتج من الطلب: ${reason}`, user_id: req.user.id });
+      }
+    }
+    await db.query("update orders set status='cancelled', updated_at=now() where id=$1", [o.id]);
+    await releaseDiamonds(db, o.id, req.user.id, `حذف ${o.order_no} من الطلب`);
+    await prod.logStage(db, o.id, o.current_stage_id, 'status', req.user.id, `حُذف المنتج من الطلب ${o.cart_ref}: ${reason}`, true);
+    await prod.logStage(db, newLead.id, null, 'note', req.user.id, `حُذف المنتج ${o.order_no} (${o.product_type || o.title}) من الطلب: ${reason}`, true);
+    await audit(db, req, 'order.remove_item', 'order', o.id, { cart_ref: o.cart_ref, reason, gold_to: bals.length ? newLead.order_no : null });
+    return { ok: true, go_to: newLead.id };
   }));
 });
 

@@ -1192,3 +1192,33 @@ test('مرحلة الطلب تتبع العامل: التسليم أو التح�
   assert.equal((await call('POST', '/sup/issue', { worker_id: a, items: [{ order_id: o.id, weight: '10' }] })).status, 200);
   assert.equal((await cur()).id, later[0].id, 'رجع لمرحلة العامل الأول');
 });
+
+test('حذف منتج من طلب متعدد المنتجات: يختفي من الطلب وذهبه لبقية الطلب، ولا حذف والطلب لدى عامل ولا لآخر منتج', async () => {
+  const mat = (await pool.query("select id from materials where metal='gold' and karat=21 and active")).rows[0].id;
+  await call('POST', '/inventory/gold/in', { material_id: mat, weight: '100', note: 'رصيد' });
+  const m = await call('POST', '/orders/multi', { items: [{ title: 'خاتم', product_type: 'خاتم', karat: 21 }, { title: 'سوار', product_type: 'سوار', karat: 21 }, { title: 'حلق', product_type: 'حلق', karat: 21 }] });
+  assert.equal(m.status, 200, JSON.stringify(m.data));
+  const [a, b, c] = m.data.orders;
+  assert.equal((await call('POST', `/orders/${a.id}/allocate`, { weight: '6' })).status, 200);
+  assert.equal(await bal('order', a.id, mat), 6, 'الذهب على البند القائد');
+  assert.equal((await call('POST', `/orders/${b.id}/remove-item`, {})).status, 400, 'السبب إلزامي');
+  // حذف البند القائد: ذهبه ينتقل للبند التالي
+  const r1 = await call('POST', `/orders/${a.id}/remove-item`, { reason: 'العميل ألغى الخاتم' });
+  assert.equal(r1.status, 200, JSON.stringify(r1.data));
+  assert.equal(r1.data.go_to, b.id);
+  assert.deepEqual([await bal('order', a.id, mat), await bal('order', b.id, mat)], [0, 6]);
+  const d = (await call('GET', `/orders/${b.id}`)).data;
+  assert.deepEqual(d.siblings.map((x) => x.id), [b.id, c.id], 'المحذوف لا يظهر في الطلب');
+  assert.equal(d.group.lead, b.id);
+  // الطلب لدى عامل: لا حذف
+  const w = (await pool.query("insert into users(username, password_hash, full_name, role_code, employee_no) values ('rmW',$1,'rmW','worker','RM1') returning id", [hashPassword('Rm#2026xx')])).rows[0].id;
+  for (let i = 0; i < 8 && !(await pool.query('select s.handles_gold h from orders o join stages s on s.id=o.current_stage_id where o.id=$1', [b.id])).rows[0].h; i++) await call('POST', `/orders/${b.id}/group-advance`, { skip_gold: true });
+  const iss = await call('POST', '/sup/issue', { worker_id: w, items: [{ order_id: b.id, weight: '6' }] });
+  assert.equal(iss.status, 200, JSON.stringify(iss.data));
+  assert.equal((await call('POST', `/orders/${c.id}/remove-item`, { reason: 'x' })).status, 409, 'لدى عامل');
+  await call('POST', '/sup/receive', { worker_id: w, items: [{ custody_id: iss.data.custodies[0].id, returned_weight: '6', advance: false }] });
+  assert.equal((await call('POST', `/orders/${c.id}/remove-item`, { reason: 'العميل ألغى الحلق' })).status, 200);
+  // آخر منتج: لا حذف (يُلغى الطلب بدلاً منه)
+  assert.equal((await call('POST', `/orders/${b.id}/remove-item`, { reason: 'x' })).status, 409);
+  assert.equal(await bal('order', b.id, mat), 6, 'الذهب كاملاً على الباقي');
+});
